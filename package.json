@@ -1,5 +1,5 @@
 {
-  "name": "agent-tools-mcp-gateway-esm",
+  "name": "agent-tools-gateway",
   "version": "0.1.0",
   "description": "ESM MCP server POC for a central tools gateway with policy logging (TypeScript)",
   "type": "module",

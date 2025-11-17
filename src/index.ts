@@ -4,7 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 
 import { getEnabledCategories, type ToolCategory } from "./config.js";
 import { logger } from "./logger.js";
-import { registerToolsByCategory } from "./tools/index.js";
+import { registerToolsByCategory, registerMcpServerProxies } from "./tools/index.js";
 
 async function main() {
   const server = new McpServer(
@@ -36,14 +36,16 @@ async function main() {
 
   logger.info(`[MCP-GATEWAY] Registering tools from categories: ${enabledCategories.join(", ")}`);
 
+  const context = {
+    server,
+    getAgentContext,
+  };
+
   // Register tools by category
-  registerToolsByCategory(
-    {
-      server,
-      getAgentContext,
-    },
-    enabledCategories
-  );
+  registerToolsByCategory(context, enabledCategories);
+
+  // Register MCP server proxies (async - connects to upstream servers)
+  await registerMcpServerProxies(context);
 
   const transport = new StdioServerTransport();
   logger.info("Agent Tools MCP Gateway server starting...");

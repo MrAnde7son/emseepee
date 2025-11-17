@@ -30,8 +30,8 @@ Ensure your MCP server is properly configured and connected:
   "mcpServers": {
     "agent-tools-gateway": {
       "command": "node",
-      "args": ["/Users/imizrahi/Downloads/agent-tools-mcp-gateway-esm/dist/index.js"],
-      "cwd": "/Users/imizrahi/Downloads/agent-tools-mcp-gateway-esm"
+      "args": ["/Users/imizrahi/Downloads/agent-tools-gateway/dist/index.js"],
+      "cwd": "/Users/imizrahi/Downloads/agent-tools-gateway"
     }
   }
 }

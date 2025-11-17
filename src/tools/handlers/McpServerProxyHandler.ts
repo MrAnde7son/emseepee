@@ -1,10 +1,10 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { spawn, type ChildProcess } from "child_process";
+import type { ChildProcess } from "child_process";
 import type { McpServerProxyConfig } from "../../config.js";
 import { BaseGatewayHandler, type AgentContext, type ToolExecutionResult } from "./BaseGatewayHandler.js";
 import { logger } from "../../logger.js";
-import { evaluatePolicy, type PolicyDecision } from "../../policy.js";
+import { evaluatePolicy } from "../../policy.js";
 import type { ToolPolicyConfig } from "../../config.js";
 
 /**
@@ -12,15 +12,18 @@ import type { ToolPolicyConfig } from "../../config.js";
  */
 export class McpServerProxyHandler extends BaseGatewayHandler {
   private proxyConfig: McpServerProxyConfig;
-  private client: Client | null = null;
-  private transport: StdioClientTransport | null = null;
-  private process: ChildProcess | null = null;
+  private manager: McpServerProxyManager;
   private toolConfig: ToolPolicyConfig;
 
-  constructor(proxyConfig: McpServerProxyConfig, toolConfig: ToolPolicyConfig) {
+  constructor(
+    proxyConfig: McpServerProxyConfig,
+    toolConfig: ToolPolicyConfig,
+    manager: McpServerProxyManager
+  ) {
     super();
     this.proxyConfig = proxyConfig;
     this.toolConfig = toolConfig;
+    this.manager = manager;
   }
 
   protected getToolName(): string {
@@ -53,33 +56,40 @@ export class McpServerProxyHandler extends BaseGatewayHandler {
     }
 
     try {
-      // Ensure client is connected
-      await this.ensureConnected();
-
-      if (!this.client) {
-        throw new Error("MCP client not initialized");
+      // Get client from manager
+      const client = this.manager.getClient(this.proxyConfig.name);
+      if (!client) {
+        throw new Error(`MCP client not initialized for proxy: ${this.proxyConfig.name}`);
       }
 
       // Call the tool on the upstream server
-      const result = await this.client.callTool({
+      const result = await client.callTool({
         name: this.toolConfig.name,
         arguments: args as Record<string, unknown>,
       });
 
       // Convert MCP result to our format
-      const content = result.content.map((item) => {
-        if (item.type === "text") {
-          return {
-            type: "text" as const,
-            text: item.text,
-          };
-        }
-        // Handle other content types if needed
-        return {
-          type: "text" as const,
-          text: JSON.stringify(item),
-        };
-      });
+      const content = Array.isArray(result.content)
+        ? result.content.map((item: unknown) => {
+            const contentItem = item as { type?: string; text?: string };
+            if (contentItem.type === "text" && contentItem.text) {
+              return {
+                type: "text" as const,
+                text: contentItem.text,
+              };
+            }
+            // Handle other content types if needed
+            return {
+              type: "text" as const,
+              text: JSON.stringify(item),
+            };
+          })
+        : [
+            {
+              type: "text" as const,
+              text: JSON.stringify(result.content),
+            },
+          ];
 
       logger.info(`[MCP-GATEWAY] ${this.getToolName()} success (proxied)`, {
         tool: this.getToolName(),
@@ -87,88 +97,13 @@ export class McpServerProxyHandler extends BaseGatewayHandler {
 
       return {
         content,
-        isError: result.isError,
+        isError: result.isError === true,
       };
     } catch (error) {
       return this.handleError(error, args);
     }
   }
 
-  /**
-   * Ensure the MCP client is connected to the upstream server
-   */
-  private async ensureConnected(): Promise<void> {
-    if (this.client) {
-      return; // Already connected
-    }
-
-    logger.info(`[MCP-GATEWAY] Connecting to MCP server: ${this.proxyConfig.name}`);
-
-    // Spawn the MCP server process
-    this.process = spawn(this.proxyConfig.command, this.proxyConfig.args, {
-      cwd: this.proxyConfig.cwd,
-      env: { ...process.env, ...this.proxyConfig.env },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    // Handle process errors
-    this.process.on("error", (error) => {
-      logger.error(`[MCP-GATEWAY] Failed to start MCP server ${this.proxyConfig.name}:`, error);
-      this.cleanup();
-    });
-
-    this.process.on("exit", (code) => {
-      logger.warn(`[MCP-GATEWAY] MCP server ${this.proxyConfig.name} exited with code ${code}`);
-      this.cleanup();
-    });
-
-    // Create transport and client
-    this.transport = new StdioClientTransport({
-      command: this.proxyConfig.command,
-      args: this.proxyConfig.args,
-      env: { ...process.env, ...this.proxyConfig.env },
-    });
-
-    this.client = new Client(
-      {
-        name: `gateway-proxy-${this.proxyConfig.name}`,
-        version: "0.1.0",
-      },
-      {
-        capabilities: {},
-      }
-    );
-
-    // Connect to the upstream server
-    await this.transport.connect();
-    await this.client.connect(this.transport);
-
-    logger.info(`[MCP-GATEWAY] Connected to MCP server: ${this.proxyConfig.name}`);
-  }
-
-  /**
-   * Cleanup resources
-   */
-  cleanup(): void {
-    if (this.client) {
-      this.client.close().catch((err) => {
-        logger.warn(`[MCP-GATEWAY] Error closing client:`, err);
-      });
-      this.client = null;
-    }
-
-    if (this.transport) {
-      this.transport.close().catch((err) => {
-        logger.warn(`[MCP-GATEWAY] Error closing transport:`, err);
-      });
-      this.transport = null;
-    }
-
-    if (this.process) {
-      this.process.kill();
-      this.process = null;
-    }
-  }
 }
 
 /**
@@ -189,10 +124,22 @@ export class McpServerProxyManager {
     logger.info(`[MCP-GATEWAY] Connecting to MCP server proxy: ${proxyConfig.name}`);
 
     // Create transport
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined) {
+        env[key] = value;
+      }
+    }
+    if (proxyConfig.env) {
+      for (const [key, value] of Object.entries(proxyConfig.env)) {
+        env[key] = value;
+      }
+    }
+
     const transport = new StdioClientTransport({
       command: proxyConfig.command,
       args: proxyConfig.args,
-      env: { ...process.env, ...proxyConfig.env },
+      env,
       cwd: proxyConfig.cwd,
     });
 
@@ -207,8 +154,7 @@ export class McpServerProxyManager {
       }
     );
 
-    // Connect
-    await transport.connect();
+    // Connect - transport handles the connection automatically
     await client.connect(transport);
 
     // Store references
@@ -265,7 +211,5 @@ export class McpServerProxyManager {
     this.transports.clear();
     this.processes.clear();
   }
-
-  private clients: Map<string, Client> = new Map();
 }
 

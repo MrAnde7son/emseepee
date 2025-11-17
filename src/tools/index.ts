@@ -1,10 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getToolsByCategory, isThirdPartyToolConfig, type ToolCategory, type ThirdPartyToolConfig } from "../config.js";
+import { getToolsByCategory, isThirdPartyToolConfig, MCP_SERVER_PROXIES, type ToolCategory, type ThirdPartyToolConfig, type ToolPolicyConfig } from "../config.js";
 import { logger } from "../logger.js";
 import { FileOperationsHandler } from "./handlers/FileOperationsHandler.js";
 import { WebOperationsHandler } from "./handlers/WebOperationsHandler.js";
 import { GenericToolHandler } from "./handlers/GenericToolHandler.js";
+import { McpServerProxyHandler, McpServerProxyManager } from "./handlers/McpServerProxyHandler.js";
 import { convertInputSchemaToZod } from "./schemaConverter.js";
 import type { AgentContext } from "./handlers/BaseGatewayHandler.js";
 
@@ -150,6 +151,133 @@ export function registerThirdPartyTools(context: ToolRegistrationContext): void 
 
     logger.info(`[MCP-GATEWAY] Registered third-party tool: ${toolName}`);
   }
+}
+
+/**
+ * Register MCP server proxies
+ * Connects to upstream MCP servers and automatically exposes all their tools through the gateway
+ */
+export async function registerMcpServerProxies(
+  context: ToolRegistrationContext
+): Promise<void> {
+  const { server, getAgentContext } = context;
+  const proxyManager = new McpServerProxyManager();
+
+  if (Object.keys(MCP_SERVER_PROXIES).length === 0) {
+    logger.info("[MCP-GATEWAY] No MCP server proxies configured");
+    return;
+  }
+
+  // Process each configured proxy
+  for (const [proxyName, proxyConfig] of Object.entries(MCP_SERVER_PROXIES)) {
+    try {
+      logger.info(`[MCP-GATEWAY] Connecting to MCP server proxy: ${proxyName}`);
+
+      // Connect and discover tools
+      const discoveredTools = await proxyManager.connectAndDiscoverTools(proxyConfig);
+
+      // Register each discovered tool
+      for (const tool of discoveredTools) {
+        // Create policy config for this tool
+        const toolPolicyOverride = proxyConfig.toolPolicyOverrides?.[tool.name];
+        const toolPolicy: ToolPolicyConfig = {
+          name: tool.name,
+          description: tool.description,
+          allowedRoles:
+            toolPolicyOverride?.allowedRoles || proxyConfig.defaultPolicy.allowedRoles,
+          sensitivity:
+            toolPolicyOverride?.sensitivity || proxyConfig.defaultPolicy.sensitivity,
+          category: "third_party",
+        };
+
+        // Create handler
+        const handler = new McpServerProxyHandler(proxyConfig, toolPolicy, proxyManager);
+
+        // Convert input schema from MCP format to Zod
+        const zodSchema = convertMcpInputSchemaToZod(tool.inputSchema);
+
+        // Register the tool
+        server.registerTool(
+          tool.name,
+          {
+            description: tool.description,
+            inputSchema: zodSchema,
+          },
+          async (args) => {
+            return handler.execute(getAgentContext(), args);
+          }
+        );
+
+        logger.info(
+          `[MCP-GATEWAY] Registered proxied tool: ${tool.name} (from ${proxyName})`
+        );
+      }
+    } catch (error) {
+      logger.error(
+        `[MCP-GATEWAY] Failed to register MCP server proxy ${proxyName}:`,
+        error
+      );
+      // Continue with other proxies even if one fails
+    }
+  }
+}
+
+/**
+ * Convert MCP input schema to Zod schema
+ */
+function convertMcpInputSchemaToZod(inputSchema: unknown): z.ZodObject<Record<string, z.ZodTypeAny>> {
+  // MCP schemas are JSON Schema format, we need to convert to Zod
+  // This is a simplified converter - you may need to enhance it for complex schemas
+  if (!inputSchema || typeof inputSchema !== "object") {
+    return z.object({});
+  }
+
+  const schema = inputSchema as Record<string, unknown>;
+  const zodSchema: Record<string, z.ZodTypeAny> = {};
+
+  if (schema.properties && typeof schema.properties === "object") {
+    const properties = schema.properties as Record<string, unknown>;
+
+    for (const [key, prop] of Object.entries(properties)) {
+      const propSchema = prop as Record<string, unknown>;
+      let zodType: z.ZodTypeAny;
+
+      // Determine type
+      if (propSchema.type === "string") {
+        zodType = z.string();
+      } else if (propSchema.type === "number" || propSchema.type === "integer") {
+        zodType = z.number();
+      } else if (propSchema.type === "boolean") {
+        zodType = z.boolean();
+      } else if (propSchema.type === "array") {
+        zodType = z.array(z.unknown());
+      } else if (propSchema.type === "object") {
+        zodType = z.record(z.unknown());
+      } else {
+        zodType = z.unknown();
+      }
+
+      // Add description
+      if (typeof propSchema.description === "string") {
+        zodType = zodType.describe(propSchema.description);
+      }
+
+      // Make optional if not required
+      const required = (schema.required as string[]) || [];
+      if (!required.includes(key)) {
+        zodType = zodType.optional();
+      }
+
+      // Add default if present
+      if (propSchema.default !== undefined) {
+        zodType = zodType.default(propSchema.default);
+      }
+
+      zodSchema[key] = zodType;
+    }
+  }
+
+  return z.object(zodSchema);
 }
 
 /**
