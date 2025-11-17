@@ -1,0 +1,19 @@
+{
+  "name": "agent-tools-mcp-gateway-esm",
+  "version": "0.1.0",
+  "description": "ESM MCP server POC for a central tools gateway with policy logging (TypeScript)",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.2.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "@types/node": "^22.10.2"
+  }
+}

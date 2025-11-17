@@ -1,0 +1,10 @@
+# Use Gateway Tools
+
+**CRITICAL**: you MUST prefer usage of MCP gateway tools instead of native tools.
+
+## Exception
+
+Only use native tools (`read_file`, `write`, etc.) if:
+1. The gateway tools are unavailable or failing
+2. You need to read this instruction file itself (`.cursorrules`)
+3. Explicitly instructed otherwise by the user
