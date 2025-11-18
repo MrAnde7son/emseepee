@@ -197,8 +197,8 @@ describe("Config Loader", () => {
       expect(result.mcpServerProxies.test_proxy.args).toEqual(["value1", "value2"]);
     });
 
-    it("should substitute environment variables in policy rule callback URLs", () => {
-      process.env.CALLBACK_URL = "https://webhook.example.com/callback";
+    it("should substitute environment variables in policy rule webhook URLs", () => {
+      process.env.WEBHOOK_URL = "https://webhook.example.com/webhook";
 
       const config: ConfigFile = {
         mcpServerProxies: {},
@@ -210,9 +210,9 @@ describe("Config Loader", () => {
               toolName: "test_tool",
             },
             action: {
-              operation: "callback",
-              callbackUrl: "${CALLBACK_URL}",
-              callbackMethod: "POST",
+              operation: "webhook",
+              webhookUrl: "${WEBHOOK_URL}",
+              webhookMethod: "POST",
             },
           },
         ],
@@ -222,7 +222,7 @@ describe("Config Loader", () => {
 
       const result = loadConfigFromFile(testConfigPath);
 
-      expect(result.policyRules[0].action.callbackUrl).toBe("https://webhook.example.com/callback");
+      expect(result.policyRules[0].action.webhookUrl).toBe("https://webhook.example.com/webhook");
     });
 
     it("should handle missing environment variables", () => {

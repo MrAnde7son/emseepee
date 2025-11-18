@@ -82,6 +82,23 @@
   },
   "policyRules": [
     {
+      "name": "block_coder_bot_secrets",
+      "description": "Block coder_bot from reading files with secret in their path",
+      "priority": 1,
+      "condition": {
+        "agentRole": "coder_bot",
+        "toolName": "file_read_gateway",
+        "args": {
+          "path": "secret"
+        }
+      },
+      "action": {
+        "operation": "block",
+        "message": "coder_bot is not allowed to read files with 'secret' in the path"
+      },
+      "stopOnMatch": true
+    },
+    {
       "name": "log_all_file_writes",
       "description": "Log all file write operations for audit",
       "priority": 5,
@@ -91,7 +108,7 @@
       },
       "action": {
         "operation": "log",
-        "logMessage": "File write operation detected"
+        "message": "File write operation detected"
       },
       "stopOnMatch": false
     },
@@ -106,21 +123,21 @@
       },
       "action": {
         "operation": "block",
-        "blockMessage": "High-sensitivity operations require admin role in production"
+        "message": "High-sensitivity operations require admin role in production"
       },
       "stopOnMatch": true
     },
     {
-      "name": "callback_on_sensitive_operations",
-      "description": "Send callback for sensitive operations",
+      "name": "webhook_on_sensitive_operations",
+      "description": "Send webhook for sensitive operations",
       "priority": 15,
       "condition": {
         "sensitivity": "high"
       },
       "action": {
-        "operation": "callback",
-        "callbackUrl": "${POLICY_CALLBACK_URL}",
-        "callbackMethod": "POST"
+        "operation": "webhook",
+        "webhookUrl": "${POLICY_WEBHOOK_URL}",
+        "webhookMethod": "POST"
       },
       "stopOnMatch": false
     }

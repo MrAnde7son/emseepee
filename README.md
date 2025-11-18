@@ -11,6 +11,53 @@ It exposes MCP tools you can plug into Cursor (or any MCP client) and:
 
 The gateway provides built-in tools for file operations and browser operations, plus the ability to proxy entire MCP servers and add custom third-party integrations.
 
+## Architecture
+
+```mermaid
+graph TB
+    Client[MCP Client<br/>Cursor/Other] -->|Tool Calls| Gateway[Agent Tools Gateway<br/>MCP Server]
+    Gateway -->|Load Config| Config[config.json<br/>Dynamic Configuration]
+    
+    Gateway -->|Route Request| Policy[Policy Engine<br/>Rule Evaluation]
+    Policy -->|Check Rules| Config
+    
+    Policy -->|Allow| Handlers[Tool Handlers]
+    Policy -->|Block| Response[Deny Response]
+    
+    Handlers --> BuiltIn[Built-in Tools<br/>File Operations<br/>Browser Operations]
+    Handlers --> MCPProxy[MCP Server Proxies<br/>GitHub, Slack, etc.]
+    Handlers --> ThirdParty[Third-party Tools<br/>HTTP APIs<br/>Commands]
+    
+    MCPProxy -->|Proxy Calls| ExternalMCP[External MCP Servers<br/>@modelcontextprotocol/server-*]
+    ThirdParty -->|HTTP Requests| ExternalAPI[External APIs<br/>Slack, Custom Services]
+    ThirdParty -->|Execute| Commands[System Commands<br/>Scripts]
+    
+    BuiltIn -->|Read/Write| FileSystem[File System]
+    BuiltIn -->|Browse| Browser[Browser Operations]
+    
+    Gateway -->|Log All Calls| Logger[Logging<br/>stdout]
+    
+    Policy -->|Webhook| Webhook[Webhook Endpoints<br/>Async Notifications]
+    
+    style Gateway fill:#4a90e2,stroke:#2c5aa0,color:#fff
+    style Policy fill:#f39c12,stroke:#d68910,color:#fff
+    style Config fill:#27ae60,stroke:#1e8449,color:#fff
+    style Handlers fill:#9b59b6,stroke:#7d3c98,color:#fff
+    style Logger fill:#e74c3c,stroke:#c0392b,color:#fff
+```
+
+**Flow:**
+1. **MCP Client** (Cursor) sends tool calls to the **Gateway**
+2. **Gateway** loads configuration from `config.json` (no rebuild needed)
+3. **Policy Engine** evaluates rules based on tool, role, environment, and sensitivity
+4. If allowed, request is routed to appropriate **Tool Handler**
+5. **Handlers** execute via:
+   - **Built-in tools**: Direct file/browser operations
+   - **MCP Server Proxies**: Forward to external MCP servers
+   - **Third-party tools**: HTTP APIs or command execution
+6. All operations are **logged** to stdout
+7. Policy rules can trigger **webhooks** for notifications
+
 ## Install
 
 1. In the project folder:
@@ -276,7 +323,7 @@ Built-in tools (file/browser operations) have defaults but can be customized by 
 
 ## Adding Policy Rules
 
-Policy rules allow you to define custom access control, logging, and callbacks for tool usage. Rules are evaluated in priority order (lower priority first).
+Policy rules allow you to define custom access control, logging, and webhooks for tool usage. Rules are evaluated in priority order (lower priority first).
 
 ### Policy Rule Structure
 
@@ -301,7 +348,7 @@ Add rules to the `policyRules` array in `config.json`:
       },
       "action": {
         "operation": "log",
-        "logMessage": "Custom log message"
+        "message": "Custom log message"
       },
       "stopOnMatch": false
     }
@@ -316,7 +363,7 @@ Add rules to the `policyRules` array in `config.json`:
 {
   "action": {
     "operation": "log",
-    "logMessage": "File write operation detected"
+    "message": "File write operation detected"
   },
   "stopOnMatch": false
 }
@@ -327,7 +374,7 @@ Add rules to the `policyRules` array in `config.json`:
 {
   "action": {
     "operation": "block",
-    "blockMessage": "This operation is not allowed"
+    "message": "This operation is not allowed"
   },
   "stopOnMatch": true
 }
@@ -343,13 +390,13 @@ Add rules to the `policyRules` array in `config.json`:
 }
 ```
 
-**4. Callback Operation** - Trigger an HTTP callback (async, non-blocking):
+**4. Webhook Operation** - Trigger an HTTP webhook (async, non-blocking):
 ```json
 {
   "action": {
-    "operation": "callback",
-    "callbackUrl": "${POLICY_CALLBACK_URL}",
-    "callbackMethod": "POST"
+    "operation": "webhook",
+    "webhookUrl": "${POLICY_WEBHOOK_URL}",
+    "webhookMethod": "POST"
   },
   "stopOnMatch": false
 }
@@ -402,7 +449,7 @@ Match rules based on any combination of:
 - **`priority`**: Lower numbers are evaluated first (default: 0)
 - **`stopOnMatch`**: 
   - `true`: Stop evaluation after this rule matches (default for `allow`/`block`)
-  - `false`: Continue evaluating other rules (default for `log`/`callback`)
+  - `false`: Continue evaluating other rules (default for `log`/`webhook`)
 
 ### Policy Examples
 
@@ -418,7 +465,7 @@ Match rules based on any combination of:
   },
   "action": {
     "operation": "log",
-    "logMessage": "File write operation detected"
+    "message": "File write operation detected"
   },
   "stopOnMatch": false
 }
@@ -437,25 +484,25 @@ Match rules based on any combination of:
   },
   "action": {
     "operation": "block",
-    "blockMessage": "High-sensitivity operations require admin role in production"
+    "message": "High-sensitivity operations require admin role in production"
   },
   "stopOnMatch": true
 }
 ```
 
-**Example 3: Send callback for sensitive operations**
+**Example 3: Send webhook for sensitive operations**
 ```json
 {
-  "name": "callback_on_sensitive_operations",
-  "description": "Send callback for sensitive operations",
+  "name": "webhook_on_sensitive_operations",
+  "description": "Send webhook for sensitive operations",
   "priority": 15,
   "condition": {
     "sensitivity": "high"
   },
   "action": {
-    "operation": "callback",
-    "callbackUrl": "${POLICY_CALLBACK_URL}",
-    "callbackMethod": "POST"
+    "operation": "webhook",
+    "webhookUrl": "${POLICY_WEBHOOK_URL}",
+    "webhookMethod": "POST"
   },
   "stopOnMatch": false
 }
@@ -475,7 +522,7 @@ Match rules based on any combination of:
   },
   "action": {
     "operation": "block",
-    "blockMessage": "Access to this path is not allowed"
+    "message": "Access to this path is not allowed"
   },
   "stopOnMatch": true
 }
@@ -510,7 +557,7 @@ Use `${VAR_NAME}` syntax in `config.json` to reference environment variables. Th
   "env": {
     "GITHUB_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
   },
-  "callbackUrl": "${POLICY_CALLBACK_URL}"
+  "webhookUrl": "${POLICY_WEBHOOK_URL}"
 }
 ```
 
@@ -621,7 +668,7 @@ Here's a complete `config.json` example combining all features:
       },
       "action": {
         "operation": "log",
-        "logMessage": "File write operation detected"
+        "message": "File write operation detected"
       },
       "stopOnMatch": false
     },
@@ -636,7 +683,7 @@ Here's a complete `config.json` example combining all features:
       },
       "action": {
         "operation": "block",
-        "blockMessage": "High-sensitivity operations require admin role in production"
+        "message": "High-sensitivity operations require admin role in production"
       },
       "stopOnMatch": true
     }

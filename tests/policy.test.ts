@@ -114,7 +114,7 @@ describe("Policy Evaluation", () => {
         },
         action: {
           operation: "block",
-          blockMessage: "Tool is blocked",
+          message: "Tool is blocked",
         },
         stopOnMatch: true,
       };
@@ -377,7 +377,7 @@ describe("Policy Evaluation", () => {
         },
         action: {
           operation: "log",
-          logMessage: "Test tool was used",
+          message: "Test tool was used",
         },
         stopOnMatch: false,
       };
@@ -566,7 +566,7 @@ describe("Policy Evaluation", () => {
         },
         action: {
           operation: "log",
-          logMessage: "Logging tool usage",
+          message: "Logging tool usage",
         },
         stopOnMatch: false,
       };
@@ -596,6 +596,328 @@ describe("Policy Evaluation", () => {
       expect(decision.operations).toContain("log");
       expect(decision.operations).toContain("allow");
       expect(decision.decision).toBe("allow");
+    });
+  });
+
+  describe("Policy Rules - Custom Code Operation", () => {
+    it("should execute custom code that blocks based on args", async () => {
+      const rule: PolicyRule = {
+        name: "custom_block_path",
+        priority: 10,
+        condition: {
+          toolName: "test_tool",
+        },
+        action: {
+          operation: "custom",
+          customCode: `
+            if (args.path && args.path.includes('/etc/')) {
+              result = {
+                decision: 'deny',
+                reason: 'Blocked sensitive path',
+                operations: ['custom']
+              };
+            }
+          `,
+        },
+        stopOnMatch: true,
+      };
+
+      vi.spyOn(configModule, "getPolicyRules").mockResolvedValue([rule]);
+
+      const decision = await evaluatePolicy({
+        tool: mockTool,
+        agentId: defaultAgentContext.agentId,
+        agentRole: "coder_bot",
+        env: defaultAgentContext.env,
+        args: { path: "/etc/passwd" },
+      });
+
+      expect(decision.decision).toBe("deny");
+      expect(decision.reason).toBe("Blocked sensitive path");
+      expect(decision.operations).toContain("custom");
+    });
+
+    it("should execute custom code that allows based on condition", async () => {
+      const rule: PolicyRule = {
+        name: "custom_allow",
+        priority: 10,
+        condition: {
+          toolName: "test_tool",
+        },
+        action: {
+          operation: "custom",
+          customCode: `
+            if (agentRole === 'admin' || env === 'dev') {
+              result = {
+                decision: 'allow',
+                reason: 'Allowed by custom rule',
+                operations: ['custom']
+              };
+            }
+          `,
+        },
+        stopOnMatch: true,
+      };
+
+      vi.spyOn(configModule, "getPolicyRules").mockResolvedValue([rule]);
+
+      const decision = await evaluatePolicy({
+        tool: mockTool,
+        agentId: defaultAgentContext.agentId,
+        agentRole: "admin",
+        env: defaultAgentContext.env,
+        args: {},
+      });
+
+      expect(decision.decision).toBe("allow");
+      expect(decision.reason).toBe("Allowed by custom rule");
+      expect(decision.operations).toContain("custom");
+    });
+
+    it("should execute custom code that logs and continues", async () => {
+      const rule: PolicyRule = {
+        name: "custom_log",
+        priority: 10,
+        condition: {
+          toolName: "test_tool",
+        },
+        action: {
+          operation: "custom",
+          customCode: `
+            log('Custom check executed', { tool: tool.name, agentRole });
+            // No result set, so evaluation continues
+          `,
+        },
+        stopOnMatch: false,
+      };
+
+      vi.spyOn(configModule, "getPolicyRules").mockResolvedValue([rule]);
+
+      const decision = await evaluatePolicy({
+        tool: mockTool,
+        agentId: defaultAgentContext.agentId,
+        agentRole: "coder_bot",
+        env: defaultAgentContext.env,
+        args: {},
+      });
+
+      expect(decision.operations).toContain("custom");
+      // Should continue to default policy
+      expect(decision.decision).toBe("allow");
+    });
+
+    it("should handle custom code that returns a value", async () => {
+      const rule: PolicyRule = {
+        name: "custom_return",
+        priority: 10,
+        condition: {
+          toolName: "test_tool",
+        },
+        action: {
+          operation: "custom",
+          customCode: `
+            return {
+              decision: 'deny',
+              reason: 'Blocked by return statement',
+              operations: ['custom']
+            };
+          `,
+        },
+        stopOnMatch: true,
+      };
+
+      vi.spyOn(configModule, "getPolicyRules").mockResolvedValue([rule]);
+
+      const decision = await evaluatePolicy({
+        tool: mockTool,
+        agentId: defaultAgentContext.agentId,
+        agentRole: "coder_bot",
+        env: defaultAgentContext.env,
+        args: {},
+      });
+
+      expect(decision.decision).toBe("deny");
+      expect(decision.reason).toBe("Blocked by return statement");
+    });
+
+    it("should block when custom code throws an error", async () => {
+      const rule: PolicyRule = {
+        name: "custom_error",
+        priority: 10,
+        condition: {
+          toolName: "test_tool",
+        },
+        action: {
+          operation: "custom",
+          customCode: `
+            throw new Error('Custom validation failed');
+          `,
+        },
+        stopOnMatch: true,
+      };
+
+      vi.spyOn(configModule, "getPolicyRules").mockResolvedValue([rule]);
+
+      const decision = await evaluatePolicy({
+        tool: mockTool,
+        agentId: defaultAgentContext.agentId,
+        agentRole: "coder_bot",
+        env: defaultAgentContext.env,
+        args: {},
+      });
+
+      expect(decision.decision).toBe("deny");
+      expect(decision.reason).toBe("Custom validation failed");
+      expect(decision.operations).toContain("custom");
+    });
+
+    it("should handle custom code with complex logic", async () => {
+      const rule: PolicyRule = {
+        name: "custom_complex",
+        priority: 10,
+        condition: {
+          toolName: "test_tool",
+        },
+        action: {
+          operation: "custom",
+          customCode: `
+            const sensitivePaths = ['/etc/', '/sys/', '/proc/'];
+            const path = args.path || '';
+            const isSensitive = sensitivePaths.some(sp => path.includes(sp));
+            
+            if (isSensitive && env === 'prod' && agentRole !== 'admin') {
+              result = {
+                decision: 'deny',
+                reason: 'Sensitive path access requires admin in prod',
+                operations: ['custom']
+              };
+            } else if (isSensitive) {
+              log('Sensitive path accessed', { path, agentRole, env });
+            }
+          `,
+        },
+        stopOnMatch: false,
+      };
+
+      vi.spyOn(configModule, "getPolicyRules").mockResolvedValue([rule]);
+
+      // Test blocking case
+      const blockDecision = await evaluatePolicy({
+        tool: mockTool,
+        agentId: defaultAgentContext.agentId,
+        agentRole: "coder_bot",
+        env: "prod",
+        args: { path: "/etc/passwd" },
+      });
+
+      expect(blockDecision.decision).toBe("deny");
+      expect(blockDecision.reason).toBe("Sensitive path access requires admin in prod");
+
+      // Test logging case (dev environment)
+      const logDecision = await evaluatePolicy({
+        tool: mockTool,
+        agentId: defaultAgentContext.agentId,
+        agentRole: "coder_bot",
+        env: "dev",
+        args: { path: "/etc/passwd" },
+      });
+
+      expect(logDecision.operations).toContain("custom");
+      expect(logDecision.decision).toBe("allow");
+    });
+
+    it("should respect stopOnMatch for custom code", async () => {
+      const customRule: PolicyRule = {
+        name: "custom_stop",
+        priority: 5,
+        condition: {
+          toolName: "test_tool",
+        },
+        action: {
+          operation: "custom",
+          customCode: `
+            result = {
+              decision: 'allow',
+              reason: 'Allowed by custom code',
+              operations: ['custom']
+            };
+          `,
+        },
+        stopOnMatch: true,
+      };
+
+      const blockRule: PolicyRule = {
+        name: "block_after",
+        priority: 10,
+        condition: {
+          toolName: "test_tool",
+        },
+        action: {
+          operation: "block",
+        },
+        stopOnMatch: true,
+      };
+
+      vi.spyOn(configModule, "getPolicyRules").mockResolvedValue([customRule, blockRule]);
+
+      const decision = await evaluatePolicy({
+        tool: mockTool,
+        agentId: defaultAgentContext.agentId,
+        agentRole: "coder_bot",
+        env: defaultAgentContext.env,
+        args: {},
+      });
+
+      // Should stop at custom rule and not reach block rule
+      expect(decision.decision).toBe("allow");
+      expect(decision.reason).toBe("Allowed by custom code");
+    });
+
+    it("should always block immediately when custom code returns deny", async () => {
+      const customRule: PolicyRule = {
+        name: "custom_block",
+        priority: 10,
+        condition: {
+          toolName: "test_tool",
+        },
+        action: {
+          operation: "custom",
+          customCode: `
+            result = {
+              decision: 'deny',
+              reason: 'Blocked by custom code',
+              operations: ['custom']
+            };
+          `,
+        },
+        stopOnMatch: false, // Even if false, deny should stop immediately
+      };
+
+      const allowRule: PolicyRule = {
+        name: "allow_after",
+        priority: 15,
+        condition: {
+          toolName: "test_tool",
+        },
+        action: {
+          operation: "allow",
+        },
+        stopOnMatch: true,
+      };
+
+      vi.spyOn(configModule, "getPolicyRules").mockResolvedValue([customRule, allowRule]);
+
+      const decision = await evaluatePolicy({
+        tool: mockTool,
+        agentId: defaultAgentContext.agentId,
+        agentRole: "coder_bot",
+        env: defaultAgentContext.env,
+        args: {},
+      });
+
+      // Should block immediately even though stopOnMatch is false
+      expect(decision.decision).toBe("deny");
+      expect(decision.reason).toBe("Blocked by custom code");
     });
   });
 });

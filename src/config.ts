@@ -3,7 +3,7 @@
 export type Sensitivity = "low" | "medium" | "high";
 export type ToolCategory = "file" | "browser" | "third_party";
 export type ToolExecutionType = "http" | "command" | "custom";
-export type PolicyOperation = "allow" | "log" | "block" | "callback";
+export type PolicyOperation = "allow" | "log" | "block" | "webhook" | "custom";
 
 /**
  * Policy rule condition - when to apply this rule
@@ -28,15 +28,15 @@ export interface PolicyRuleCondition {
  */
 export interface PolicyRuleAction {
   operation: PolicyOperation;
-  // For "log" operation: custom log message
-  logMessage?: string;
-  // For "callback" operation: URL or handler to call
-  callbackUrl?: string;
-  callbackHandler?: string;
-  // For "callback" operation: HTTP method
-  callbackMethod?: "GET" | "POST" | "PUT";
-  // For "block" operation: custom denial message
-  blockMessage?: string;
+  // Custom message for the operation (used for log, block, and potentially other operations)
+  message?: string;
+  // For "webhook" operation: URL or handler to call
+  webhookUrl?: string;
+  webhookHandler?: string;
+  // For "webhook" operation: HTTP method
+  webhookMethod?: "GET" | "POST" | "PUT";
+  // For "custom" operation: JavaScript code to execute
+  customCode?: string;
 }
 
 /**

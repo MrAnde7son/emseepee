@@ -1,5 +1,4 @@
 
-import { config } from "dotenv";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
@@ -7,10 +6,32 @@ import { getEnabledCategories, type ToolCategory } from "./config.js";
 import { logger } from "./logger.js";
 import { registerToolsByCategory, registerMcpServerProxies } from "./tools/index.js";
 
-// Load environment variables from .env file
-config();
-
 async function main() {
+  // Set up error handlers after logger is initialized
+  // Handle unhandled promise rejections to prevent unexpected output
+  process.on("unhandledRejection", (reason, promise) => {
+    logger.error("Unhandled promise rejection:", reason);
+    // Don't exit - let the server continue if possible
+  });
+
+  // Handle uncaught exceptions
+  process.on("uncaughtException", (error) => {
+    logger.error("Uncaught exception:", error);
+    process.exit(1);
+  });
+
+  // Load environment variables from .env file using dynamic import
+  // This avoids any potential issues with top-level imports
+  try {
+    const dotenv = await import("dotenv");
+    dotenv.config();
+  } catch (error) {
+    // Silently ignore dotenv errors - .env file is optional
+    // Only log if it's a real error (not just missing file)
+    if (error instanceof Error && !error.message.includes("ENOENT")) {
+      logger.warn("Failed to load .env file:", error.message);
+    }
+  }
   const server = new McpServer(
     {
       name: "agent-tools-gateway",

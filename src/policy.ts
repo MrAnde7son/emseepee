@@ -7,6 +7,7 @@ import type {
 } from "./config.js";
 import { getPolicyRules } from "./config.js";
 import { logger } from "./logger.js";
+import { createContext, runInContext } from "vm";
 
 export type DecisionValue = "allow" | "deny";
 
@@ -15,8 +16,8 @@ export interface PolicyDecision {
   reason: string;
   // Operations that were performed during evaluation
   operations?: PolicyOperation[];
-  // Callback information if callback operation was triggered
-  callbackInfo?: {
+  // Webhook information if webhook operation was triggered
+  webhookInfo?: {
     url?: string;
     handler?: string;
     method?: string;
@@ -45,7 +46,22 @@ function matchesCondition(
     const toolNames = Array.isArray(condition.toolName)
       ? condition.toolName
       : [condition.toolName];
-    if (!toolNames.includes(tool.name)) {
+    const matches = toolNames.some((pattern) => {
+      // Support pattern matching: if pattern contains '*', treat as wildcard
+      if (pattern.includes('*')) {
+        // Convert wildcard pattern to regex
+        const regexPattern = pattern
+          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape special regex chars
+          .replace(/\*/g, '.*'); // Convert * to .*
+        const regex = new RegExp(`^${regexPattern}$`, 'i'); // Case-insensitive
+        return regex.test(tool.name);
+      }
+      // Support exact match or substring match (case-insensitive)
+      const patternLower = pattern.toLowerCase();
+      const toolNameLower = tool.name.toLowerCase();
+      return patternLower === toolNameLower || toolNameLower.includes(patternLower);
+    });
+    if (!matches) {
       return false;
     }
   }
@@ -91,7 +107,16 @@ function matchesCondition(
   // Check argument values
   if (condition.args !== undefined) {
     for (const [key, value] of Object.entries(condition.args)) {
-      if (args[key] !== value) {
+      const argValue = args[key];
+      // Support exact match or substring match for strings (case-insensitive)
+      if (typeof value === "string" && typeof argValue === "string") {
+        const valueLower = value.toLowerCase();
+        const argValueLower = argValue.toLowerCase();
+        if (valueLower !== argValueLower && !argValueLower.includes(valueLower)) {
+          return false;
+        }
+      } else if (argValue !== value) {
+        // For non-strings, use exact match
         return false;
       }
     }
@@ -101,16 +126,16 @@ function matchesCondition(
 }
 
 /**
- * Execute a callback operation (async)
+ * Execute a webhook operation (async)
  */
-async function executeCallback(
-  action: { callbackUrl?: string; callbackHandler?: string; callbackMethod?: string },
+async function executeWebhook(
+  action: { webhookUrl?: string; webhookHandler?: string; webhookMethod?: string },
   input: PolicyInput
 ): Promise<void> {
-  if (action.callbackUrl) {
-    const method = action.callbackMethod || "POST";
+  if (action.webhookUrl) {
+    const method = action.webhookMethod || "POST";
     try {
-      const response = await fetch(action.callbackUrl, {
+      const response = await fetch(action.webhookUrl, {
         method,
         headers: {
           "Content-Type": "application/json",
@@ -123,15 +148,110 @@ async function executeCallback(
           args: input.args,
         }),
       });
-      logger.info(`[POLICY] Callback executed: ${action.callbackUrl}`, {
+      logger.info(`[POLICY] Webhook executed: ${action.webhookUrl}`, {
         status: response.status,
       });
     } catch (error) {
-      logger.error(`[POLICY] Callback failed: ${action.callbackUrl}`, error);
+      logger.error(`[POLICY] Webhook failed: ${action.webhookUrl}`, error);
     }
-  } else if (action.callbackHandler) {
+  } else if (action.webhookHandler) {
     // Future: support custom handler functions
-    logger.warn(`[POLICY] Custom handler '${action.callbackHandler}' not yet implemented`);
+    logger.warn(`[POLICY] Custom handler '${action.webhookHandler}' not yet implemented`);
+  }
+}
+
+/**
+ * Execute custom code operation
+ * The code runs in a sandboxed VM context with access to policy input
+ * The code can return a decision object, set result, or throw an error to block
+ * 
+ * Available in custom code:
+ * - tool: ToolPolicyConfig
+ * - agentId: string
+ * - agentRole: string
+ * - env: string
+ * - args: Record<string, unknown>
+ * - log(message: string, data?: Record<string, unknown>): void
+ * - result: PolicyDecision | null (set this to return a decision)
+ * 
+ * Example:
+ *   if (args.path && args.path.includes('/etc/')) {
+ *     result = { decision: 'deny', reason: 'Blocked sensitive path', operations: ['custom'] };
+ *   }
+ */
+function executeCustomCode(
+  code: string,
+  input: PolicyInput,
+  ruleName: string
+): PolicyDecision | null {
+  try {
+    // Create a sandboxed context with access to policy input
+    const sandbox = {
+      // Policy input context
+      tool: input.tool,
+      agentId: input.agentId,
+      agentRole: input.agentRole,
+      env: input.env,
+      args: input.args,
+      // Helper functions available to custom code
+      log: (message: string, data?: Record<string, unknown>) => {
+        logger.info(`[POLICY] Custom code (${ruleName}): ${message}`, data);
+      },
+      // Return value will be captured - code can set this
+      result: null as PolicyDecision | null,
+    };
+
+    // Wrap the code to capture return value or result assignment
+    // If code returns a value, assign it to result
+    // Otherwise, code can directly set result
+    const wrappedCode = `
+      (function() {
+        const returnValue = (function() {
+          ${code}
+        })();
+        // If code returned a value, use it as result
+        if (returnValue !== undefined) {
+          result = returnValue;
+        }
+      })();
+    `;
+
+    // Create VM context
+    const context = createContext(sandbox);
+    
+    // Execute the code
+    runInContext(wrappedCode, context, {
+      timeout: 5000, // 5 second timeout
+      displayErrors: true,
+    });
+
+    // Check if code set a result
+    if (sandbox.result) {
+      return sandbox.result;
+    }
+
+    // If no result was set, log and continue
+    logger.info(`[POLICY] Custom code executed for rule '${ruleName}' (no decision returned)`);
+    return null;
+  } catch (error) {
+    // If code throws an error, treat it as a block
+    logger.error(`[POLICY] Custom code error in rule '${ruleName}'`, error);
+    
+    // Extract error message - handle both Error objects and other error types
+    let errorMessage = "Custom code execution failed";
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (typeof error === "string") {
+      errorMessage = error;
+    } else if (error && typeof error === "object" && "message" in error) {
+      errorMessage = String(error.message);
+    }
+    
+    return {
+      decision: "deny",
+      reason: errorMessage,
+      operations: ["custom"],
+    };
   }
 }
 
@@ -150,7 +270,7 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
   });
 
   const operations: PolicyOperation[] = [];
-  let callbackInfo: PolicyDecision["callbackInfo"] | undefined;
+  let webhookInfo: PolicyDecision["webhookInfo"] | undefined;
 
   // Evaluate rules in order
   for (const rule of sortedRules) {
@@ -161,7 +281,7 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
       if (action.operation === "log") {
         operations.push("log");
         logger.info(
-          `[POLICY] Rule '${rule.name}': ${action.logMessage || rule.description || "Logging request"}`,
+          `[POLICY] Rule '${rule.name}': ${action.message || rule.description || "Logging request"}`,
           {
             tool: tool.name,
             agentRole,
@@ -171,17 +291,17 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
         );
       }
 
-      // Execute callback operation
-      if (action.operation === "callback") {
-        operations.push("callback");
-        callbackInfo = {
-          url: action.callbackUrl,
-          handler: action.callbackHandler,
-          method: action.callbackMethod,
+      // Execute webhook operation
+      if (action.operation === "webhook") {
+        operations.push("webhook");
+        webhookInfo = {
+          url: action.webhookUrl,
+          handler: action.webhookHandler,
+          method: action.webhookMethod,
         };
-        // Execute callback asynchronously (don't wait for it)
-        executeCallback(action, input).catch((err) => {
-          logger.error(`[POLICY] Callback execution error for rule '${rule.name}'`, err);
+        // Execute webhook asynchronously (don't wait for it)
+        executeWebhook(action, input).catch((err) => {
+          logger.error(`[POLICY] Webhook execution error for rule '${rule.name}'`, err);
         });
       }
 
@@ -190,7 +310,7 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
         operations.push("block");
         return {
           decision: "deny",
-          reason: action.blockMessage || rule.description || `Blocked by rule '${rule.name}'`,
+          reason: action.message || rule.description || `Blocked by rule '${rule.name}'`,
           operations,
         };
       }
@@ -204,14 +324,44 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
             decision: "allow",
             reason: rule.description || `Allowed by rule '${rule.name}'`,
             operations,
-            callbackInfo,
+            webhookInfo,
           };
         }
-        // Otherwise continue evaluating (allow can be combined with log/callback)
+        // Otherwise continue evaluating (allow can be combined with log/webhook)
+      }
+
+      // Execute custom code operation
+      if (action.operation === "custom" && action.customCode) {
+        operations.push("custom");
+        const customDecision = executeCustomCode(action.customCode, input, rule.name);
+        
+        // If custom code returned a decision, use it
+        if (customDecision) {
+          // Merge operations from custom decision with existing operations
+          const mergedOperations = [...operations, ...(customDecision.operations || [])];
+          
+          // If stopOnMatch is true, return immediately
+          if (rule.stopOnMatch !== false) {
+            return {
+              ...customDecision,
+              operations: mergedOperations,
+              webhookInfo,
+            };
+          }
+          
+          // If custom code decided to block, return immediately regardless of stopOnMatch
+          if (customDecision.decision === "deny") {
+            return {
+              ...customDecision,
+              operations: mergedOperations,
+              webhookInfo,
+            };
+          }
+        }
       }
 
       // If stopOnMatch is true and we haven't returned yet, stop evaluation
-      if (rule.stopOnMatch === true && action.operation !== "allow") {
+      if (rule.stopOnMatch === true && action.operation !== "allow" && action.operation !== "custom") {
         break;
       }
     }
@@ -244,7 +394,7 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
         decision: "allow",
         reason: "Allowed by default policy after rule evaluation",
         operations: [...operations, "allow"],
-        callbackInfo,
+        webhookInfo,
       };
     }
 
@@ -264,7 +414,7 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
       decision: "deny",
       reason: "Blocked by policy rule",
       operations,
-      callbackInfo,
+      webhookInfo,
     };
   }
 
@@ -272,6 +422,6 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
     decision: hasAllow ? "allow" : "allow", // Default to allow if no block
     reason: "Allowed by policy rules",
     operations,
-    callbackInfo,
+    webhookInfo,
   };
 }
