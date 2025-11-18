@@ -93,24 +93,32 @@ Create a project-level `.cursor/mcp.json` file in your workspace root:
 {
   "mcpServers": {
     "agent-tools-gateway": {
-      "command": "node",
-      "args": ["/absolute/path/to/agent-tools-gateway/dist/index.js"],
-      "cwd": "/absolute/path/to/agent-tools-gateway"
+      "command": "npx",
+      "args": ["-y", "agent-tools-gateway"],
+      "cwd": "/absolute/path/to/agent-tools-gateway",
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      }
     }
   }
 }
 ```
 
-**Important:** Replace `/absolute/path/to/agent-tools-gateway` with the actual absolute path to this project on your system.
+**Important:** 
+- Replace `/absolute/path/to/agent-tools-gateway` with the actual absolute path to this project on your system.
+- Replace `${GITHUB_TOKEN}` with your actual GitHub token, or set it as an environment variable.
 
 **Example:**
 ```json
 {
   "mcpServers": {
     "agent-tools-gateway": {
-      "command": "node",
-      "args": ["/Users/imizrahi/Downloads/agent-tools-gateway/dist/index.js"],
-      "cwd": "/Users/imizrahi/Downloads/agent-tools-gateway"
+      "command": "npx",
+      "args": ["-y", "agent-tools-gateway"],
+      "cwd": "/Users/imizrahi/Downloads/agent-tools-gateway",
+      "env": {
+        "GITHUB_TOKEN": "github_pat_..."
+      }
     }
   }
 }
@@ -128,9 +136,8 @@ Create a `.cursorrules` file in your workspace root to instruct Cursor's AI assi
 ## Exception
 
 Only use native tools (`read_file`, `write`, etc.) if:
-1. The gateway tools are unavailable or failing
-2. You need to read this instruction file itself (`.cursorrules`)
-3. Explicitly instructed otherwise by the user
+1. You need to read this instruction file itself (`.cursorrules`)
+2. The gateway tools are not available
 ```
 
 ### Step 3: Verify Installation
