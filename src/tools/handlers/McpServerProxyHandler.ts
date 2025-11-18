@@ -41,7 +41,7 @@ export class McpServerProxyHandler extends BaseGatewayHandler {
     agentContext: AgentContext,
     args: Record<string, unknown>
   ): Promise<ToolExecutionResult> {
-    const decision = evaluatePolicy({
+    const decision = await evaluatePolicy({
       tool: this.toolConfig,
       agentId: agentContext.agentId,
       agentRole: agentContext.agentRole,

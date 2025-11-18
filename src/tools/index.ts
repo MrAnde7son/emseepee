@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getToolsByCategory, isThirdPartyToolConfig, MCP_SERVER_PROXIES, type ToolCategory, type ThirdPartyToolConfig, type ToolPolicyConfig } from "../config.js";
+import { getToolsByCategory, isThirdPartyToolConfig, getMcpServerProxies, type ToolCategory, type ThirdPartyToolConfig, type ToolPolicyConfig } from "../config.js";
 import { logger } from "../logger.js";
 import { FileOperationsHandler } from "./handlers/FileOperationsHandler.js";
 import { WebOperationsHandler } from "./handlers/WebOperationsHandler.js";
@@ -17,9 +17,9 @@ export interface ToolRegistrationContext {
 /**
  * Register all file tools using FileOperationsHandler
  */
-export function registerFileTools(context: ToolRegistrationContext): void {
+export async function registerFileTools(context: ToolRegistrationContext): Promise<void> {
   const { server, getAgentContext } = context;
-  const fileTools = getToolsByCategory("file");
+  const fileTools = await getToolsByCategory("file");
 
   // Initialize file operations handler
   const fileHandler = new FileOperationsHandler({
@@ -86,9 +86,9 @@ export function registerFileTools(context: ToolRegistrationContext): void {
 /**
  * Register all browser tools using WebOperationsHandler
  */
-export function registerBrowserTools(context: ToolRegistrationContext): void {
+export async function registerBrowserTools(context: ToolRegistrationContext): Promise<void> {
   const { server, getAgentContext } = context;
-  const browserTools = getToolsByCategory("browser");
+  const browserTools = await getToolsByCategory("browser");
 
   // Initialize web operations handler
   const webHandler = new WebOperationsHandler(browserTools.web_search_gateway);
@@ -115,9 +115,9 @@ export function registerBrowserTools(context: ToolRegistrationContext): void {
  * Register all third-party integration tools using GenericToolHandler
  * These tools are configured declaratively - no code needed!
  */
-export function registerThirdPartyTools(context: ToolRegistrationContext): void {
+export async function registerThirdPartyTools(context: ToolRegistrationContext): Promise<void> {
   const { server, getAgentContext } = context;
-  const thirdPartyTools = getToolsByCategory("third_party");
+  const thirdPartyTools = await getToolsByCategory("third_party");
 
   if (Object.keys(thirdPartyTools).length === 0) {
     logger.info("[MCP-GATEWAY] No third-party tools configured");
@@ -162,14 +162,15 @@ export async function registerMcpServerProxies(
 ): Promise<void> {
   const { server, getAgentContext } = context;
   const proxyManager = new McpServerProxyManager();
+  const mcpServerProxies = await getMcpServerProxies();
 
-  if (Object.keys(MCP_SERVER_PROXIES).length === 0) {
+  if (Object.keys(mcpServerProxies).length === 0) {
     logger.info("[MCP-GATEWAY] No MCP server proxies configured");
     return;
   }
 
   // Process each configured proxy
-  for (const [proxyName, proxyConfig] of Object.entries(MCP_SERVER_PROXIES)) {
+  for (const [proxyName, proxyConfig] of Object.entries(mcpServerProxies)) {
     try {
       logger.info(`[MCP-GATEWAY] Connecting to MCP server proxy: ${proxyName}`);
 
@@ -283,17 +284,17 @@ function convertMcpInputSchemaToZod(inputSchema: unknown): z.ZodObject<Record<st
 /**
  * Register tools by category. Can selectively enable/disable categories.
  */
-export function registerToolsByCategory(
+export async function registerToolsByCategory(
   context: ToolRegistrationContext,
   enabledCategories: ToolCategory[] = ["file", "browser", "third_party"]
-): void {
+): Promise<void> {
   if (enabledCategories.includes("file")) {
-    registerFileTools(context);
+    await registerFileTools(context);
   }
   if (enabledCategories.includes("browser")) {
-    registerBrowserTools(context);
+    await registerBrowserTools(context);
   }
   if (enabledCategories.includes("third_party")) {
-    registerThirdPartyTools(context);
+    await registerThirdPartyTools(context);
   }
 }

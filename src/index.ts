@@ -1,10 +1,14 @@
 
+import { config } from "dotenv";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { getEnabledCategories, type ToolCategory } from "./config.js";
 import { logger } from "./logger.js";
 import { registerToolsByCategory, registerMcpServerProxies } from "./tools/index.js";
+
+// Load environment variables from .env file
+config();
 
 async function main() {
   const server = new McpServer(
@@ -32,7 +36,7 @@ async function main() {
   const enabledCategoriesEnv = process.env.ENABLED_TOOL_CATEGORIES;
   const enabledCategories: ToolCategory[] = enabledCategoriesEnv
     ? (enabledCategoriesEnv.split(",") as ToolCategory[])
-    : getEnabledCategories(); // Default: enable all categories with tools
+    : await getEnabledCategories(); // Default: enable all categories with tools
 
   logger.info(`[MCP-GATEWAY] Registering tools from categories: ${enabledCategories.join(", ")}`);
 
@@ -42,7 +46,7 @@ async function main() {
   };
 
   // Register tools by category
-  registerToolsByCategory(context, enabledCategories);
+  await registerToolsByCategory(context, enabledCategories);
 
   // Register MCP server proxies (async - connects to upstream servers)
   await registerMcpServerProxies(context);

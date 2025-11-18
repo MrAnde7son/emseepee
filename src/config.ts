@@ -1,7 +1,57 @@
 
+
 export type Sensitivity = "low" | "medium" | "high";
 export type ToolCategory = "file" | "browser" | "third_party";
 export type ToolExecutionType = "http" | "command" | "custom";
+export type PolicyOperation = "allow" | "log" | "block" | "callback";
+
+/**
+ * Policy rule condition - when to apply this rule
+ */
+export interface PolicyRuleCondition {
+  // Match by tool name (exact or pattern)
+  toolName?: string | string[];
+  // Match by tool category
+  category?: ToolCategory | ToolCategory[];
+  // Match by agent role
+  agentRole?: string | string[];
+  // Match by environment
+  env?: string | string[];
+  // Match by sensitivity level
+  sensitivity?: Sensitivity | Sensitivity[];
+  // Match by argument values (key-value pairs)
+  args?: Record<string, unknown>;
+}
+
+/**
+ * Policy rule action configuration
+ */
+export interface PolicyRuleAction {
+  operation: PolicyOperation;
+  // For "log" operation: custom log message
+  logMessage?: string;
+  // For "callback" operation: URL or handler to call
+  callbackUrl?: string;
+  callbackHandler?: string;
+  // For "callback" operation: HTTP method
+  callbackMethod?: "GET" | "POST" | "PUT";
+  // For "block" operation: custom denial message
+  blockMessage?: string;
+}
+
+/**
+ * Policy rule - defines when and what action to take
+ */
+export interface PolicyRule {
+  name: string;
+  description?: string;
+  condition: PolicyRuleCondition;
+  action: PolicyRuleAction;
+  // Priority: rules are evaluated in order, lower priority first
+  priority?: number;
+  // Whether to stop evaluation after this rule matches
+  stopOnMatch?: boolean;
+}
 
 /**
  * MCP Server proxy configuration
@@ -103,34 +153,58 @@ export interface McpServerProxyRegistry {
 
 /**
  * MCP Server Proxy Registry
- * Add MCP servers here to automatically proxy all their tools through the gateway
+ * Loaded dynamically from config.json file
+ * Use loadConfig() to get the actual configuration
  */
-export const MCP_SERVER_PROXIES: McpServerProxyRegistry = {
-  // Example: GitHub MCP server proxy
-  // Uncomment and configure to use:
-  // github: {
-  //   name: "github",
-  //   description: "GitHub MCP server proxied through gateway",
-  //   command: "npx",
-  //   args: ["-y", "@modelcontextprotocol/server-github"],
-  //   env: {
-  //     GITHUB_PERSONAL_ACCESS_TOKEN: process.env.GITHUB_TOKEN || "",
-  //   },
-  //   defaultPolicy: {
-  //     allowedRoles: ["coder_bot", "admin"],
-  //     sensitivity: "medium",
-  //   },
-  //   toolPolicyOverrides: {
-  //     // Override policy for specific tools
-  //     "github_create_issue": {
-  //       sensitivity: "high",
-  //       allowedRoles: ["admin"],
-  //     },
-  //   },
-  // },
-};
+let _mcpServerProxies: McpServerProxyRegistry | null = null;
+let _toolsProxies: Record<string, ToolPolicyConfig | ThirdPartyToolConfig> | null = null;
+let _policyRules: PolicyRule[] | null = null;
 
-export const TOOL_REGISTRY: ToolCategoryRegistry = {
+/**
+ * Load configuration from file (lazy loading, async)
+ */
+export async function loadConfig(): Promise<{
+  mcpServerProxies: McpServerProxyRegistry;
+  toolsProxies: Record<string, ToolPolicyConfig | ThirdPartyToolConfig>;
+  policyRules: PolicyRule[];
+}> {
+  if (_mcpServerProxies === null || _toolsProxies === null || _policyRules === null) {
+    // Use dynamic import for ESM compatibility
+    const { loadConfigFromFile } = await import("./configLoader.js");
+    const config = loadConfigFromFile();
+    _mcpServerProxies = config.mcpServerProxies;
+    _toolsProxies = config.toolsProxies;
+    _policyRules = config.policyRules;
+  }
+  // At this point, we know they're not null due to the check above
+  return {
+    mcpServerProxies: _mcpServerProxies!,
+    toolsProxies: _toolsProxies!,
+    policyRules: _policyRules!,
+  };
+}
+
+/**
+ * Get policy rules (loaded from config.json)
+ */
+export async function getPolicyRules(): Promise<PolicyRule[]> {
+  const config = await loadConfig();
+  return config.policyRules;
+}
+
+/**
+ * Get MCP server proxies (loaded from config.json)
+ */
+export async function getMcpServerProxies(): Promise<McpServerProxyRegistry> {
+  const config = await loadConfig();
+  return config.mcpServerProxies;
+}
+
+/**
+ * Default built-in tool registry (file and browser tools)
+ * These are the defaults if not overridden in config.json
+ */
+const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
   file: {
     file_read_gateway: {
       name: "file_read_gateway",
@@ -163,98 +237,72 @@ export const TOOL_REGISTRY: ToolCategoryRegistry = {
       category: "browser",
     },
   },
-  third_party: {
-    // Example: Slack message tool (commented out - uncomment and configure to use)
-    // slack_send_message: {
-    //   name: "slack_send_message",
-    //   description: "Send a message to a Slack channel through the gateway.",
-    //   allowedRoles: ["coder_bot", "admin"],
-    //   sensitivity: "medium",
-    //   category: "third_party",
-    //   execution: {
-    //     type: "http",
-    //     method: "POST",
-    //     url: "https://slack.com/api/chat.postMessage",
-    //     headers: {
-    //       Authorization: "Bearer {token}",
-    //       "Content-Type": "application/json",
-    //     },
-    //     bodyTemplate: '{"channel": "{channel}", "text": "{message}"}',
-    //     responsePath: "ok", // Extract 'ok' field from response
-    //   },
-    //   inputSchema: {
-    //     token: {
-    //       type: "string",
-    //       description: "Slack API token",
-    //       required: true,
-    //     },
-    //     channel: {
-    //       type: "string",
-    //       description: "Slack channel ID or name",
-    //       required: true,
-    //     },
-    //     message: {
-    //       type: "string",
-    //       description: "Message to send",
-    //       required: true,
-    //     },
-    //   },
-    // },
-    //
-    // Example: GitHub issue creation tool
-    // github_create_issue: {
-    //   name: "github_create_issue",
-    //   description: "Create a GitHub issue through the gateway.",
-    //   allowedRoles: ["coder_bot", "admin"],
-    //   sensitivity: "high",
-    //   category: "third_party",
-    //   execution: {
-    //     type: "http",
-    //     method: "POST",
-    //     url: "https://api.github.com/repos/{owner}/{repo}/issues",
-    //     headers: {
-    //       Authorization: "token {token}",
-    //       Accept: "application/vnd.github.v3+json",
-    //     },
-    //     bodyTemplate: '{"title": "{title}", "body": "{body}"}',
-    //     responsePath: "number", // Extract issue number from response
-    //   },
-    //   inputSchema: {
-    //     token: {
-    //       type: "string",
-    //       description: "GitHub personal access token",
-    //       required: true,
-    //     },
-    //     owner: {
-    //       type: "string",
-    //       description: "Repository owner",
-    //       required: true,
-    //     },
-    //     repo: {
-    //       type: "string",
-    //       description: "Repository name",
-    //       required: true,
-    //     },
-    //     title: {
-    //       type: "string",
-    //       description: "Issue title",
-    //       required: true,
-    //     },
-    //     body: {
-    //       type: "string",
-    //       description: "Issue body/description",
-    //       required: false,
-    //     },
-    //   },
-    // },
-  },
+  third_party: {}, // Third-party tools are loaded from config.json
 };
+
+/**
+ * Get the complete tool registry (built-in + dynamically loaded)
+ * Built-in tools can be customized via config.json, but defaults are always available
+ */
+export async function getToolRegistry(): Promise<ToolCategoryRegistry> {
+  const config = await loadConfig();
+  const { toolsProxies } = config;
+  
+  // Separate tools by category
+  const fileTools: Record<string, ToolPolicyConfig> = {};
+  const browserTools: Record<string, ToolPolicyConfig> = {};
+  const thirdPartyTools: Record<string, ThirdPartyToolConfig> = {};
+  
+  for (const [toolName, toolConfig] of Object.entries(toolsProxies)) {
+    if (isThirdPartyToolConfig(toolConfig)) {
+      thirdPartyTools[toolName] = toolConfig;
+    } else if (toolConfig.category === "file") {
+      fileTools[toolName] = toolConfig;
+    } else if (toolConfig.category === "browser") {
+      browserTools[toolName] = toolConfig;
+    } else if (toolConfig.category === "third_party") {
+      // This shouldn't happen if isThirdPartyToolConfig works correctly, but handle it
+      thirdPartyTools[toolName] = toolConfig as ThirdPartyToolConfig;
+    }
+  }
+  
+  // Merge configured tools with defaults (configured tools override defaults)
+  const mergedFileTools = {
+    ...DEFAULT_BUILT_IN_TOOLS.file,
+    ...fileTools,
+  };
+  
+  const mergedBrowserTools = {
+    ...DEFAULT_BUILT_IN_TOOLS.browser,
+    ...browserTools,
+  };
+  
+  return {
+    file: mergedFileTools,
+    browser: mergedBrowserTools,
+    third_party: thirdPartyTools,
+  };
+}
+
+/**
+ * Legacy export for backward compatibility
+ * @deprecated Use getToolRegistry() instead
+ * Note: This will be initialized asynchronously, use getToolRegistry() for proper async handling
+ */
+let _toolRegistry: ToolCategoryRegistry | null = null;
+export async function getToolRegistrySync(): Promise<ToolCategoryRegistry> {
+  if (_toolRegistry === null) {
+    _toolRegistry = await getToolRegistry();
+  }
+  return _toolRegistry;
+}
 
 /**
  * Get all tools from a specific category
  */
-export function getToolsByCategory(category: ToolCategory): Record<string, ToolPolicyConfig | ThirdPartyToolConfig> {
-  return TOOL_REGISTRY[category] || {};
+export async function getToolsByCategory(category: ToolCategory): Promise<Record<string, ToolPolicyConfig | ThirdPartyToolConfig>> {
+  const registry = await getToolRegistry();
+  return registry[category] || {};
 }
 
 /**
@@ -267,8 +315,9 @@ export function isThirdPartyToolConfig(tool: ToolPolicyConfig | ThirdPartyToolCo
 /**
  * Get a tool by name across all categories
  */
-export function getToolByName(name: string): ToolPolicyConfig | undefined {
-  for (const categoryTools of Object.values(TOOL_REGISTRY)) {
+export async function getToolByName(name: string): Promise<ToolPolicyConfig | undefined> {
+  const registry = await getToolRegistry();
+  for (const categoryTools of Object.values(registry)) {
     if (categoryTools[name]) {
       return categoryTools[name];
     }
@@ -279,8 +328,9 @@ export function getToolByName(name: string): ToolPolicyConfig | undefined {
 /**
  * Get all enabled categories (categories that have at least one tool)
  */
-export function getEnabledCategories(): ToolCategory[] {
-  return Object.keys(TOOL_REGISTRY).filter(
-    (category) => Object.keys(TOOL_REGISTRY[category]).length > 0
+export async function getEnabledCategories(): Promise<ToolCategory[]> {
+  const registry = await getToolRegistry();
+  return Object.keys(registry).filter(
+    (category) => Object.keys(registry[category]).length > 0
   ) as ToolCategory[];
 }

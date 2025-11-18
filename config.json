@@ -1,0 +1,129 @@
+{
+  "mcpServerProxies": {
+    "github": {
+      "name": "github",
+      "description": "GitHub MCP server proxied through gateway",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "defaultPolicy": {
+        "allowedRoles": ["coder_bot", "admin"],
+        "sensitivity": "medium"
+      },
+      "toolPolicyOverrides": {
+        "github_create_issue": {
+          "sensitivity": "high",
+          "allowedRoles": ["admin"]
+        }
+      }
+    }
+  },
+  "toolsProxies": {
+    "file_read_gateway": {
+      "name": "file_read_gateway",
+      "description": "Read files through the central gateway with policy enforcement.",
+      "allowedRoles": ["coder_bot", "admin"],
+      "sensitivity": "medium",
+      "category": "file"
+    },
+    "file_search_gateway": {
+      "name": "file_search_gateway",
+      "description": "Search for files through the central gateway with policy enforcement.",
+      "allowedRoles": ["coder_bot", "admin"],
+      "sensitivity": "medium",
+      "category": "file"
+    },
+    "file_write_gateway": {
+      "name": "file_write_gateway",
+      "description": "Write files through the central gateway with policy enforcement.",
+      "allowedRoles": ["coder_bot", "admin"],
+      "sensitivity": "high",
+      "category": "file"
+    },
+    "web_search_gateway": {
+      "name": "web_search_gateway",
+      "description": "Perform web search through the central gateway with policy enforcement.",
+      "allowedRoles": ["coder_bot", "research_bot", "admin"],
+      "sensitivity": "medium",
+      "category": "browser"
+    },
+    "slack_send_message": {
+      "name": "slack_send_message",
+      "description": "Send a message to a Slack channel through the gateway.",
+      "allowedRoles": ["coder_bot", "admin"],
+      "sensitivity": "medium",
+      "category": "third_party",
+      "execution": {
+        "type": "http",
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage",
+        "headers": {
+          "Authorization": "Bearer ${SLACK_TOKEN}",
+          "Content-Type": "application/json"
+        },
+        "bodyTemplate": "{\"channel\": \"{channel}\", \"text\": \"{message}\"}",
+        "responsePath": "ok"
+      },
+      "inputSchema": {
+        "channel": {
+          "type": "string",
+          "description": "Slack channel ID or name",
+          "required": true
+        },
+        "message": {
+          "type": "string",
+          "description": "Message to send",
+          "required": true
+        }
+      }
+    }
+  },
+  "policyRules": [
+    {
+      "name": "log_all_file_writes",
+      "description": "Log all file write operations for audit",
+      "priority": 5,
+      "condition": {
+        "category": "file",
+        "toolName": "file_write_gateway"
+      },
+      "action": {
+        "operation": "log",
+        "logMessage": "File write operation detected"
+      },
+      "stopOnMatch": false
+    },
+    {
+      "name": "block_high_sensitivity_in_prod",
+      "description": "Block high-sensitivity tools in production unless admin",
+      "priority": 10,
+      "condition": {
+        "env": "prod",
+        "sensitivity": "high",
+        "agentRole": ["coder_bot", "research_bot"]
+      },
+      "action": {
+        "operation": "block",
+        "blockMessage": "High-sensitivity operations require admin role in production"
+      },
+      "stopOnMatch": true
+    },
+    {
+      "name": "callback_on_sensitive_operations",
+      "description": "Send callback for sensitive operations",
+      "priority": 15,
+      "condition": {
+        "sensitivity": "high"
+      },
+      "action": {
+        "operation": "callback",
+        "callbackUrl": "${POLICY_CALLBACK_URL}",
+        "callbackMethod": "POST"
+      },
+      "stopOnMatch": false
+    }
+  ]
+}
+

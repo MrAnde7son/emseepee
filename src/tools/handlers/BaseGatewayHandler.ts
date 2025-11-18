@@ -35,7 +35,7 @@ export abstract class BaseGatewayHandler {
       return this.createErrorResponse("Tool configuration not found");
     }
 
-    const decision = evaluatePolicy({
+    const decision = await evaluatePolicy({
       tool: toolCfg,
       agentId: agentContext.agentId,
       agentRole: agentContext.agentRole,

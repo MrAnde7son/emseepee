@@ -38,7 +38,7 @@ export class WebOperationsHandler extends BaseGatewayHandler {
       return this.createErrorResponse("Web search tool not configured");
     }
 
-    const decision = evaluatePolicy({
+    const decision = await evaluatePolicy({
       tool: this.toolConfig,
       agentId: agentContext.agentId,
       agentRole: agentContext.agentRole,

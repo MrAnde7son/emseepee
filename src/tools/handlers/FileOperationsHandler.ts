@@ -63,7 +63,7 @@ export class FileOperationsHandler extends BaseGatewayHandler {
       return this.createErrorResponse("File read tool not configured");
     }
 
-    const decision = this.evaluatePolicy(agentContext, args, toolCfg);
+    const decision = await this.evaluatePolicy(agentContext, args, toolCfg);
     this.logRequest(agentContext, args, decision);
 
     if (decision.decision === "deny") {
@@ -99,7 +99,7 @@ export class FileOperationsHandler extends BaseGatewayHandler {
       return this.createErrorResponse("File write tool not configured");
     }
 
-    const decision = this.evaluatePolicy(agentContext, args, toolCfg);
+    const decision = await this.evaluatePolicy(agentContext, args, toolCfg);
     this.logRequest(agentContext, args, decision);
 
     if (decision.decision === "deny") {
@@ -140,7 +140,7 @@ export class FileOperationsHandler extends BaseGatewayHandler {
       return this.createErrorResponse("File search tool not configured");
     }
 
-    const decision = this.evaluatePolicy(agentContext, args, toolCfg);
+    const decision = await this.evaluatePolicy(agentContext, args, toolCfg);
     this.logRequest(agentContext, args, decision);
 
     if (decision.decision === "deny") {
@@ -241,12 +241,12 @@ export class FileOperationsHandler extends BaseGatewayHandler {
   /**
    * Evaluate policy for a specific tool
    */
-  private evaluatePolicy(
+  private async evaluatePolicy(
     agentContext: AgentContext,
     args: Record<string, unknown>,
     toolCfg: ToolPolicyConfig
   ) {
-    return evaluatePolicy({
+    return await evaluatePolicy({
       tool: toolCfg,
       agentId: agentContext.agentId,
       agentRole: agentContext.agentRole,
