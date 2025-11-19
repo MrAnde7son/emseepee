@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { ChevronLeft, ChevronRight, Gauge, Plug, Shield, ListFilter, Settings } from "lucide-react";
+import { ChevronLeft, ChevronRight, Gauge, Plug, Shield, ListFilter, Settings, Bot } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ const navItems = [
   { href: "/tools", label: "Library", icon: Gauge },
   { href: "/policies", label: "Policies", icon: Shield },
   { href: "/events", label: "Events", icon: ListFilter },
+  { href: "/agents", label: "Agents", icon: Bot },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

@@ -34,10 +34,11 @@ interface Policy {
   name: string;
   description?: string;
   scope: "tool" | "provider" | "agent" | "mcp" | "global";
-  effect: "allow" | "deny" | "log" | "webhook";
+  effect: "allow" | "deny" | "log" | "webhook" | "custom";
   priority: number;
   enabled: boolean;
   archived?: boolean;
+  customCode?: string;
 }
 
 interface GatewayEvent {
@@ -156,6 +157,204 @@ async function getProviders(): Promise<Provider[]> {
 }
 
 /**
+ * Enable a tool by setting enabled: true in config.json
+ */
+async function enableTool(toolId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const configPath = getConfigPath();
+    const config = loadConfigFromFile(configPath);
+    
+    // Check if it's an MCP tool (format: "mcpName:toolName")
+    if (toolId.includes(":")) {
+      const [mcpName, toolName] = toolId.split(":", 2);
+      if (!config.mcpServerProxies[mcpName]) {
+        return { success: false, error: `MCP server ${mcpName} not found` };
+      }
+      
+      // For MCP tools, remove from disabledTools list if present
+      const mcpConfig = config.mcpServerProxies[mcpName];
+      if (mcpConfig.disabledTools) {
+        mcpConfig.disabledTools = mcpConfig.disabledTools.filter(t => t !== toolName);
+        // Remove the field if empty
+        if (mcpConfig.disabledTools.length === 0) {
+          delete mcpConfig.disabledTools;
+        }
+      }
+      
+      // Also ensure the MCP server is enabled
+      mcpConfig.enabled = true;
+    } else {
+      // Built-in or third-party tool
+      if (config.toolsProxies[toolId]) {
+        config.toolsProxies[toolId].enabled = true;
+      } else {
+        return { success: false, error: `Tool ${toolId} not found` };
+      }
+    }
+    
+    // Write back to config file
+    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    clearConfigCache();
+    
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Disable a tool by setting enabled: false in config.json
+ * For MCP tools, adds the tool to the disabledTools list instead of disabling the entire MCP server
+ */
+async function disableTool(toolId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const configPath = getConfigPath();
+    const config = loadConfigFromFile(configPath);
+    
+    // Check if it's an MCP tool (format: "mcpName:toolName")
+    if (toolId.includes(":")) {
+      const [mcpName, toolName] = toolId.split(":", 2);
+      if (!config.mcpServerProxies[mcpName]) {
+        return { success: false, error: `MCP server ${mcpName} not found` };
+      }
+      
+      // For MCP tools, add to disabledTools list (don't disable the entire MCP server)
+      const mcpConfig = config.mcpServerProxies[mcpName];
+      if (!mcpConfig.disabledTools) {
+        mcpConfig.disabledTools = [];
+      }
+      if (!mcpConfig.disabledTools.includes(toolName)) {
+        mcpConfig.disabledTools.push(toolName);
+      }
+    } else {
+      // Built-in or third-party tool
+      if (config.toolsProxies[toolId]) {
+        config.toolsProxies[toolId].enabled = false;
+      } else {
+        return { success: false, error: `Tool ${toolId} not found` };
+      }
+    }
+    
+    // Write back to config file
+    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    clearConfigCache();
+    
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Enable an MCP server
+ */
+async function enableMcpServer(mcpId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const configPath = getConfigPath();
+    const config = loadConfigFromFile(configPath);
+    
+    if (!config.mcpServerProxies[mcpId]) {
+      return { success: false, error: `MCP server ${mcpId} not found` };
+    }
+    
+    config.mcpServerProxies[mcpId].enabled = true;
+    
+    // Write back to config file
+    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    clearConfigCache();
+    
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Disable an MCP server
+ */
+async function disableMcpServer(mcpId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const configPath = getConfigPath();
+    const config = loadConfigFromFile(configPath);
+    
+    if (!config.mcpServerProxies[mcpId]) {
+      return { success: false, error: `MCP server ${mcpId} not found` };
+    }
+    
+    config.mcpServerProxies[mcpId].enabled = false;
+    
+    // Write back to config file
+    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    clearConfigCache();
+    
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Get MCP server details including configuration
+ */
+async function getMcpServerDetails(mcpId: string): Promise<{
+  id: string;
+  name: string;
+  description?: string;
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  enabled?: boolean;
+  icon?: string;
+  defaultPolicy: {
+    allowedRoles: string[];
+    sensitivity: string;
+  };
+  toolPolicyOverrides?: Record<string, {
+    allowedRoles?: string[];
+    sensitivity?: string;
+  }>;
+  disabledTools?: string[];
+} | null> {
+  const mcpProxies = await getMcpServerProxies();
+  const proxyConfig = mcpProxies[mcpId];
+  
+  if (!proxyConfig) {
+    return null;
+  }
+  
+  return {
+    id: mcpId,
+    name: proxyConfig.name,
+    description: proxyConfig.description,
+    command: proxyConfig.command,
+    args: proxyConfig.args,
+    env: proxyConfig.env,
+    cwd: proxyConfig.cwd,
+    enabled: proxyConfig.enabled,
+    icon: proxyConfig.icon,
+    defaultPolicy: {
+      allowedRoles: proxyConfig.defaultPolicy.allowedRoles,
+      sensitivity: proxyConfig.defaultPolicy.sensitivity,
+    },
+    toolPolicyOverrides: proxyConfig.toolPolicyOverrides,
+    disabledTools: proxyConfig.disabledTools,
+  };
+}
+
+/**
  * Get all tools (builtin, MCP, third-party)
  */
 async function getTools(): Promise<Tool[]> {
@@ -173,7 +372,7 @@ async function getTools(): Promise<Tool[]> {
         source: category === "third_party" ? "third-party" : "builtin",
         category,
         riskLevel: toolConfig.sensitivity === "high" ? "high" : toolConfig.sensitivity === "medium" ? "medium" : "low",
-        installed: true,
+        installed: toolConfig.enabled === true,
       });
     }
   }
@@ -194,14 +393,18 @@ async function getTools(): Promise<Tool[]> {
           const toolPolicyOverride = proxyConfig.toolPolicyOverrides?.[tool.name];
           const sensitivity = toolPolicyOverride?.sensitivity || proxyConfig.defaultPolicy.sensitivity;
           
+          // Check if tool is disabled
+          const isToolDisabled = proxyConfig.disabledTools?.includes(tool.name) ?? false;
+          const isInstalled = proxyConfig.enabled === true && !isToolDisabled;
+          
           tools.push({
             id: `${proxyName}:${tool.name}`,
             name: tool.name,
             source: "mcp",
             providerId: proxyName,
-            category: "third_party",
+            category: "mcp", // MCP tools should not be in third_party category
             riskLevel: sensitivity === "high" ? "high" : sensitivity === "medium" ? "medium" : "low",
-            installed: true,
+            installed: isInstalled,
           });
         }
         
@@ -215,9 +418,9 @@ async function getTools(): Promise<Tool[]> {
           name: proxyName,
           source: "mcp",
           providerId: proxyName,
-          category: "third_party",
+          category: "mcp", // MCP servers should not be in third_party category
           riskLevel: proxyConfig.defaultPolicy.sensitivity === "high" ? "high" : proxyConfig.defaultPolicy.sensitivity === "medium" ? "medium" : "low",
-          installed: false,
+          installed: proxyConfig.enabled === true,
         });
       }
     } catch (error) {
@@ -272,7 +475,8 @@ async function getPolicies(includeArchived: boolean = false): Promise<Policy[]> 
       name: rule.name,
       description: rule.description,
       scope: inferScopeFromCondition(rule.condition),
-      effect: rule.action.operation === "block" ? "deny" : rule.action.operation === "allow" ? "allow" : rule.action.operation === "log" ? "log" : "webhook",
+      effect: rule.action.operation === "block" ? "deny" : rule.action.operation === "allow" ? "allow" : rule.action.operation === "log" ? "log" : rule.action.operation === "custom" ? "custom" : "webhook",
+      customCode: rule.action.operation === "custom" ? rule.action.customCode : undefined,
       priority: rule.priority ?? 0,
       enabled: true, // Policies are always enabled if they exist
       archived: rule.archived ?? false,
@@ -328,15 +532,23 @@ async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string } | Pa
       deny: "block",
       log: "log",
       webhook: "webhook",
+      custom: "custom",
     };
+    
+    const action: any = {
+      operation: operationMap[effect] || "allow",
+    };
+    
+    // Add customCode if effect is custom
+    if (effect === "custom" && policyData.customCode) {
+      action.customCode = policyData.customCode;
+    }
     
     newRule = {
       name: policyData.name || `policy-${Date.now()}`,
       description: policyData.description,
       condition,
-      action: {
-        operation: operationMap[effect] || "allow",
-      },
+      action,
       priority: policyData.priority ?? 0,
       archived: policyData.enabled === false,
     };
@@ -425,11 +637,22 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<P
         deny: "block",
         log: "log",
         webhook: "webhook",
+        custom: "custom",
       };
       updatedRule.action = {
         ...existingRule.action,
         operation: operationMap[policyUpdate.effect] ?? existingRule.action.operation,
       };
+      
+      // Update customCode if effect is custom
+      if (policyUpdate.effect === "custom") {
+        if (policyUpdate.customCode !== undefined) {
+          updatedRule.action.customCode = policyUpdate.customCode;
+        }
+      } else {
+        // Remove customCode if effect is not custom
+        delete updatedRule.action.customCode;
+      }
     }
     
     // Update scope by modifying condition
@@ -747,6 +970,85 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       return;
     }
     
+    // Enable/disable tool
+    if (path.startsWith("/api/tools/") && method === "POST") {
+      const pathAfterPrefix = path.replace("/api/tools/", "");
+      if (pathAfterPrefix.endsWith("/enable")) {
+        const toolId = pathAfterPrefix.replace("/enable", "");
+        if (toolId) {
+          const result = await enableTool(toolId);
+          if (result.success) {
+            sendJSON(res, 200, { success: true });
+          } else {
+            sendJSON(res, 500, { error: result.error });
+          }
+          return;
+        }
+      } else if (pathAfterPrefix.endsWith("/disable")) {
+        const toolId = pathAfterPrefix.replace("/disable", "");
+        if (toolId) {
+          const result = await disableTool(toolId);
+          if (result.success) {
+            sendJSON(res, 200, { success: true });
+          } else {
+            sendJSON(res, 500, { error: result.error });
+          }
+          return;
+        }
+      }
+    }
+    
+    // MCP server endpoints (enable/disable must come before GET)
+    if (path.startsWith("/api/mcp/") && method === "POST") {
+      const pathAfterPrefix = path.replace("/api/mcp/", "");
+      if (pathAfterPrefix.endsWith("/enable")) {
+        const mcpId = pathAfterPrefix.replace("/enable", "");
+        if (mcpId) {
+          const result = await enableMcpServer(mcpId);
+          if (result.success) {
+            sendJSON(res, 200, { success: true });
+          } else {
+            sendJSON(res, 500, { error: result.error });
+          }
+          return;
+        }
+      } else if (pathAfterPrefix.endsWith("/disable")) {
+        const mcpId = pathAfterPrefix.replace("/disable", "");
+        if (mcpId) {
+          const result = await disableMcpServer(mcpId);
+          if (result.success) {
+            sendJSON(res, 200, { success: true });
+          } else {
+            sendJSON(res, 500, { error: result.error });
+          }
+          return;
+        }
+      }
+    }
+    
+    // Get MCP server details (must come after enable/disable routes)
+    if (path.startsWith("/api/mcp/") && method === "GET") {
+      // Extract mcpId by removing the prefix
+      const pathAfterPrefix = path.replace("/api/mcp/", "");
+      // Make sure it's not an enable/disable endpoint and has content
+      if (pathAfterPrefix && !pathAfterPrefix.endsWith("/enable") && !pathAfterPrefix.endsWith("/disable")) {
+        // Remove any trailing slashes
+        const mcpId = pathAfterPrefix.replace(/\/+$/, "");
+        if (mcpId) {
+          const mcpDetails = await getMcpServerDetails(mcpId);
+          if (mcpDetails) {
+            sendJSON(res, 200, mcpDetails);
+          } else {
+            sendJSON(res, 404, { error: `MCP server ${mcpId} not found` });
+          }
+          return;
+        }
+      }
+      // If we get here, the path didn't match - return 404
+      sendJSON(res, 404, { error: "MCP server endpoint not found" });
+      return;
+    }
+    
     // Policies endpoints
     if (path === "/api/policies" && method === "GET") {
       const includeArchived = url.searchParams.get("includeArchived") === "true";
@@ -776,7 +1078,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           name: rule.name,
           description: rule.description,
           scope: inferScopeFromCondition(rule.condition),
-          effect: rule.action.operation === "block" ? "deny" : rule.action.operation === "allow" ? "allow" : rule.action.operation === "log" ? "log" : "webhook",
+          effect: rule.action.operation === "block" ? "deny" : rule.action.operation === "allow" ? "allow" : rule.action.operation === "log" ? "log" : rule.action.operation === "custom" ? "custom" : "webhook",
+          customCode: rule.action.operation === "custom" ? rule.action.customCode : undefined,
           priority: rule.priority ?? 0,
           enabled: !(rule.archived ?? false),
           archived: rule.archived ?? false,

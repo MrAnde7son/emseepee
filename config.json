@@ -3,14 +3,16 @@
     "github": {
       "name": "github",
       "description": "GitHub MCP server proxied through gateway",
+      "icon": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
       "command": "npx",
       "args": [
         "-y",
         "@modelcontextprotocol/server-github"
       ],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
       },
+      "enabled": true,
       "defaultPolicy": {
         "allowedRoles": [
           "coder_bot",
@@ -37,7 +39,8 @@
         "admin"
       ],
       "sensitivity": "medium",
-      "category": "file"
+      "category": "file",
+      "enabled": true
     },
     "file_search_gateway": {
       "name": "file_search_gateway",
@@ -47,7 +50,8 @@
         "admin"
       ],
       "sensitivity": "medium",
-      "category": "file"
+      "category": "file",
+      "enabled": true
     },
     "file_write_gateway": {
       "name": "file_write_gateway",
@@ -57,7 +61,8 @@
         "admin"
       ],
       "sensitivity": "high",
-      "category": "file"
+      "category": "file",
+      "enabled": true
     },
     "web_search_gateway": {
       "name": "web_search_gateway",
@@ -68,7 +73,19 @@
         "admin"
       ],
       "sensitivity": "medium",
-      "category": "browser"
+      "category": "browser",
+      "enabled": true
+    },
+    "terminal_command": {
+      "name": "terminal_command",
+      "description": "Execute terminal commands through the central gateway with policy enforcement.",
+      "allowedRoles": [
+        "coder_bot",
+        "admin"
+      ],
+      "sensitivity": "high",
+      "category": "terminal",
+      "enabled": true
     },
     "slack_send_message": {
       "name": "slack_send_message",
@@ -79,12 +96,13 @@
       ],
       "sensitivity": "medium",
       "category": "third_party",
+      "enabled": true,
       "execution": {
         "type": "http",
         "method": "POST",
         "url": "https://slack.com/api/chat.postMessage",
         "headers": {
-          "Authorization": "Bearer ${SLACK_TOKEN}",
+          "Authorization": "Bearer ",
           "Content-Type": "application/json"
         },
         "bodyTemplate": "{\"channel\": \"{channel}\", \"text\": \"{message}\"}",

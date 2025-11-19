@@ -44,6 +44,7 @@ export default function PoliciesPage() {
   const [editingPolicy, setEditingPolicy] = useState<string | null>(null);
   const [editingPolicyData, setEditingPolicyData] = useState<Policy | null>(null);
   const [scopeTarget, setScopeTarget] = useState<string>("");
+  const [customCode, setCustomCode] = useState<string>("");
   const [updatingPolicy, setUpdatingPolicy] = useState(false);
   const [creatingPolicy, setCreatingPolicy] = useState(false);
   const [newPolicyData, setNewPolicyData] = useState<Partial<Policy>>({
@@ -55,6 +56,7 @@ export default function PoliciesPage() {
     enabled: true,
   });
   const [newPolicyScopeTarget, setNewPolicyScopeTarget] = useState<string>("");
+  const [newPolicyCustomCode, setNewPolicyCustomCode] = useState<string>("");
   
   // Extract unique agent roles from existing policies
   const availableAgentRoles = useMemo(() => {
@@ -196,9 +198,16 @@ export default function PoliciesPage() {
         } else {
           setScopeTarget("");
         }
+        // Extract custom code if effect is custom
+        if (fullPolicy.effect === "custom") {
+          setCustomCode(fullPolicy.customCode || "");
+        } else {
+          setCustomCode("");
+        }
       } catch (error) {
         console.error("Failed to fetch policy details:", error);
         setScopeTarget("");
+        setCustomCode("");
       }
     }
   };
@@ -221,6 +230,11 @@ export default function PoliciesPage() {
       updatePayload.scopeTarget = scopeTarget;
     }
     
+    // Add custom code if effect is custom
+    if (editingPolicyData.effect === "custom") {
+      updatePayload.customCode = customCode;
+    }
+    
     setUpdatingPolicy(true);
     try {
       await Api.updatePolicy(editingPolicy, updatePayload);
@@ -228,6 +242,7 @@ export default function PoliciesPage() {
       setEditingPolicy(null);
       setEditingPolicyData(null);
       setScopeTarget("");
+      setCustomCode("");
     } catch (error) {
       console.error("Failed to update policy:", error);
       alert(`Failed to update policy: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -268,6 +283,15 @@ export default function PoliciesPage() {
       createPayload.scopeTarget = newPolicyScopeTarget;
     }
     
+    // Add custom code if effect is custom
+    if (newPolicyData.effect === "custom") {
+      if (!newPolicyCustomCode) {
+        alert("Custom code is required when effect is 'custom'");
+        return;
+      }
+      createPayload.customCode = newPolicyCustomCode;
+    }
+    
     setCreatingPolicy(true);
     try {
       await Api.createPolicy(createPayload);
@@ -283,6 +307,7 @@ export default function PoliciesPage() {
         enabled: true,
       });
       setNewPolicyScopeTarget("");
+      setNewPolicyCustomCode("");
     } catch (error) {
       console.error("Failed to create policy:", error);
       alert(`Failed to create policy: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -360,6 +385,7 @@ export default function PoliciesPage() {
             <SelectItem value="deny">Deny</SelectItem>
             <SelectItem value="log">Log</SelectItem>
             <SelectItem value="webhook">Webhook</SelectItem>
+            <SelectItem value="custom">Custom</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterEnabled} onValueChange={setFilterEnabled}>
@@ -508,6 +534,7 @@ export default function PoliciesPage() {
             enabled: true,
           });
           setNewPolicyScopeTarget("");
+          setNewPolicyCustomCode("");
         }
       }}>
         <DialogContent className="max-w-2xl">
@@ -592,10 +619,29 @@ export default function PoliciesPage() {
                     <SelectItem value="deny">Deny</SelectItem>
                     <SelectItem value="log">Log</SelectItem>
                     <SelectItem value="webhook">Webhook</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
+            {newPolicyData.effect === "custom" && (
+              <div className="space-y-2">
+                <label htmlFor="create-custom-code" className="text-sm font-medium">
+                  Custom Code <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="create-custom-code"
+                  value={newPolicyCustomCode}
+                  onChange={(e) => setNewPolicyCustomCode(e.target.value)}
+                  placeholder="Enter JavaScript code for custom policy logic..."
+                  className="w-full min-h-[200px] px-3 py-2 text-sm border border-input bg-background rounded-md font-mono resize-y"
+                  style={{ fontFamily: 'monospace' }}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Available variables: tool, agentId, agentRole, env, args, log(message, data?), result
+                </p>
+              </div>
+            )}
             {newPolicyData.scope !== "global" && (
               <div className="space-y-2">
                 <label htmlFor="create-scope-target" className="text-sm font-medium">
@@ -704,6 +750,7 @@ export default function PoliciesPage() {
                   enabled: true,
                 });
                 setNewPolicyScopeTarget("");
+                setNewPolicyCustomCode("");
               }}
               disabled={creatingPolicy}
             >
@@ -711,7 +758,7 @@ export default function PoliciesPage() {
             </Button>
             <Button
               onClick={handleCreatePolicy}
-              disabled={creatingPolicy || !newPolicyData.name || (newPolicyData.scope !== "global" && !newPolicyScopeTarget)}
+              disabled={creatingPolicy || !newPolicyData.name || (newPolicyData.scope !== "global" && !newPolicyScopeTarget) || (newPolicyData.effect === "custom" && !newPolicyCustomCode)}
             >
               {creatingPolicy ? "Creating..." : "Create Policy"}
             </Button>
@@ -724,6 +771,8 @@ export default function PoliciesPage() {
           if (!open) {
             setEditingPolicy(null);
             setEditingPolicyData(null);
+            setScopeTarget("");
+            setCustomCode("");
           }
         }}>
           <DialogContent className="max-w-2xl">
@@ -804,15 +853,34 @@ export default function PoliciesPage() {
                     <SelectTrigger id="edit-effect">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="allow">Allow</SelectItem>
-                      <SelectItem value="deny">Deny</SelectItem>
-                      <SelectItem value="log">Log</SelectItem>
-                      <SelectItem value="webhook">Webhook</SelectItem>
-                    </SelectContent>
+                  <SelectContent>
+                    <SelectItem value="allow">Allow</SelectItem>
+                    <SelectItem value="deny">Deny</SelectItem>
+                    <SelectItem value="log">Log</SelectItem>
+                    <SelectItem value="webhook">Webhook</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
+                  </SelectContent>
                   </Select>
                 </div>
               </div>
+              {editingPolicyData.effect === "custom" && (
+                <div className="space-y-2">
+                  <label htmlFor="edit-custom-code" className="text-sm font-medium">
+                    Custom Code <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    id="edit-custom-code"
+                    value={customCode}
+                    onChange={(e) => setCustomCode(e.target.value)}
+                    placeholder="Enter JavaScript code for custom policy logic..."
+                    className="w-full min-h-[200px] px-3 py-2 text-sm border border-input bg-background rounded-md font-mono resize-y"
+                    style={{ fontFamily: 'monospace' }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Available variables: tool, agentId, agentRole, env, args, log(message, data?), result
+                  </p>
+                </div>
+              )}
               {editingPolicyData.scope !== "global" && (
                 <div className="space-y-2">
                   <label htmlFor="edit-scope-target" className="text-sm font-medium">
@@ -912,6 +980,8 @@ export default function PoliciesPage() {
                 onClick={() => {
                   setEditingPolicy(null);
                   setEditingPolicyData(null);
+                  setScopeTarget("");
+                  setCustomCode("");
                 }}
                 disabled={updatingPolicy}
               >
@@ -919,7 +989,7 @@ export default function PoliciesPage() {
               </Button>
               <Button
                 onClick={handleUpdatePolicy}
-                disabled={updatingPolicy || !editingPolicyData.name}
+                disabled={updatingPolicy || !editingPolicyData.name || (editingPolicyData.effect === "custom" && !customCode)}
               >
                 {updatingPolicy ? "Saving..." : "Save Changes"}
               </Button>

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "hakuna": {
+      "command": "node",
+      "args": [
+        "/Users/imizrahi/Downloads/agent-tools-gateway/dist/index.js"
+      ],
+      "cwd": "/Users/imizrahi/Downloads/agent-tools-gateway"
+    }
+  }
+}

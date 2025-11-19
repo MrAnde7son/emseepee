@@ -50,6 +50,30 @@ export const Api = {
   getProviders: () => fetchJSON<Provider[]>("/api/providers"),
   installProvider: (providerId: string) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/install`, {}),
   getTools: () => fetchJSON<Tool[]>("/api/tools"),
+  enableTool: (toolId: string) => postJSON<{ success: boolean }>(`/api/tools/${toolId}/enable`, {}),
+  disableTool: (toolId: string) => postJSON<{ success: boolean }>(`/api/tools/${toolId}/disable`, {}),
+  enableMcpServer: (mcpId: string) => postJSON<{ success: boolean }>(`/api/mcp/${mcpId}/enable`, {}),
+  disableMcpServer: (mcpId: string) => postJSON<{ success: boolean }>(`/api/mcp/${mcpId}/disable`, {}),
+  getMcpServerDetails: (mcpId: string) => fetchJSON<{
+    id: string;
+    name: string;
+    description?: string;
+    command: string;
+    args: string[];
+    env?: Record<string, string>;
+    cwd?: string;
+    enabled?: boolean;
+    icon?: string;
+    defaultPolicy: {
+      allowedRoles: string[];
+      sensitivity: string;
+    };
+    toolPolicyOverrides?: Record<string, {
+      allowedRoles?: string[];
+      sensitivity?: string;
+    }>;
+    disabledTools?: string[];
+  }>(`/api/mcp/${mcpId}`),
   getPolicies: (includeArchived?: boolean) => {
     const search = includeArchived ? "?includeArchived=true" : "";
     return fetchJSON<Policy[]>(`/api/policies${search}`);

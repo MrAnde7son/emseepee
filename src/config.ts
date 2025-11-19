@@ -66,6 +66,9 @@ export interface McpServerProxyConfig {
   args: string[]; // Arguments for the command
   env?: Record<string, string>; // Environment variables
   cwd?: string; // Working directory
+  enabled?: boolean; // Whether this MCP server proxy is enabled (default: false)
+  // Optional: icon for the MCP server (can be a Lucide icon name or image URL)
+  icon?: string;
   // Default policy for all tools from this server (can be overridden per-tool)
   defaultPolicy: {
     allowedRoles: string[];
@@ -76,6 +79,8 @@ export interface McpServerProxyConfig {
     allowedRoles?: string[];
     sensitivity?: Sensitivity;
   }>;
+  // Optional: list of tool names to disable (even if MCP server is enabled)
+  disabledTools?: string[];
 }
 
 /**
@@ -118,6 +123,7 @@ export interface ToolPolicyConfig {
   allowedRoles: string[];
   sensitivity: Sensitivity;
   category: ToolCategory;
+  enabled?: boolean; // Whether this tool is enabled (default: false)
 }
 
 /**
@@ -355,11 +361,15 @@ export async function getToolByName(name: string): Promise<ToolPolicyConfig | un
 }
 
 /**
- * Get all enabled categories (categories that have at least one tool)
+ * Get all enabled categories (categories that have at least one enabled tool)
  */
 export async function getEnabledCategories(): Promise<ToolCategory[]> {
   const registry = await getToolRegistry();
-  return Object.keys(registry).filter(
-    (category) => Object.keys(registry[category]).length > 0
-  ) as ToolCategory[];
+  return Object.keys(registry).filter((category) => {
+    const categoryTools = registry[category];
+    // Check if at least one tool in this category is enabled (must be explicitly true)
+    return Object.values(categoryTools).some(
+      (tool) => tool.enabled === true
+    );
+  }) as ToolCategory[];
 }

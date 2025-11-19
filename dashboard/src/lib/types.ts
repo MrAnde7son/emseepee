@@ -23,10 +23,11 @@ export interface Policy {
   name: string;
   description?: string;
   scope: "tool" | "provider" | "agent" | "mcp" | "global";
-  effect: "allow" | "deny" | "log" | "webhook";
+  effect: "allow" | "deny" | "log" | "webhook" | "custom";
   priority: number;
   enabled: boolean;
   archived?: boolean;
+  customCode?: string;
 }
 
 export interface GatewayEvent {

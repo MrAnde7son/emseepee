@@ -37,7 +37,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 
               {/* Main content */}
               <div className="flex-1 flex flex-col">
-                <header className="h-14 border-b border-border flex items-center justify-between px-4 bg-card/50 backdrop-blur">
+                <header className="sticky top-0 z-50 h-14 border-b border-border flex items-center justify-between px-4 bg-card/50 backdrop-blur">
                   <div className="flex items-center gap-2">
                     <div className="h-2 w-2 rounded-full bg-emerald-400" />
                     <span className="text-sm text-muted-foreground">

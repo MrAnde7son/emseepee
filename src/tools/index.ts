@@ -30,7 +30,7 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
   });
 
   // FILE READ GATEWAY
-  if (fileTools.file_read_gateway) {
+  if (fileTools.file_read_gateway && fileTools.file_read_gateway.enabled === true) {
     server.registerTool(
       "file_read_gateway",
       {
@@ -47,7 +47,7 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
   }
 
   // FILE SEARCH GATEWAY
-  if (fileTools.file_search_gateway) {
+  if (fileTools.file_search_gateway && fileTools.file_search_gateway.enabled === true) {
     server.registerTool(
       "file_search_gateway",
       {
@@ -66,7 +66,7 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
   }
 
   // FILE WRITE GATEWAY
-  if (fileTools.file_write_gateway) {
+  if (fileTools.file_write_gateway && fileTools.file_write_gateway.enabled === true) {
     server.registerTool(
       "file_write_gateway",
       {
@@ -95,7 +95,7 @@ export async function registerBrowserTools(context: ToolRegistrationContext): Pr
   const webHandler = new WebOperationsHandler(browserTools.web_search_gateway);
 
   // WEB SEARCH GATEWAY
-  if (browserTools.web_search_gateway) {
+  if (browserTools.web_search_gateway && browserTools.web_search_gateway.enabled === true) {
     server.registerTool(
       "web_search_gateway",
       {
@@ -121,7 +121,7 @@ export async function registerTerminalTools(context: ToolRegistrationContext): P
   const terminalTools = await getToolsByCategory("terminal");
 
   // TERMINAL COMMAND
-  if (terminalTools.terminal_command) {
+  if (terminalTools.terminal_command && terminalTools.terminal_command.enabled === true) {
     const terminalHandler = new TerminalCommandsHandler(terminalTools.terminal_command);
     
     server.registerTool(
@@ -161,6 +161,12 @@ export async function registerThirdPartyTools(context: ToolRegistrationContext):
   for (const [toolName, toolConfig] of Object.entries(thirdPartyTools)) {
     if (!isThirdPartyToolConfig(toolConfig)) {
       logger.warn(`[MCP-GATEWAY] Tool ${toolName} is not a valid third-party tool configuration`);
+      continue;
+    }
+
+    // Skip if tool is not enabled (must be explicitly true)
+    if (toolConfig.enabled !== true) {
+      logger.info(`[MCP-GATEWAY] Skipping disabled third-party tool: ${toolName}`);
       continue;
     }
 
@@ -204,6 +210,12 @@ export async function registerMcpServerProxies(
 
   // Process each configured proxy
   for (const [proxyName, proxyConfig] of Object.entries(mcpServerProxies)) {
+    // Skip if proxy is not enabled (must be explicitly true)
+    if (proxyConfig.enabled !== true) {
+      logger.info(`[MCP-GATEWAY] Skipping disabled MCP server proxy: ${proxyName}`);
+      continue;
+    }
+
     try {
       logger.info(`[MCP-GATEWAY] Connecting to MCP server proxy: ${proxyName}`);
 
@@ -212,6 +224,14 @@ export async function registerMcpServerProxies(
 
       // Register each discovered tool
       for (const tool of discoveredTools) {
+        // Skip if tool is disabled
+        if (proxyConfig.disabledTools?.includes(tool.name)) {
+          logger.info(
+            `[MCP-GATEWAY] Skipping disabled tool: ${tool.name} (from ${proxyName})`
+          );
+          continue;
+        }
+
         // Create policy config for this tool
         const toolPolicyOverride = proxyConfig.toolPolicyOverrides?.[tool.name];
         const toolPolicy: ToolPolicyConfig = {

@@ -165,6 +165,111 @@ You should see the line:
 
 The process then waits for MCP messages on stdio.
 
+## Dashboard UI
+
+Hakuna Gateway includes a modern web-based dashboard for managing tools, policies, providers, and monitoring gateway activity. The dashboard provides a visual interface for all gateway operations without needing to edit `config.json` directly.
+
+### Starting the Dashboard
+
+Navigate to the `dashboard` directory and start the development server:
+
+```bash
+cd dashboard
+npm install
+npm run dev
+```
+
+The dashboard will be available at `http://localhost:3000`.
+
+### Dashboard Features
+
+The dashboard includes several key pages:
+
+#### Library (Tools Management)
+
+Browse and manage all available tools and MCP servers organized by category:
+
+- **File Operations**: Built-in file read, write, and search tools
+- **Terminal Commands**: Terminal command execution tools
+- **Browser Operations**: Web search and browser automation
+- **Third-Party Tools**: Custom HTTP-based integrations
+- **MCP Servers**: Proxied MCP servers with all their tools
+
+![Library Page](docs/images/dashboard-tools.png)
+
+Features:
+- Search tools, categories, and MCP servers
+- View installation status for each tool
+- Install/uninstall tools with a single click
+- View detailed information about each tool or MCP server
+- See tool counts and installation statistics
+
+#### Policies Management
+
+Create, edit, and manage policy rules that control tool access:
+
+![Policies Page](docs/images/dashboard-policies.png)
+
+Features:
+- View all policies in a sortable table
+- Create new policies with a visual form
+- Edit existing policies (name, description, scope, effect, priority)
+- Enable/disable policies
+- Archive and restore policies
+- Filter policies by scope, effect, and status
+- Search policies by name or description
+
+Policy scopes supported:
+- **Global**: Applies to all operations
+- **Tool**: Applies to specific tools
+- **Agent**: Applies to specific agent roles
+- **Provider**: Applies to specific providers (Cursor, n8n, etc.)
+- **MCP Server**: Applies to specific MCP servers
+
+#### Providers
+
+Monitor and manage connected agent platforms:
+
+![Providers Page](docs/images/dashboard-providers.png)
+
+Features:
+- View all connected providers (Cursor, n8n, OpenAI, etc.)
+- See provider status (connected, pending, disconnected)
+- Monitor last heartbeat timestamps
+- View provider details and policies
+
+#### Events
+
+Monitor all gateway activity in real-time:
+
+![Events Page](docs/images/dashboard-events.png)
+
+Features:
+- View all tool calls intercepted by the gateway
+- See policy decisions (allow, deny, log) for each call
+- Monitor latency for each operation
+- Search events by agent, tool, provider, or intent
+- View intent summaries for each tool call
+
+Each event shows:
+- **Timestamp**: When the tool call occurred
+- **Agent**: The agent ID making the call
+- **Provider**: The provider platform (Cursor, etc.)
+- **Tool/Intent**: The tool name and inferred intent
+- **Decision**: Policy decision (allow/deny/log)
+- **Latency**: Response time in milliseconds
+
+### Dashboard Architecture
+
+The dashboard is built with:
+- **Next.js 16**: React framework for the UI
+- **TanStack Query**: Data fetching and caching
+- **Radix UI**: Accessible component primitives
+- **Tailwind CSS**: Styling
+- **TypeScript**: Type safety
+
+The dashboard communicates with the gateway via REST API endpoints exposed by the gateway server.
+
 ## Installation in Cursor
 
 To use the gateway in Cursor, you need to configure both the MCP server connection and instruct Cursor to prefer gateway tools over native tools.
