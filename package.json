@@ -1,11 +1,11 @@
 {
-  "name": "agent-tools-gateway",
+  "name": "hakuna",
   "version": "0.1.0",
   "description": "ESM MCP server POC for a central tools gateway with policy logging (TypeScript)",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "agent-tools-gateway": "./bin/cli.js"
+    "hakuna": "./bin/cli.js"
   },
   "scripts": {
     "build": "tsc",

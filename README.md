@@ -178,8 +178,8 @@ Create a project-level `.cursor/mcp.json` file in your workspace root:
   "mcpServers": {
     "hakuna": {
       "command": "npx",
-      "args": ["-y", "agent-tools-gateway"],
-      "cwd": "/absolute/path/to/agent-tools-gateway",
+      "args": ["-y", "hakuna"],
+      "cwd": "/absolute/path/to/hakuna",
       "env": {
         "GITHUB_TOKEN": "${GITHUB_TOKEN}"
       }
@@ -189,7 +189,7 @@ Create a project-level `.cursor/mcp.json` file in your workspace root:
 ```
 
 **Important:** 
-- Replace `/absolute/path/to/agent-tools-gateway` with the actual absolute path to this project on your system.
+- Replace `/absolute/path/to/hakuna` with the actual absolute path to this project on your system.
 - Replace `${GITHUB_TOKEN}` with your actual GitHub token, or set it as an environment variable.
 
 **Example:**
@@ -198,8 +198,8 @@ Create a project-level `.cursor/mcp.json` file in your workspace root:
   "mcpServers": {
     "hakuna": {
       "command": "npx",
-      "args": ["-y", "agent-tools-gateway"],
-      "cwd": "/Users/imizrahi/Downloads/agent-tools-gateway",
+      "args": ["-y", "hakuna"],
+      "cwd": "/Users/imizrahi/Downloads/hakuna",
       "env": {
         "GITHUB_TOKEN": "github_pat_..."
       }
@@ -737,7 +737,7 @@ The gateway automatically loads API keys from a `.env` file in the project root.
   "mcpServers": {
     "hakuna": {
       "command": "npx",
-      "args": ["-y", "agent-tools-gateway"],
+      "args": ["-y", "hakuna"],
       "env": {
         "TAVILY_API_KEY": "your-tavily-api-key"
       }

@@ -30,8 +30,8 @@ Ensure your MCP server is properly configured and connected:
   "mcpServers": {
     "hakuna": {
       "command": "node",
-      "args": ["/Users/imizrahi/Downloads/agent-tools-gateway/dist/index.js"],
-      "cwd": "/Users/imizrahi/Downloads/agent-tools-gateway"
+      "args": ["/Users/imizrahi/Downloads/hakuna/dist/index.js"],
+      "cwd": "/Users/imizrahi/Downloads/hakuna"
     }
   }
 }
