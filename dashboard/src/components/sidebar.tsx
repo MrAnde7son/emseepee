@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { ChevronLeft, ChevronRight, Gauge, Plug, Shield, ListFilter, Settings } from "lucide-react";
 
@@ -29,14 +30,27 @@ export function Sidebar() {
     >
       <div className="px-4 py-4 border-b border-border relative">
         {isExpanded ? (
-          <>
-            <div className="text-sm font-semibold text-muted-foreground">
-              Hakuna
-            </div>
-          </>
+          <div className="flex items-center gap-2">
+            <Image
+              src="/hakuna-logo.png"
+              alt="Hakuna"
+              width={120}
+              height={40}
+              className="h-8 w-auto object-contain"
+              priority
+            />
+            <span className="text-sm font-semibold text-foreground">Hakuna</span>
+          </div>
         ) : (
-          <div className="text-lg font-semibold text-foreground text-center">
-            HK
+          <div className="flex items-center justify-center">
+            <Image
+              src="/hakuna-logo.png"
+              alt="Hakuna"
+              width={40}
+              height={40}
+              className="h-8 w-auto object-contain"
+              priority
+            />
           </div>
         )}
         <Button
