@@ -43,7 +43,7 @@ export default function PoliciesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Policies</h1>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-muted-foreground">
             View and manage policies that control which agents can call which tools.
           </p>
         </div>
@@ -55,11 +55,11 @@ export default function PoliciesPage() {
         </Button>
       </div>
 
-      {isLoading && <div className="text-sm text-slate-400">Loading policies...</div>}
+      {isLoading && <div className="text-sm text-muted-foreground">Loading policies...</div>}
 
       {data && (
-        <div className="border border-slate-800 rounded-xl divide-y divide-slate-800 text-xs">
-          <div className="grid grid-cols-[1.5fr,1fr,1fr,auto,auto,auto] gap-2 px-3 py-2 text-slate-500">
+        <div className="border border-border rounded-xl divide-y divide-border text-xs">
+          <div className="grid grid-cols-[1.5fr,1fr,1fr,auto,auto,auto] gap-2 px-3 py-2 text-muted-foreground">
             <div>Name</div>
             <div>Scope</div>
             <div>Effect</div>
@@ -70,19 +70,19 @@ export default function PoliciesPage() {
           {data.map((p) => (
             <div
               key={p.id}
-              className="grid grid-cols-[1.5fr,1fr,1fr,auto,auto,auto] gap-2 px-3 py-2 items-center bg-slate-900/40"
+              className="grid grid-cols-[1.5fr,1fr,1fr,auto,auto,auto] gap-2 px-3 py-2 items-center bg-card/50"
             >
               <div>
-                <div className="text-slate-100 text-sm">{p.name}</div>
+                <div className="text-foreground text-sm">{p.name}</div>
                 {p.description && (
-                  <div className="text-[11px] text-slate-500 line-clamp-1">
+                  <div className="text-[11px] text-muted-foreground line-clamp-1">
                     {p.description}
                   </div>
                 )}
               </div>
-              <div className="font-mono text-[11px] text-slate-400">{p.scope}</div>
-              <div className="font-mono text-[11px] text-slate-400">{p.effect}</div>
-              <div className="text-[11px] text-slate-300">{p.priority}</div>
+              <div className="font-mono text-[11px] text-muted-foreground">{p.scope}</div>
+              <div className="font-mono text-[11px] text-muted-foreground">{p.effect}</div>
+              <div className="text-[11px] text-foreground">{p.priority}</div>
               <div>
                 <Badge
                   variant={p.enabled ? "default" : "outline"}
@@ -122,7 +122,7 @@ export default function PoliciesPage() {
               Create a new policy rule. Note: Full policy editing requires direct config.json editing.
             </DialogDescription>
           </DialogHeader>
-          <div className="text-sm text-slate-400 py-4">
+          <div className="text-sm text-muted-foreground py-4">
             Policy creation via UI is coming soon. For now, please edit config.json directly.
           </div>
           <DialogFooter>
@@ -142,7 +142,7 @@ export default function PoliciesPage() {
                 Edit policy rule. Note: Full policy editing requires direct config.json editing.
               </DialogDescription>
             </DialogHeader>
-            <div className="text-sm text-slate-400 py-4">
+            <div className="text-sm text-muted-foreground py-4">
               Policy editing via UI is coming soon. For now, please edit config.json directly.
             </div>
             <DialogFooter>

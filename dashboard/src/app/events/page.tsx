@@ -26,7 +26,7 @@ export default function EventsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Events</h1>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-muted-foreground">
             Explore all gateway activity. Search and inspect decisions per tool call.
           </p>
         </div>
@@ -48,19 +48,19 @@ export default function EventsPage() {
         </div>
       </div>
 
-      {isLoading && <div className="text-sm text-slate-400">Loading events…</div>}
+      {isLoading && <div className="text-sm text-muted-foreground">Loading events…</div>}
 
       {data && data.length === 0 && (
-        <div className="border border-dashed border-slate-700 rounded-xl p-4 text-sm text-slate-500 flex items-center gap-2">
-          <ShieldAlert className="h-4 w-4 text-slate-500" />
+        <div className="border border-dashed border-border rounded-xl p-4 text-sm text-muted-foreground flex items-center gap-2">
+          <ShieldAlert className="h-4 w-4 text-muted-foreground" />
           No events yet. Once agents start calling tools through the gateway, they'll
           appear here.
         </div>
       )}
 
       {data && data.length > 0 && (
-        <div className="border border-slate-800 rounded-xl overflow-hidden text-xs">
-          <div className="grid grid-cols-[1.8fr,1fr,1fr,1.4fr,0.8fr,0.6fr] gap-2 px-3 py-2 bg-slate-950 text-slate-500">
+        <div className="border border-border rounded-xl overflow-hidden text-xs">
+          <div className="grid grid-cols-[1.8fr,1fr,1fr,1.4fr,0.8fr,0.6fr] gap-2 px-3 py-2 bg-muted text-muted-foreground">
             <div>Timestamp</div>
             <div>Agent</div>
             <div>Provider</div>
@@ -68,23 +68,23 @@ export default function EventsPage() {
             <div>Decision</div>
             <div>Latency</div>
           </div>
-          <div className="divide-y divide-slate-800">
+          <div className="divide-y divide-border">
             {data.map((e) => (
               <div
                 key={e.id}
-                className="grid grid-cols-[1.8fr,1fr,1fr,1.4fr,0.8fr,0.6fr] gap-2 px-3 py-2 bg-slate-900/40"
+                className="grid grid-cols-[1.8fr,1fr,1fr,1.4fr,0.8fr,0.6fr] gap-2 px-3 py-2 bg-card/50"
               >
-                <div className="text-[11px] text-slate-300">
+                <div className="text-[11px] text-foreground">
                   {new Date(e.timestamp).toLocaleString()}
                 </div>
-                <div className="text-[11px] font-mono text-slate-300">
+                <div className="text-[11px] font-mono text-foreground">
                   {e.agentId}
                 </div>
-                <div className="text-[11px] text-slate-400">{e.provider}</div>
-                <div className="text-[11px] text-slate-200">
+                <div className="text-[11px] text-muted-foreground">{e.provider}</div>
+                <div className="text-[11px] text-foreground">
                   <span className="font-mono text-[11px]">{e.toolName}</span>
                   {e.intentSummary && (
-                    <span className="text-slate-500"> – {e.intentSummary}</span>
+                    <span className="text-muted-foreground"> – {e.intentSummary}</span>
                   )}
                 </div>
                 <div>
@@ -100,7 +100,7 @@ export default function EventsPage() {
                     {e.decision}
                   </Badge>
                 </div>
-                <div className="text-[11px] text-slate-400">
+                <div className="text-[11px] text-muted-foreground">
                   {e.latencyMs != null ? `${e.latencyMs} ms` : "-"}
                 </div>
               </div>

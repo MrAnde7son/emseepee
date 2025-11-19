@@ -32,7 +32,7 @@ export default function ProvidersPage() {
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-xl font-semibold">Providers</h1>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-muted-foreground">
             Connect Cursor, n8n, OpenAI and other agent platforms to the gateway.
           </p>
         </div>
@@ -52,10 +52,10 @@ export default function ProvidersPage() {
         </div>
       </div>
 
-      {isLoading && <div className="text-sm text-slate-400">Loading providers...</div>}
+      {isLoading && <div className="text-sm text-muted-foreground">Loading providers...</div>}
 
       {data && data.length === 0 && (
-        <div className="text-sm text-slate-500 border border-dashed border-slate-700 rounded-lg p-4">
+        <div className="text-sm text-muted-foreground border border-dashed border-border rounded-lg p-4">
           No providers yet. Connect your first provider to start enforcing policies.
         </div>
       )}
@@ -65,7 +65,7 @@ export default function ProvidersPage() {
           {data.map((p) => (
             <div
               key={p.id}
-              className="border border-slate-800 rounded-xl p-4 bg-slate-900/60 flex flex-col gap-2"
+              className="border border-border rounded-xl p-4 bg-card flex flex-col gap-2"
             >
               <div className="flex items-center justify-between">
                 <div className="font-semibold text-sm">{p.name}</div>
@@ -75,11 +75,11 @@ export default function ProvidersPage() {
                   {p.status}
                 </Badge>
               </div>
-              <div className="text-xs text-slate-400">
+              <div className="text-xs text-muted-foreground">
                 Type: <span className="font-mono">{p.type}</span>
               </div>
               {p.lastHeartbeat && (
-                <div className="text-[11px] text-slate-500">
+                <div className="text-[11px] text-muted-foreground">
                   Last heartbeat: {new Date(p.lastHeartbeat).toLocaleString()}
                 </div>
               )}
