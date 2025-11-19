@@ -106,7 +106,17 @@ function IconRenderer({ icon, className }: { icon?: string; className?: string }
   // Check if it's a URL (starts with http:// or https:// or /)
   if (icon.startsWith("http://") || icon.startsWith("https://") || icon.startsWith("/")) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={icon} alt="" className={className} style={{ width: "1.5rem", height: "1.5rem" }} />;
+    return (
+      <img 
+        src={icon} 
+        alt="" 
+        className={className}
+        onError={(e) => {
+          // Fallback to Server icon if image fails to load
+          e.currentTarget.style.display = "none";
+        }}
+      />
+    );
   }
   
   // Map of Lucide icon names to components
@@ -281,6 +291,35 @@ export default function ToolsPage() {
     }
   }, [selectedItem, mcpServers, mcpIcons]);
 
+  // Preload all MCP server icons on mount
+  useEffect(() => {
+    if (mcpServers.length === 0) return;
+    
+    // Load icons for all MCP servers in parallel
+    const loadIcons = async () => {
+      const iconPromises = mcpServers.map(async (mcp) => {
+        try {
+          const details = await Api.getMcpServerDetails(mcp.id);
+          if (details.icon) {
+            return { id: mcp.id, icon: details.icon };
+          }
+        } catch (error) {
+          console.error(`Failed to load icon for ${mcp.id}:`, error);
+        }
+        return null;
+      });
+      
+      const results = await Promise.all(iconPromises);
+      results.forEach((result) => {
+        if (result) {
+          setMcpIcons((prev) => new Map(prev).set(result.id, result.icon));
+        }
+      });
+    };
+    
+    loadIcons();
+  }, [mcpServers]);
+
   // Load details when selected
   useEffect(() => {
     if (selectedItem?.type === "mcp") {
@@ -329,8 +368,9 @@ export default function ToolsPage() {
     
     // Add MCP servers
     mcpServers.forEach((mcp) => {
-      // Get icon from stored icons or use default Server component
-      const icon = mcpIcons.get(mcp.id) || Server;
+      // Get icon from stored icons - if it's a string (URL), use it; otherwise use Server component
+      const storedIcon = mcpIcons.get(mcp.id);
+      const icon = storedIcon || Server;
       items.push({
         type: "mcp",
         id: mcp.id,

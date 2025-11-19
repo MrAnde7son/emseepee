@@ -17,6 +17,7 @@ interface Provider {
   type: ProviderType;
   status: "connected" | "error" | "pending";
   lastHeartbeat?: string;
+  icon?: string;
 }
 
 interface Tool {
@@ -150,8 +151,22 @@ async function getProviders(): Promise<Provider[]> {
       type: "cursor",
       status: isCursorInstalled() ? "connected" : "pending",
       lastHeartbeat: isCursorInstalled() ? new Date().toISOString() : undefined,
+      icon: "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/cursor.svg",
     },
   ];
+  
+  // Add MCP servers as providers
+  const mcpProxies = await getMcpServerProxies();
+  for (const [proxyName, proxyConfig] of Object.entries(mcpProxies)) {
+    providers.push({
+      id: proxyName,
+      name: proxyConfig.name || proxyName,
+      type: "custom",
+      status: proxyConfig.enabled === true ? "connected" : "pending",
+      lastHeartbeat: proxyConfig.enabled === true ? new Date().toISOString() : undefined,
+      icon: proxyConfig.icon,
+    });
+  }
   
   return providers;
 }
@@ -378,15 +393,39 @@ async function getTools(): Promise<Tool[]> {
   }
   
   // Get MCP server proxies and discover their tools
+  // Only connect to enabled servers to avoid slow page loads
   const mcpProxies = await getMcpServerProxies();
   for (const [proxyName, proxyConfig] of Object.entries(mcpProxies)) {
+    // Skip disabled servers - just add them as placeholders without connecting
+    if (proxyConfig.enabled !== true) {
+      tools.push({
+        id: `mcp-${proxyName}`,
+        name: proxyName,
+        source: "mcp",
+        providerId: proxyName,
+        category: "mcp",
+        riskLevel: proxyConfig.defaultPolicy.sensitivity === "high" ? "high" : proxyConfig.defaultPolicy.sensitivity === "medium" ? "medium" : "low",
+        installed: false,
+      });
+      continue;
+    }
+    
+    // Only try to connect to enabled servers
     try {
-      // Try to discover tools from the MCP server
+      // Try to discover tools from the MCP server with timeout
       const { McpServerProxyManager } = await import("../tools/handlers/McpServerProxyHandler.js");
       const proxyManager = new McpServerProxyManager();
       
       try {
-        const discoveredTools = await proxyManager.connectAndDiscoverTools(proxyConfig);
+        // Add timeout to prevent hanging (5 seconds max per server)
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("Connection timeout")), 5000);
+        });
+        
+        const discoveredTools = await Promise.race([
+          proxyManager.connectAndDiscoverTools(proxyConfig),
+          timeoutPromise,
+        ]);
         
         // Add each discovered tool
         for (const tool of discoveredTools) {
@@ -395,7 +434,7 @@ async function getTools(): Promise<Tool[]> {
           
           // Check if tool is disabled
           const isToolDisabled = proxyConfig.disabledTools?.includes(tool.name) ?? false;
-          const isInstalled = proxyConfig.enabled === true && !isToolDisabled;
+          const isInstalled = !isToolDisabled;
           
           tools.push({
             id: `${proxyName}:${tool.name}`,
@@ -420,11 +459,21 @@ async function getTools(): Promise<Tool[]> {
           providerId: proxyName,
           category: "mcp", // MCP servers should not be in third_party category
           riskLevel: proxyConfig.defaultPolicy.sensitivity === "high" ? "high" : proxyConfig.defaultPolicy.sensitivity === "medium" ? "medium" : "low",
-          installed: proxyConfig.enabled === true,
+          installed: true, // Server is enabled, just couldn't connect
         });
       }
     } catch (error) {
       logger.warn(`[API] Error loading MCP proxy ${proxyName}:`, error);
+      // Add placeholder even if import fails
+      tools.push({
+        id: `mcp-${proxyName}`,
+        name: proxyName,
+        source: "mcp",
+        providerId: proxyName,
+        category: "mcp",
+        riskLevel: proxyConfig.defaultPolicy.sensitivity === "high" ? "high" : proxyConfig.defaultPolicy.sensitivity === "medium" ? "medium" : "low",
+        installed: true,
+      });
     }
   }
   

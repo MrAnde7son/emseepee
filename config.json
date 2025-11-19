@@ -3,16 +3,15 @@
     "github": {
       "name": "github",
       "description": "GitHub MCP server proxied through gateway",
-      "icon": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/github.svg",
       "command": "npx",
       "args": [
-        "-y",
         "@modelcontextprotocol/server-github"
       ],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
       },
-      "enabled": true,
+      "enabled": false,
       "defaultPolicy": {
         "allowedRoles": [
           "coder_bot",
@@ -27,6 +26,578 @@
             "admin"
           ]
         }
+      }
+    },
+    "sqlite": {
+      "name": "sqlite",
+      "description": "SQLite MCP server for schema introspection and query operations",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/sqlite.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-sqlite"
+      ],
+      "env": {},
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "postgres": {
+      "name": "postgres",
+      "description": "PostgreSQL MCP server for schema introspection and query operations",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/postgresql.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-postgres"
+      ],
+      "env": {
+        "POSTGRES_CONNECTION_STRING": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "high"
+      }
+    },
+    "mysql": {
+      "name": "mysql",
+      "description": "MySQL MCP server for schema introspection and query operations",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/mysql.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-mysql"
+      ],
+      "env": {
+        "MYSQL_CONNECTION_STRING": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "high"
+      }
+    },
+    "docker": {
+      "name": "docker",
+      "description": "Docker MCP server for building/running containers, managing images, and inspecting logs",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/docker.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-docker"
+      ],
+      "env": {},
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "admin"
+        ],
+        "sensitivity": "high"
+      }
+    },
+    "notion": {
+      "name": "notion",
+      "description": "Notion MCP server for reading/writing pages and databases",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/notion.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-notion"
+      ],
+      "env": {
+        "NOTION_API_KEY": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "slack": {
+      "name": "slack",
+      "description": "Slack MCP server for messages, channels, and notifications",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/slack.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-slack"
+      ],
+      "env": {
+        "SLACK_BOT_TOKEN": "",
+        "SLACK_APP_TOKEN": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "linear": {
+      "name": "linear",
+      "description": "Linear MCP server for issues, cycles, and project tracking",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/linear.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-linear"
+      ],
+      "env": {
+        "LINEAR_API_KEY": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "google_drive": {
+      "name": "google_drive",
+      "description": "Google Drive/Sheets MCP server for docs, sheets, and structured data",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/googledrive.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-google-drive"
+      ],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "openai": {
+      "name": "openai",
+      "description": "OpenAI MCP server for models, embeddings, and file uploads",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/openai.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-openai"
+      ],
+      "env": {
+        "OPENAI_API_KEY": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "anthropic": {
+      "name": "anthropic",
+      "description": "Anthropic MCP server for Claude integration",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/anthropic.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-anthropic"
+      ],
+      "env": {
+        "ANTHROPIC_API_KEY": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "vertex_ai": {
+      "name": "vertex_ai",
+      "description": "Vertex AI MCP server for Gemini models, embeddings, and prediction",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/googlecloud.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-vertex-ai"
+      ],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "",
+        "GOOGLE_CLOUD_PROJECT": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "aws_bedrock": {
+      "name": "aws_bedrock",
+      "description": "AWS Bedrock MCP server for Claude/Sonar/Llama models and orchestration",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/amazonaws.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-aws-bedrock"
+      ],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "",
+        "AWS_SECRET_ACCESS_KEY": "",
+        "AWS_REGION": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "n8n": {
+      "name": "n8n",
+      "description": "n8n MCP server for triggering workflows, running nodes, and getting executions",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/n8n.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-n8n"
+      ],
+      "env": {
+        "N8N_API_KEY": "",
+        "N8N_BASE_URL": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "cloudflare": {
+      "name": "cloudflare",
+      "description": "Cloudflare MCP server for DNS, Workers, and KV storage",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/cloudflare.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-cloudflare"
+      ],
+      "env": {
+        "CLOUDFLARE_API_TOKEN": "",
+        "CLOUDFLARE_ACCOUNT_ID": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "admin"
+        ],
+        "sensitivity": "high"
+      }
+    },
+    "sentry": {
+      "name": "sentry",
+      "description": "Sentry MCP server for error tracking, issues, and events",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/sentry.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-sentry"
+      ],
+      "env": {
+        "SENTRY_AUTH_TOKEN": "",
+        "SENTRY_ORG": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "datadog": {
+      "name": "datadog",
+      "description": "Datadog MCP server for metrics, logs, and traces",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/datadog.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-datadog"
+      ],
+      "env": {
+        "DATADOG_API_KEY": "",
+        "DATADOG_APP_KEY": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "temporal": {
+      "name": "temporal",
+      "description": "Temporal MCP server for durable workflows",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/temporal.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-temporal"
+      ],
+      "env": {
+        "TEMPORAL_ADDRESS": "",
+        "TEMPORAL_NAMESPACE": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "high"
+      }
+    },
+    "stripe": {
+      "name": "stripe",
+      "description": "Stripe MCP server for payments, invoices, and customers",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/stripe.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-stripe"
+      ],
+      "env": {
+        "STRIPE_API_KEY": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "admin"
+        ],
+        "sensitivity": "high"
+      }
+    },
+    "hubspot": {
+      "name": "hubspot",
+      "description": "HubSpot MCP server for contacts and CRM pipeline",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/hubspot.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-hubspot"
+      ],
+      "env": {
+        "HUBSPOT_API_KEY": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "jira": {
+      "name": "jira",
+      "description": "Jira/Atlassian MCP server for issues, sprints, and roadmaps",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/jira.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-jira"
+      ],
+      "env": {
+        "JIRA_API_TOKEN": "",
+        "JIRA_BASE_URL": "",
+        "JIRA_EMAIL": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "salesforce": {
+      "name": "salesforce",
+      "description": "Salesforce MCP server for CRM and workflow automation",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/salesforce.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-salesforce"
+      ],
+      "env": {
+        "SALESFORCE_USERNAME": "",
+        "SALESFORCE_PASSWORD": "",
+        "SALESFORCE_SECURITY_TOKEN": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "admin"
+        ],
+        "sensitivity": "high"
+      }
+    },
+    "pinecone": {
+      "name": "pinecone",
+      "description": "Pinecone MCP server for vector search",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/pinecone.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-pinecone"
+      ],
+      "env": {
+        "PINECONE_API_KEY": "",
+        "PINECONE_ENVIRONMENT": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "weaviate": {
+      "name": "weaviate",
+      "description": "Weaviate MCP server for embeddings and hybrid search",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/weaviate.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-weaviate"
+      ],
+      "env": {
+        "WEAVIATE_API_KEY": "",
+        "WEAVIATE_URL": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "snowflake": {
+      "name": "snowflake",
+      "description": "Snowflake MCP server for queries, tables, and pipelines",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/snowflake.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-snowflake"
+      ],
+      "env": {
+        "SNOWFLAKE_ACCOUNT": "",
+        "SNOWFLAKE_USER": "",
+        "SNOWFLAKE_PASSWORD": "",
+        "SNOWFLAKE_WAREHOUSE": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "high"
+      }
+    },
+    "bigquery": {
+      "name": "bigquery",
+      "description": "BigQuery MCP server for analytics and ML workflows",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/googlecloud.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-bigquery"
+      ],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "",
+        "GOOGLE_CLOUD_PROJECT": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "high"
+      }
+    },
+    "twilio": {
+      "name": "twilio",
+      "description": "Twilio MCP server for SMS, calls, and OTP flows",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/twilio.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-twilio"
+      ],
+      "env": {
+        "TWILIO_ACCOUNT_SID": "",
+        "TWILIO_AUTH_TOKEN": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "admin"
+        ],
+        "sensitivity": "high"
+      }
+    },
+    "sendgrid": {
+      "name": "sendgrid",
+      "description": "SendGrid MCP server for email sending and templates",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/sendgrid.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-sendgrid"
+      ],
+      "env": {
+        "SENDGRID_API_KEY": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
+      }
+    },
+    "supabase": {
+      "name": "supabase",
+      "description": "Supabase MCP server for auth, storage, and SQL",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/supabase.svg",
+      "command": "npx",
+      "args": [
+        "@modelcontextprotocol/server-supabase"
+      ],
+      "env": {
+        "SUPABASE_URL": "",
+        "SUPABASE_KEY": ""
+      },
+      "enabled": false,
+      "defaultPolicy": {
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
+        "sensitivity": "medium"
       }
     }
   },
@@ -74,7 +645,7 @@
       ],
       "sensitivity": "medium",
       "category": "browser",
-      "enabled": true
+      "enabled": false
     },
     "terminal_command": {
       "name": "terminal_command",
@@ -85,7 +656,7 @@
       ],
       "sensitivity": "high",
       "category": "terminal",
-      "enabled": true
+      "enabled": false
     },
     "slack_send_message": {
       "name": "slack_send_message",
@@ -96,7 +667,7 @@
       ],
       "sensitivity": "medium",
       "category": "third_party",
-      "enabled": true,
+      "enabled": false,
       "execution": {
         "type": "http",
         "method": "POST",
