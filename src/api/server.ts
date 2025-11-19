@@ -9,7 +9,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { PolicyRule, PolicyOperation, PolicyRuleCondition } from "../config.js";
 // Types matching dashboard types
-type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "custom";
+type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "bedrock" | "copilot" | "langchain" | "custom";
 
 interface Provider {
   id: string;
@@ -142,6 +142,7 @@ function installCursorProvider(): { success: boolean; error?: string } {
 
 /**
  * Get all providers
+ * Providers are enterprise agent frameworks/platforms, not MCP servers
  */
 async function getProviders(): Promise<Provider[]> {
   const providers: Provider[] = [
@@ -153,20 +154,49 @@ async function getProviders(): Promise<Provider[]> {
       lastHeartbeat: isCursorInstalled() ? new Date().toISOString() : undefined,
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/cursor.svg",
     },
+    {
+      id: "n8n",
+      name: "n8n",
+      type: "n8n",
+      status: "pending",
+      icon: "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/n8n.svg",
+    },
+    {
+      id: "openai",
+      name: "OpenAI ChatGPT Enterprise",
+      type: "openai",
+      status: "pending",
+      icon: "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/openai.svg",
+    },
+    {
+      id: "vertex_ai",
+      name: "Google Vertex AI",
+      type: "vertex",
+      status: "pending",
+      icon: "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/googlecloud.svg",
+    },
+    {
+      id: "aws_bedrock",
+      name: "AWS Bedrock",
+      type: "bedrock",
+      status: "pending",
+      icon: "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/amazonaws.svg",
+    },
+    {
+      id: "microsoft_copilot",
+      name: "Microsoft Copilot",
+      type: "copilot",
+      status: "pending",
+      icon: "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/microsoft.svg",
+    },
+    {
+      id: "langchain",
+      name: "LangChain",
+      type: "langchain",
+      status: "pending",
+      icon: "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/langchain.svg",
+    },
   ];
-  
-  // Add MCP servers as providers
-  const mcpProxies = await getMcpServerProxies();
-  for (const [proxyName, proxyConfig] of Object.entries(mcpProxies)) {
-    providers.push({
-      id: proxyName,
-      name: proxyConfig.name || proxyName,
-      type: "custom",
-      status: proxyConfig.enabled === true ? "connected" : "pending",
-      lastHeartbeat: proxyConfig.enabled === true ? new Date().toISOString() : undefined,
-      icon: proxyConfig.icon,
-    });
-  }
   
   return providers;
 }
