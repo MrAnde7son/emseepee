@@ -1,7 +1,7 @@
 
 
 export type Sensitivity = "low" | "medium" | "high";
-export type ToolCategory = "file" | "browser" | "third_party";
+export type ToolCategory = "file" | "browser" | "terminal" | "third_party";
 export type ToolExecutionType = "http" | "command" | "custom";
 export type PolicyOperation = "allow" | "log" | "block" | "webhook" | "custom";
 
@@ -237,6 +237,15 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
       category: "browser",
     },
   },
+  terminal: {
+    terminal_command: {
+      name: "terminal_command",
+      description: "Execute terminal commands through the central gateway with policy enforcement. Supports custom working directory, environment variables, and timeout configuration.",
+      allowedRoles: ["coder_bot", "admin"],
+      sensitivity: "high",
+      category: "terminal",
+    },
+  },
   third_party: {}, // Third-party tools are loaded from config.json
 };
 
@@ -251,6 +260,7 @@ export async function getToolRegistry(): Promise<ToolCategoryRegistry> {
   // Separate tools by category
   const fileTools: Record<string, ToolPolicyConfig> = {};
   const browserTools: Record<string, ToolPolicyConfig> = {};
+  const terminalTools: Record<string, ToolPolicyConfig> = {};
   const thirdPartyTools: Record<string, ThirdPartyToolConfig> = {};
   
   for (const [toolName, toolConfig] of Object.entries(toolsProxies)) {
@@ -260,6 +270,8 @@ export async function getToolRegistry(): Promise<ToolCategoryRegistry> {
       fileTools[toolName] = toolConfig;
     } else if (toolConfig.category === "browser") {
       browserTools[toolName] = toolConfig;
+    } else if (toolConfig.category === "terminal") {
+      terminalTools[toolName] = toolConfig;
     } else if (toolConfig.category === "third_party") {
       // This shouldn't happen if isThirdPartyToolConfig works correctly, but handle it
       thirdPartyTools[toolName] = toolConfig as ThirdPartyToolConfig;
@@ -277,9 +289,15 @@ export async function getToolRegistry(): Promise<ToolCategoryRegistry> {
     ...browserTools,
   };
   
+  const mergedTerminalTools = {
+    ...DEFAULT_BUILT_IN_TOOLS.terminal,
+    ...terminalTools,
+  };
+  
   return {
     file: mergedFileTools,
     browser: mergedBrowserTools,
+    terminal: mergedTerminalTools,
     third_party: thirdPartyTools,
   };
 }

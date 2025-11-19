@@ -4,6 +4,7 @@ import { getToolsByCategory, isThirdPartyToolConfig, getMcpServerProxies, type T
 import { logger } from "../logger.js";
 import { FileOperationsHandler } from "./handlers/FileOperationsHandler.js";
 import { WebOperationsHandler } from "./handlers/WebOperationsHandler.js";
+import { TerminalCommandsHandler } from "./handlers/TerminalCommandsHandler.js";
 import { GenericToolHandler } from "./handlers/GenericToolHandler.js";
 import { McpServerProxyHandler, McpServerProxyManager } from "./handlers/McpServerProxyHandler.js";
 import { convertInputSchemaToZod } from "./schemaConverter.js";
@@ -107,6 +108,37 @@ export async function registerBrowserTools(context: ToolRegistrationContext): Pr
       },
       async (args) => {
         return webHandler.searchWeb(getAgentContext(), args);
+      }
+    );
+  }
+}
+
+/**
+ * Register all terminal tools using TerminalCommandsHandler
+ */
+export async function registerTerminalTools(context: ToolRegistrationContext): Promise<void> {
+  const { server, getAgentContext } = context;
+  const terminalTools = await getToolsByCategory("terminal");
+
+  // TERMINAL COMMAND
+  if (terminalTools.terminal_command) {
+    const terminalHandler = new TerminalCommandsHandler(terminalTools.terminal_command);
+    
+    server.registerTool(
+      "terminal_command",
+      {
+        description: terminalTools.terminal_command.description,
+        inputSchema: {
+          command: z.string().describe("The command to execute (e.g., 'ls', 'git', 'npm')."),
+          args: z.array(z.string()).optional().describe("Array of command arguments."),
+          cwd: z.string().optional().describe("Working directory for the command. If not provided, uses current working directory."),
+          env: z.record(z.string()).optional().describe("Additional environment variables to set for the command execution."),
+          timeout: z.number().int().min(0).optional().default(30000).describe("Timeout in milliseconds (0 = no timeout). Default: 30000 (30 seconds)."),
+          shell: z.boolean().optional().default(true).describe("Whether to execute the command in a shell. Default: true."),
+        },
+      },
+      async (args) => {
+        return terminalHandler.executeCommand(getAgentContext(), args);
       }
     );
   }
@@ -287,13 +319,16 @@ function convertMcpInputSchemaToZod(inputSchema: unknown): z.ZodObject<Record<st
  */
 export async function registerToolsByCategory(
   context: ToolRegistrationContext,
-  enabledCategories: ToolCategory[] = ["file", "browser", "third_party"]
+  enabledCategories: ToolCategory[] = ["file", "browser", "terminal", "third_party"]
 ): Promise<void> {
   if (enabledCategories.includes("file")) {
     await registerFileTools(context);
   }
   if (enabledCategories.includes("browser")) {
     await registerBrowserTools(context);
+  }
+  if (enabledCategories.includes("terminal")) {
+    await registerTerminalTools(context);
   }
   if (enabledCategories.includes("third_party")) {
     await registerThirdPartyTools(context);
