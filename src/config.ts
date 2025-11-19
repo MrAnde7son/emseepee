@@ -51,6 +51,8 @@ export interface PolicyRule {
   priority?: number;
   // Whether to stop evaluation after this rule matches
   stopOnMatch?: boolean;
+  // Whether this policy is archived (hidden from active policies but can be restored)
+  archived?: boolean;
 }
 
 /**
@@ -182,6 +184,15 @@ export async function loadConfig(): Promise<{
     toolsProxies: _toolsProxies!,
     policyRules: _policyRules!,
   };
+}
+
+/**
+ * Clear the config cache (useful after modifying config.json)
+ */
+export function clearConfigCache(): void {
+  _mcpServerProxies = null;
+  _toolsProxies = null;
+  _policyRules = null;
 }
 
 /**

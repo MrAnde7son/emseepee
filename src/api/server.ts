@@ -1,7 +1,7 @@
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import { URL } from "url";
 import { getStoredEvents, logger } from "../logger.js";
-import { getToolRegistry, getMcpServerProxies } from "../config.js";
+import { getToolRegistry, getMcpServerProxies, clearConfigCache } from "../config.js";
 import { getPolicyRules } from "../config.js";
 import { loadConfigFromFile } from "../configLoader.js";
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
@@ -37,6 +37,7 @@ interface Policy {
   effect: "allow" | "deny" | "log" | "webhook";
   priority: number;
   enabled: boolean;
+  archived?: boolean;
 }
 
 interface GatewayEvent {
@@ -230,18 +231,33 @@ async function getTools(): Promise<Tool[]> {
 /**
  * Get all policies
  */
-async function getPolicies(): Promise<Policy[]> {
+async function getPolicies(includeArchived: boolean = false): Promise<Policy[]> {
   const rules = await getPolicyRules();
   
-  return rules.map((rule, index) => ({
-    id: `policy-${index}`,
-    name: rule.name,
-    description: rule.description,
-    scope: "global", // Could be enhanced to detect scope from condition
-    effect: rule.action.operation === "block" ? "deny" : rule.action.operation === "allow" ? "allow" : rule.action.operation === "log" ? "log" : "webhook",
-    priority: rule.priority ?? 0,
-    enabled: true, // Policies are always enabled if they exist
-  }));
+  // Create a map of policy names to their original indices for stable IDs
+  const nameToIndex = new Map<string, number>();
+  rules.forEach((rule, idx) => {
+    nameToIndex.set(rule.name, idx);
+  });
+  
+  // Filter archived policies based on includeArchived flag
+  const filteredRules = includeArchived 
+    ? rules 
+    : rules.filter((rule) => !rule.archived);
+  
+  return filteredRules.map((rule) => {
+    const originalIndex = nameToIndex.get(rule.name) ?? 0;
+    return {
+      id: `policy-${originalIndex}`,
+      name: rule.name,
+      description: rule.description,
+      scope: "global", // Could be enhanced to detect scope from condition
+      effect: rule.action.operation === "block" ? "deny" : rule.action.operation === "allow" ? "allow" : rule.action.operation === "log" ? "log" : "webhook",
+      priority: rule.priority ?? 0,
+      enabled: true, // Policies are always enabled if they exist
+      archived: rule.archived ?? false,
+    };
+  });
 }
 
 /**
@@ -279,6 +295,9 @@ async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string }): Pr
   }
   
   writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
+  
+  // Clear cache so next request loads fresh config
+  clearConfigCache();
   
   return {
     id: `policy-${config.policyRules.length - 1}`,
@@ -330,6 +349,9 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule>): Promise<P
   
   writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
   
+  // Clear cache so next request loads fresh config
+  clearConfigCache();
+  
   return {
     id,
     name: updatedRule.name,
@@ -342,7 +364,83 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule>): Promise<P
 }
 
 /**
- * Delete a policy rule
+ * Archive a policy rule (soft delete - can be restored)
+ */
+async function archivePolicy(id: string): Promise<void> {
+  const configPath = getConfigPath();
+  const config = loadConfigFromFile(configPath);
+  
+  // Find policy by ID (which contains the original index)
+  const index = parseInt(id.replace("policy-", ""), 10);
+  if (isNaN(index) || index < 0 || index >= config.policyRules.length) {
+    throw new Error(`Policy not found: ${id}`);
+  }
+  
+  // Mark as archived instead of deleting
+  config.policyRules[index].archived = true;
+  
+  // Write back to config file
+  const fullConfig = {
+    mcpServerProxies: config.mcpServerProxies,
+    toolsProxies: {},
+    policyRules: config.policyRules,
+  };
+  
+  // Read existing config to preserve toolsProxies
+  try {
+    const existingConfig = JSON.parse(readFileSync(configPath, "utf-8"));
+    fullConfig.toolsProxies = existingConfig.toolsProxies || {};
+    fullConfig.mcpServerProxies = existingConfig.mcpServerProxies || {};
+  } catch {
+    // If config doesn't exist or is invalid, use defaults
+  }
+  
+  writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
+  
+  // Clear cache so next request loads fresh config
+  clearConfigCache();
+}
+
+/**
+ * Restore an archived policy rule
+ */
+async function restorePolicy(id: string): Promise<void> {
+  const configPath = getConfigPath();
+  const config = loadConfigFromFile(configPath);
+  
+  // Find policy by ID (which contains the original index)
+  const index = parseInt(id.replace("policy-", ""), 10);
+  if (isNaN(index) || index < 0 || index >= config.policyRules.length) {
+    throw new Error(`Policy not found: ${id}`);
+  }
+  
+  // Remove archived flag
+  config.policyRules[index].archived = false;
+  
+  // Write back to config file
+  const fullConfig = {
+    mcpServerProxies: config.mcpServerProxies,
+    toolsProxies: {},
+    policyRules: config.policyRules,
+  };
+  
+  // Read existing config to preserve toolsProxies
+  try {
+    const existingConfig = JSON.parse(readFileSync(configPath, "utf-8"));
+    fullConfig.toolsProxies = existingConfig.toolsProxies || {};
+    fullConfig.mcpServerProxies = existingConfig.mcpServerProxies || {};
+  } catch {
+    // If config doesn't exist or is invalid, use defaults
+  }
+  
+  writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
+  
+  // Clear cache so next request loads fresh config
+  clearConfigCache();
+}
+
+/**
+ * Delete a policy rule (permanent deletion - use archivePolicy for soft delete)
  */
 async function deletePolicy(id: string): Promise<void> {
   const configPath = getConfigPath();
@@ -372,6 +470,9 @@ async function deletePolicy(id: string): Promise<void> {
   }
   
   writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
+  
+  // Clear cache so next request loads fresh config
+  clearConfigCache();
 }
 
 /**
@@ -475,7 +576,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     
     // Policies endpoints
     if (path === "/api/policies" && method === "GET") {
-      const policies = await getPolicies();
+      const includeArchived = url.searchParams.get("includeArchived") === "true";
+      const policies = await getPolicies(includeArchived);
       sendJSON(res, 200, policies);
       return;
     }
@@ -489,6 +591,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       }
       const policy = await addPolicy(body as Omit<PolicyRule, "name"> & { name?: string });
       sendJSON(res, 201, policy);
+      return;
+    }
+    
+    // Check archive/restore routes BEFORE general PUT/DELETE routes (more specific first)
+    if (method === "POST" && path.startsWith("/api/policies/") && path.endsWith("/archive")) {
+      const id = path.replace("/api/policies/", "").replace("/archive", "");
+      await archivePolicy(id);
+      sendJSON(res, 200, { success: true });
+      return;
+    }
+    
+    if (method === "POST" && path.startsWith("/api/policies/") && path.endsWith("/restore")) {
+      const id = path.replace("/api/policies/", "").replace("/restore", "");
+      await restorePolicy(id);
+      sendJSON(res, 200, { success: true });
       return;
     }
     

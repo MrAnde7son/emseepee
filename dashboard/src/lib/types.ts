@@ -26,6 +26,7 @@ export interface Policy {
   effect: "allow" | "deny" | "log" | "webhook";
   priority: number;
   enabled: boolean;
+  archived?: boolean;
 }
 
 export interface GatewayEvent {

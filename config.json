@@ -4,18 +4,26 @@
       "name": "github",
       "description": "GitHub MCP server proxied through gateway",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
       },
       "defaultPolicy": {
-        "allowedRoles": ["coder_bot", "admin"],
+        "allowedRoles": [
+          "coder_bot",
+          "admin"
+        ],
         "sensitivity": "medium"
       },
       "toolPolicyOverrides": {
         "github_create_issue": {
           "sensitivity": "high",
-          "allowedRoles": ["admin"]
+          "allowedRoles": [
+            "admin"
+          ]
         }
       }
     }
@@ -24,35 +32,51 @@
     "file_read_gateway": {
       "name": "file_read_gateway",
       "description": "Read files through the central gateway with policy enforcement.",
-      "allowedRoles": ["coder_bot", "admin"],
+      "allowedRoles": [
+        "coder_bot",
+        "admin"
+      ],
       "sensitivity": "medium",
       "category": "file"
     },
     "file_search_gateway": {
       "name": "file_search_gateway",
       "description": "Search for files through the central gateway with policy enforcement.",
-      "allowedRoles": ["coder_bot", "admin"],
+      "allowedRoles": [
+        "coder_bot",
+        "admin"
+      ],
       "sensitivity": "medium",
       "category": "file"
     },
     "file_write_gateway": {
       "name": "file_write_gateway",
       "description": "Write files through the central gateway with policy enforcement.",
-      "allowedRoles": ["coder_bot", "admin"],
+      "allowedRoles": [
+        "coder_bot",
+        "admin"
+      ],
       "sensitivity": "high",
       "category": "file"
     },
     "web_search_gateway": {
       "name": "web_search_gateway",
       "description": "Perform web search through the central gateway with policy enforcement.",
-      "allowedRoles": ["coder_bot", "research_bot", "admin"],
+      "allowedRoles": [
+        "coder_bot",
+        "research_bot",
+        "admin"
+      ],
       "sensitivity": "medium",
       "category": "browser"
     },
     "slack_send_message": {
       "name": "slack_send_message",
       "description": "Send a message to a Slack channel through the gateway.",
-      "allowedRoles": ["coder_bot", "admin"],
+      "allowedRoles": [
+        "coder_bot",
+        "admin"
+      ],
       "sensitivity": "medium",
       "category": "third_party",
       "execution": {
@@ -96,7 +120,8 @@
         "operation": "block",
         "message": "coder_bot is not allowed to read files with 'secret' in the path"
       },
-      "stopOnMatch": true
+      "stopOnMatch": true,
+      "archived": false
     },
     {
       "name": "log_all_file_writes",
@@ -119,7 +144,10 @@
       "condition": {
         "env": "prod",
         "sensitivity": "high",
-        "agentRole": ["coder_bot", "research_bot"]
+        "agentRole": [
+          "coder_bot",
+          "research_bot"
+        ]
       },
       "action": {
         "operation": "block",
@@ -136,11 +164,10 @@
       },
       "action": {
         "operation": "webhook",
-        "webhookUrl": "${POLICY_WEBHOOK_URL}",
+        "webhookUrl": "",
         "webhookMethod": "POST"
       },
       "stopOnMatch": false
     }
   ]
 }
-

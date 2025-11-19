@@ -18,10 +18,10 @@ export function useTools() {
   });
 }
 
-export function usePolicies() {
+export function usePolicies(includeArchived?: boolean) {
   return useQuery({
-    queryKey: ["policies"],
-    queryFn: () => Api.getPolicies(),
+    queryKey: ["policies", includeArchived],
+    queryFn: () => Api.getPolicies(includeArchived),
   });
 }
 

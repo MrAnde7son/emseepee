@@ -50,10 +50,15 @@ export const Api = {
   getProviders: () => fetchJSON<Provider[]>("/api/providers"),
   installProvider: (providerId: string) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/install`, {}),
   getTools: () => fetchJSON<Tool[]>("/api/tools"),
-  getPolicies: () => fetchJSON<Policy[]>("/api/policies"),
+  getPolicies: (includeArchived?: boolean) => {
+    const search = includeArchived ? "?includeArchived=true" : "";
+    return fetchJSON<Policy[]>(`/api/policies${search}`);
+  },
   createPolicy: (policy: Omit<Policy, "id" | "enabled">) => postJSON<Policy>("/api/policies", policy),
   updatePolicy: (id: string, policy: Partial<Policy>) => putJSON<Policy>(`/api/policies/${id}`, policy),
   deletePolicy: (id: string) => deleteJSON(`/api/policies/${id}`),
+  archivePolicy: (id: string) => postJSON<{ success: boolean }>(`/api/policies/${id}/archive`, {}),
+  restorePolicy: (id: string) => postJSON<{ success: boolean }>(`/api/policies/${id}/restore`, {}),
   getEvents: (params?: { q?: string }) => {
     const search = params?.q ? `?q=${encodeURIComponent(params.q)}` : "";
     return fetchJSON<GatewayEvent[]>(`/api/events${search}`);

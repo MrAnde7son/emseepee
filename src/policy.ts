@@ -294,8 +294,11 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
   }
   const policyRules = await getPolicyRules();
 
+  // Filter out archived policies
+  const activeRules = policyRules.filter((rule) => !rule.archived);
+
   // Sort rules by priority (lower priority first, undefined = 0)
-  const sortedRules = [...policyRules].sort((a, b) => {
+  const sortedRules = [...activeRules].sort((a, b) => {
     const priorityA = a.priority ?? 0;
     const priorityB = b.priority ?? 0;
     return priorityA - priorityB;

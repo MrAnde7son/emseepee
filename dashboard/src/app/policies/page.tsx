@@ -1,11 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { usePolicies } from "@/hooks/useGatewayData";
 import { Api } from "@/lib/api";
+import { Policy } from "@/lib/types";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -16,13 +25,60 @@ import {
 } from "@/components/ui/dialog";
 
 export default function PoliciesPage() {
-  const { data, isLoading, refetch } = usePolicies();
+  const [showArchived, setShowArchived] = useState(false);
+  const { data, isLoading, refetch } = usePolicies(showArchived);
   const [editingPolicy, setEditingPolicy] = useState<string | null>(null);
   const [deletingPolicy, setDeletingPolicy] = useState<string | null>(null);
+  const [archivingPolicy, setArchivingPolicy] = useState<string | null>(null);
+  const [restoringPolicy, setRestoringPolicy] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterScope, setFilterScope] = useState<string>("all");
+  const [filterEffect, setFilterEffect] = useState<string>("all");
+  const [filterEnabled, setFilterEnabled] = useState<string>("all");
+  
+  // Filter policies based on search and filters
+  const filteredPolicies = useMemo(() => {
+    if (!data) return [];
+
+    return data.filter((policy: Policy) => {
+      // If showing archived, only show archived policies; otherwise, only show non-archived
+      if (showArchived && !policy.archived) return false;
+      if (!showArchived && policy.archived) return false;
+
+      // Search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesSearch =
+          policy.name.toLowerCase().includes(query) ||
+          policy.description?.toLowerCase().includes(query) ||
+          policy.scope.toLowerCase().includes(query) ||
+          policy.effect.toLowerCase().includes(query);
+        if (!matchesSearch) return false;
+      }
+
+      // Scope filter
+      if (filterScope !== "all" && policy.scope !== filterScope) {
+        return false;
+      }
+
+      // Effect filter
+      if (filterEffect !== "all" && policy.effect !== filterEffect) {
+        return false;
+      }
+
+      // Enabled filter
+      if (filterEnabled !== "all") {
+        const isEnabled = filterEnabled === "enabled";
+        if (policy.enabled !== isEnabled) return false;
+      }
+
+      return true;
+    });
+  }, [data, searchQuery, filterScope, filterEffect, filterEnabled, showArchived]);
   
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this policy?")) return;
+    if (!confirm("Are you sure you want to permanently delete this policy? This cannot be undone.")) return;
     setDeletingPolicy(id);
     try {
       await Api.deletePolicy(id);
@@ -35,28 +91,141 @@ export default function PoliciesPage() {
     }
   };
 
+  const handleArchive = async (id: string) => {
+    if (!confirm("Are you sure you want to archive this policy? You can restore it later.")) return;
+    setArchivingPolicy(id);
+    try {
+      await Api.archivePolicy(id);
+      await refetch();
+    } catch (error) {
+      console.error("Failed to archive policy:", error);
+      alert(`Failed to archive policy: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setArchivingPolicy(null);
+    }
+  };
+
+  const handleRestore = async (id: string) => {
+    setRestoringPolicy(id);
+    try {
+      await Api.restorePolicy(id);
+      await refetch();
+      // Switch back to active policies view after restoring
+      setShowArchived(false);
+    } catch (error) {
+      console.error("Failed to restore policy:", error);
+      alert(`Failed to restore policy: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setRestoringPolicy(null);
+    }
+  };
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setFilterScope("all");
+    setFilterEffect("all");
+    setFilterEnabled("all");
+  };
+
+  const hasActiveFilters = searchQuery || filterScope !== "all" || filterEffect !== "all" || filterEnabled !== "all";
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Policies</h1>
+          <h1 className="text-xl font-semibold">{showArchived ? "Archived Policies" : "Policies"}</h1>
           <p className="text-xs text-muted-foreground">
-            View and manage policies that control which agents can call which tools.
+            {showArchived 
+              ? "View and restore archived policies."
+              : "View and manage policies that control which agents can call which tools."}
           </p>
         </div>
-        <Button
-          size="sm"
-          onClick={() => setShowCreateDialog(true)}
-        >
-          New policy
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant={showArchived ? "outline" : "ghost"}
+            size="sm"
+            onClick={() => setShowArchived(!showArchived)}
+          >
+            {showArchived ? "Show Active" : "Show Archived"}
+          </Button>
+          {!showArchived && (
+            <Button
+              size="sm"
+              onClick={() => setShowCreateDialog(true)}
+            >
+              New policy
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Search/Filter */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Input
+          placeholder="Search policies by name, description, scope, or effect..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="max-w-md"
+        />
+        <Select value={filterScope} onValueChange={setFilterScope}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="All scopes" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All scopes</SelectItem>
+            <SelectItem value="tool">Tool</SelectItem>
+            <SelectItem value="provider">Provider</SelectItem>
+            <SelectItem value="agent">Agent</SelectItem>
+            <SelectItem value="global">Global</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterEffect} onValueChange={setFilterEffect}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="All effects" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All effects</SelectItem>
+            <SelectItem value="allow">Allow</SelectItem>
+            <SelectItem value="deny">Deny</SelectItem>
+            <SelectItem value="log">Log</SelectItem>
+            <SelectItem value="webhook">Webhook</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterEnabled} onValueChange={setFilterEnabled}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="All statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="enabled">Enabled</SelectItem>
+            <SelectItem value="disabled">Disabled</SelectItem>
+          </SelectContent>
+        </Select>
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearFilters}
+            className="text-xs"
+          >
+            Clear filters
+          </Button>
+        )}
       </div>
 
       {isLoading && <div className="text-sm text-muted-foreground">Loading policies...</div>}
 
-      {data && (
+      {!isLoading && filteredPolicies.length === 0 && (
+        <div className="text-sm text-muted-foreground text-center py-8">
+          {hasActiveFilters
+            ? "No policies found matching your filters."
+            : "No policies available."}
+        </div>
+      )}
+
+      {filteredPolicies.length > 0 && (
         <div className="border border-border rounded-xl divide-y divide-border text-xs">
-          {data.map((p) => (
+          {filteredPolicies.map((p) => (
             <div
               key={p.id}
               className="grid grid-cols-[1.5fr,1fr,1fr,auto,auto,auto] gap-2 px-3 py-2 items-center bg-card/50"
@@ -73,30 +242,60 @@ export default function PoliciesPage() {
               <div className="font-mono text-[11px] text-muted-foreground">{p.effect}</div>
               <div className="text-[11px] text-foreground">{p.priority}</div>
               <div>
-                <Badge
-                  variant={p.enabled ? "default" : "outline"}
-                >
-                  {p.enabled ? "enabled" : "disabled"}
-                </Badge>
+                {p.archived ? (
+                  <Badge variant="outline" className="text-xs">
+                    archived
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant={p.enabled ? "default" : "outline"}
+                  >
+                    {p.enabled ? "enabled" : "disabled"}
+                  </Badge>
+                )}
               </div>
               <div className="flex gap-1 justify-end">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs h-6"
-                  onClick={() => setEditingPolicy(p.id)}
-                >
-                  Edit
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-xs h-6 text-red-400 hover:text-red-300"
-                  onClick={() => handleDelete(p.id)}
-                  disabled={deletingPolicy === p.id}
-                >
-                  {deletingPolicy === p.id ? "..." : "Delete"}
-                </Button>
+                {!p.archived && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-6"
+                      onClick={() => setEditingPolicy(p.id)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-6 text-amber-400 hover:text-amber-300"
+                      onClick={() => handleArchive(p.id)}
+                      disabled={archivingPolicy === p.id}
+                    >
+                      {archivingPolicy === p.id ? "..." : "Archive"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-6 text-red-400 hover:text-red-300"
+                      onClick={() => handleDelete(p.id)}
+                      disabled={deletingPolicy === p.id}
+                    >
+                      {deletingPolicy === p.id ? "..." : "Delete"}
+                    </Button>
+                  </>
+                )}
+                {p.archived && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-6 text-emerald-400 hover:text-emerald-300"
+                    onClick={() => handleRestore(p.id)}
+                    disabled={restoringPolicy === p.id}
+                  >
+                    {restoringPolicy === p.id ? "..." : "Restore"}
+                  </Button>
+                )}
               </div>
             </div>
           ))}
