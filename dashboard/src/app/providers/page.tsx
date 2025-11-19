@@ -150,10 +150,6 @@ export default function ProvidersPage() {
             <RefreshCcw className="h-3 w-3 mr-1" />
             Refresh
           </Button>
-          <Button size="sm" onClick={() => { /* TODO: open connect dialog */ }}>
-            <PlusCircle className="h-3 w-3 mr-1" />
-            Connect provider
-          </Button>
         </div>
       </div>
 
