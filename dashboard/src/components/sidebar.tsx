@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 
 const navItems = [
   { href: "/providers", label: "Providers", icon: Plug },
-  { href: "/tools", label: "Tools library", icon: Gauge },
+  { href: "/tools", label: "Library", icon: Gauge },
   { href: "/policies", label: "Policies", icon: Shield },
   { href: "/events", label: "Events", icon: ListFilter },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -31,15 +31,12 @@ export function Sidebar() {
         {isExpanded ? (
           <>
             <div className="text-sm font-semibold text-muted-foreground">
-              Agent Gateway
-            </div>
-            <div className="text-lg font-semibold text-foreground">
-              Control Plane
+              Hakuna
             </div>
           </>
         ) : (
           <div className="text-lg font-semibold text-foreground text-center">
-            AG
+            HK
           </div>
         )}
         <Button
@@ -84,7 +81,7 @@ export function Sidebar() {
           !isExpanded && "text-center"
         )}
       >
-        {isExpanded ? "agent-tools-gateway" : "ATG"}
+        {isExpanded ? "hakuna" : "HK"}
       </div>
     </aside>
   );

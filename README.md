@@ -1,5 +1,5 @@
 
-# Agent Tools MCP Gateway
+# Hakuna Gateway
 
 This is a minimal **MCP server** that acts as a central tools gateway.
 
@@ -17,7 +17,7 @@ The gateway provides built-in tools for file operations and browser operations, 
 
 ```mermaid
 graph TB
-    Client[MCP Client<br/>Cursor/Other] -->|Tool Calls| Gateway[Agent Tools Gateway<br/>MCP Server]
+    Client[MCP Client<br/>Cursor/Other] -->|Tool Calls| Gateway[Hakuna<br/>MCP Server]
     Gateway -->|Load Config| Config[config.json<br/>Dynamic Configuration]
     
     Gateway -->|Route Request| Policy[Policy Engine<br/>Rule Evaluation]
@@ -161,7 +161,7 @@ The policy engine can now reason about intents like:
 
 You should see the line:
 
-   Agent Tools MCP Gateway server starting...
+   Hakuna MCP Gateway server starting...
 
 The process then waits for MCP messages on stdio.
 
@@ -176,7 +176,7 @@ Create a project-level `.cursor/mcp.json` file in your workspace root:
 ```json
 {
   "mcpServers": {
-    "agent-tools-gateway": {
+    "hakuna": {
       "command": "npx",
       "args": ["-y", "agent-tools-gateway"],
       "cwd": "/absolute/path/to/agent-tools-gateway",
@@ -196,7 +196,7 @@ Create a project-level `.cursor/mcp.json` file in your workspace root:
 ```json
 {
   "mcpServers": {
-    "agent-tools-gateway": {
+    "hakuna": {
       "command": "npx",
       "args": ["-y", "agent-tools-gateway"],
       "cwd": "/Users/imizrahi/Downloads/agent-tools-gateway",
@@ -228,7 +228,7 @@ Only use native tools (`read_file`, `write`, etc.) if:
 
 1. Restart Cursor to load the MCP server configuration
 2. Open Cursor Settings → MCP Servers
-3. Ensure `agent-tools-gateway` is listed and **enabled**
+3. Ensure `hakuna` is listed and **enabled**
 4. Check that gateway tools are visible (e.g., `file_read_gateway`, `file_write_gateway`, `file_search_gateway`, `web_search_gateway`)
 5. The MCP server should start automatically when Cursor loads
 
@@ -735,7 +735,7 @@ The gateway automatically loads API keys from a `.env` file in the project root.
 ```json
 {
   "mcpServers": {
-    "agent-tools-gateway": {
+    "hakuna": {
       "command": "npx",
       "args": ["-y", "agent-tools-gateway"],
       "env": {

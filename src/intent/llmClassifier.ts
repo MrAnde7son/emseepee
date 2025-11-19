@@ -79,7 +79,7 @@ function buildClassificationPrompt(
   event: ToolCallEvent,
   ruleBasedIntent?: AgentIntent['inferredIntent']
 ): LLMMessage[] {
-  const systemPrompt = `You are an intent classification system for an agent tools gateway. Your task is to analyze tool calls and classify the agent's intent.
+  const systemPrompt = `You are an intent classification system for Hakuna. Your task is to analyze tool calls and classify the agent's intent.
 
 You must output a JSON object with the following structure:
 {

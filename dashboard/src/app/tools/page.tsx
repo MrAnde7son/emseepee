@@ -13,7 +13,7 @@ export default function ToolsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <h1 className="text-xl font-semibold">Tools library</h1>
+          <h1 className="text-xl font-semibold">Library</h1>
           <p className="text-xs text-muted-foreground">
             Built-in and 3rd party tools discovered across providers. Install and govern
             them centrally.

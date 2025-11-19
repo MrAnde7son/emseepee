@@ -12,7 +12,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Sidebar } from "@/components/sidebar";
 
 export const metadata: Metadata = {
-  title: "Agent Tools Gateway",
+  title: "Hakuna",
   description: "Gateway for AI agents and tools",
 };
 
@@ -41,9 +41,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                     </span>
                   </div>
                   <div className="flex items-center gap-4">
-                    <div className="text-xs text-muted-foreground">
-                      Built for agents, tools and policies
-                    </div>
                     <ThemeToggle />
                   </div>
                 </header>

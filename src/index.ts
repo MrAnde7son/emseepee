@@ -35,7 +35,7 @@ async function main() {
   }
   const server = new McpServer(
     {
-      name: "agent-tools-gateway",
+      name: "hakuna",
       version: "0.1.0",
     },
     {
@@ -74,7 +74,7 @@ async function main() {
   await registerMcpServerProxies(context);
 
   const transport = new StdioServerTransport();
-  logger.info("Agent Tools MCP Gateway server starting...");
+  logger.info("Hakuna MCP Gateway server starting...");
   await server.connect(transport);
 }
 

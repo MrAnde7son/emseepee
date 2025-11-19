@@ -82,7 +82,7 @@ function isCursorInstalled(): boolean {
   
   try {
     const config = JSON.parse(readFileSync(cursorConfigPath, "utf-8"));
-    return config.mcpServers && config.mcpServers["agent-tools-gateway"] !== undefined;
+    return config.mcpServers && config.mcpServers["hakuna"] !== undefined;
   } catch {
     return false;
   }
@@ -114,7 +114,7 @@ function installCursorProvider(): { success: boolean; error?: string } {
     }
     
     // Add or update the gateway configuration
-    config.mcpServers["agent-tools-gateway"] = {
+    config.mcpServers["hakuna"] = {
       command: "node",
       args: [gatewayPath],
       cwd: join(__dirname, "..", ".."),

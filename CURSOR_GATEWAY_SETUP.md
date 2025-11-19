@@ -4,7 +4,7 @@
 
 Cursor provides both:
 - **Native file tools**: `read_file`, `write`, `grep`, `glob_file_search`, etc.
-- **MCP Gateway tools**: `mcp_agent-tools-gateway_file_read_gateway`, `mcp_agent-tools-gateway_file_write_gateway`, etc.
+- **MCP Gateway tools**: `mcp_hakuna_file_read_gateway`, `mcp_hakuna_file_write_gateway`, etc.
 
 There is **no built-in Cursor setting** to disable native tools or force exclusive use of MCP tools. However, you can ensure gateway tools are used through the following approaches:
 
@@ -28,7 +28,7 @@ Ensure your MCP server is properly configured and connected:
 ```json
 {
   "mcpServers": {
-    "agent-tools-gateway": {
+    "hakuna": {
       "command": "node",
       "args": ["/Users/imizrahi/Downloads/agent-tools-gateway/dist/index.js"],
       "cwd": "/Users/imizrahi/Downloads/agent-tools-gateway"
@@ -40,7 +40,7 @@ Ensure your MCP server is properly configured and connected:
 2. **Verify in Cursor**:
    - Open Cursor Settings
    - Go to MCP Servers section
-   - Ensure `agent-tools-gateway` is listed and **enabled**
+   - Ensure `hakuna` is listed and **enabled**
    - Check that tools are visible (you should see `file_read_gateway`, `file_write_gateway`, `file_search_gateway`)
 
 3. **Test the connection**:
