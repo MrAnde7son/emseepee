@@ -24,6 +24,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 // Common agent roles - can be extracted from policies or config
 const COMMON_AGENT_ROLES = ["coder_bot", "research_bot", "admin"];
@@ -387,81 +395,103 @@ export default function PoliciesPage() {
       )}
 
       {filteredPolicies.length > 0 && (
-        <div className="border border-border rounded-xl divide-y divide-border text-xs">
-          {filteredPolicies.map((p) => (
-            <div
-              key={p.id}
-              className="grid grid-cols-[1.5fr,1fr,1fr,auto,auto,auto] gap-2 px-3 py-2 items-center bg-card/50"
-            >
-              <div>
-                <div className="text-foreground text-sm">{p.name}</div>
-                {p.description && (
-                  <div className="text-[11px] text-muted-foreground line-clamp-1">
-                    {p.description}
-                  </div>
-                )}
-              </div>
-              <div className="font-mono text-[11px] text-muted-foreground">{p.scope}</div>
-              <div className="font-mono text-[11px] text-muted-foreground">{p.effect}</div>
-              <div className="text-[11px] text-foreground">{p.priority}</div>
-              <div>
-                {p.archived ? (
-                  <Badge variant="outline" className="text-xs">
-                    archived
-                  </Badge>
-                ) : (
-                  <Badge
-                    variant={p.enabled ? "default" : "outline"}
-                  >
-                    {p.enabled ? "enabled" : "disabled"}
-                  </Badge>
-                )}
-              </div>
-              <div className="flex gap-1 justify-end">
-                {!p.archived && (
-                  <>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-6"
-                      onClick={() => handleEditClick(p.id)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-6 text-amber-400 hover:text-amber-300"
-                      onClick={() => handleArchive(p.id)}
-                      disabled={archivingPolicy === p.id}
-                    >
-                      {archivingPolicy === p.id ? "..." : "Archive"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-6 text-red-400 hover:text-red-300"
-                      onClick={() => handleDelete(p.id)}
-                      disabled={deletingPolicy === p.id}
-                    >
-                      {deletingPolicy === p.id ? "..." : "Delete"}
-                    </Button>
-                  </>
-                )}
-                {p.archived && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-6 text-emerald-400 hover:text-emerald-300"
-                    onClick={() => handleRestore(p.id)}
-                    disabled={restoringPolicy === p.id}
-                  >
-                    {restoringPolicy === p.id ? "..." : "Restore"}
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))}
+        <div className="border border-border rounded-xl overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[300px]">Name</TableHead>
+                <TableHead className="w-[100px]">Scope</TableHead>
+                <TableHead className="w-[100px]">Effect</TableHead>
+                <TableHead className="w-[80px]">Priority</TableHead>
+                <TableHead className="w-[100px]">Status</TableHead>
+                <TableHead className="w-[200px] text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredPolicies.map((p) => (
+                <TableRow key={p.id}>
+                  <TableCell>
+                    <div>
+                      <div className="text-sm font-medium text-foreground">{p.name}</div>
+                      {p.description && (
+                        <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                          {p.description}
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-mono text-xs text-muted-foreground">{p.scope}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-mono text-xs text-muted-foreground">{p.effect}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-xs text-foreground">{p.priority}</span>
+                  </TableCell>
+                  <TableCell>
+                    {p.archived ? (
+                      <Badge variant="outline" className="text-xs">
+                        archived
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant={p.enabled ? "default" : "outline"}
+                        className="text-xs"
+                      >
+                        {p.enabled ? "enabled" : "disabled"}
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-1 justify-end">
+                      {!p.archived && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-7"
+                            onClick={() => handleEditClick(p.id)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-7 text-amber-400 hover:text-amber-300"
+                            onClick={() => handleArchive(p.id)}
+                            disabled={archivingPolicy === p.id}
+                          >
+                            {archivingPolicy === p.id ? "..." : "Archive"}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs h-7 text-red-400 hover:text-red-300"
+                            onClick={() => handleDelete(p.id)}
+                            disabled={deletingPolicy === p.id}
+                          >
+                            {deletingPolicy === p.id ? "..." : "Delete"}
+                          </Button>
+                        </>
+                      )}
+                      {p.archived && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7 text-emerald-400 hover:text-emerald-300"
+                          onClick={() => handleRestore(p.id)}
+                          disabled={restoringPolicy === p.id}
+                        >
+                          {restoringPolicy === p.id ? "..." : "Restore"}
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
       
