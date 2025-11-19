@@ -1,0 +1,42 @@
+export type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "custom";
+
+export interface Provider {
+  id: string;
+  name: string;
+  type: ProviderType;
+  status: "connected" | "error" | "pending";
+  lastHeartbeat?: string;
+}
+
+export interface Tool {
+  id: string;
+  name: string;
+  source: "builtin" | "mcp" | "third-party";
+  providerId?: string;
+  category?: string;
+  riskLevel?: "low" | "medium" | "high";
+  installed: boolean;
+}
+
+export interface Policy {
+  id: string;
+  name: string;
+  description?: string;
+  scope: "tool" | "provider" | "agent" | "global";
+  effect: "allow" | "deny" | "log" | "webhook";
+  priority: number;
+  enabled: boolean;
+}
+
+export interface GatewayEvent {
+  id: string;
+  timestamp: string; // ISO
+  provider: string;
+  agentId: string;
+  toolName: string;
+  intentSummary: string;
+  decision: "allow" | "deny" | "log";
+  riskLevel?: "low" | "medium" | "high";
+  latencyMs?: number;
+}
+

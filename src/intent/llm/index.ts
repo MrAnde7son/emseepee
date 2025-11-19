@@ -1,4 +1,3 @@
-import type { LLMConfig } from '../../llm/config.js';
 import { getLLMConfig } from '../../llm/config.js';
 import { OpenAIProvider } from '../../llm/openai.js';
 import { GroqProvider } from '../../llm/groq.js';
