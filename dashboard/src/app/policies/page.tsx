@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { usePolicies } from "@/hooks/useGatewayData";
-import { useQueryClient } from "@tanstack/react-query";
 import { Api } from "@/lib/api";
 
 import { Button } from "@/components/ui/button";
@@ -15,11 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 
 export default function PoliciesPage() {
   const { data, isLoading, refetch } = usePolicies();
-  const queryClient = useQueryClient();
   const [editingPolicy, setEditingPolicy] = useState<string | null>(null);
   const [deletingPolicy, setDeletingPolicy] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -59,14 +56,6 @@ export default function PoliciesPage() {
 
       {data && (
         <div className="border border-border rounded-xl divide-y divide-border text-xs">
-          <div className="grid grid-cols-[1.5fr,1fr,1fr,auto,auto,auto] gap-2 px-3 py-2 text-muted-foreground">
-            <div>Name</div>
-            <div>Scope</div>
-            <div>Effect</div>
-            <div>Priority</div>
-            <div>Status</div>
-            <div>Actions</div>
-          </div>
           {data.map((p) => (
             <div
               key={p.id}
