@@ -1,5 +1,5 @@
 
-# Agent Tools MCP Gateway (TypeScript, ESM)
+# Agent Tools MCP Gateway
 
 This is a minimal **MCP server** that acts as a central tools gateway.
 
@@ -7,7 +7,8 @@ It exposes MCP tools you can plug into Cursor (or any MCP client) and:
 
 - Route tool usage through a single gateway layer
 - Apply simple per-tool / per-role policy decisions
-- Log every intercepted tool call (POC behavior)
+- Log every intercepted tool call
+- Policy engine with support of log/deny/webhook/custom
 
 The gateway provides built-in tools for file operations and browser operations, plus the ability to proxy entire MCP servers and add custom third-party integrations.
 
