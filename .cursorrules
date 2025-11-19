@@ -5,6 +5,4 @@ If blocked by the gateway, do not proceed in running native tools.
 
 ## Exception
 
-Only use native tools (`read_file`, `write`, etc.) if:
-1. You need to read this instruction file itself (`.cursorrules`)
-2. The gateway tools are not available
+Only use native tools (`read_file`, `write`, etc.) if the gateway tools are not available

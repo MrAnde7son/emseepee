@@ -2,6 +2,7 @@ import type { ToolPolicyConfig } from "../../config.js";
 import { BaseGatewayHandler, type AgentContext, type ToolExecutionResult } from "./BaseGatewayHandler.js";
 import { logger } from "../../logger.js";
 import { evaluatePolicy } from "../../policy.js";
+import { inferAgentIntent, type ToolCallEvent } from "../../intent/index.js";
 
 export interface WebSearchArgs extends Record<string, unknown> {
   query: string;
@@ -408,15 +409,31 @@ export class WebOperationsHandler extends BaseGatewayHandler {
       return this.createErrorResponse("Web search tool not configured");
     }
 
+    // Step 1: Intent Layer
+    const toolCallEvent: ToolCallEvent = {
+      toolName: this.toolConfig.name,
+      arguments: args,
+      agentId: agentContext.agentId,
+      provider: 'cursor',
+      requestId: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+    };
+
+    const intent = await inferAgentIntent(toolCallEvent, {
+      name: this.toolConfig.name,
+      description: this.toolConfig.description,
+    });
+
+    // Step 2: Policy Engine
     const decision = await evaluatePolicy({
       tool: this.toolConfig,
       agentId: agentContext.agentId,
       agentRole: agentContext.agentRole,
       env: agentContext.env,
       args,
+      intent,
     });
 
-    this.logRequest(agentContext, args, decision);
+    this.logRequest(agentContext, args, decision, intent);
 
     if (decision.decision === "deny") {
       return this.createDeniedResponse(decision.reason);
