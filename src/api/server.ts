@@ -7,7 +7,7 @@ import { loadConfigFromFile } from "../configLoader.js";
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import type { PolicyRule } from "../config.js";
+import type { PolicyRule, PolicyOperation } from "../config.js";
 // Types matching dashboard types
 type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "custom";
 
@@ -312,8 +312,9 @@ async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string }): Pr
 
 /**
  * Update a policy rule
+ * Accepts either PolicyRule updates or Policy updates (simplified)
  */
-async function updatePolicy(id: string, updates: Partial<PolicyRule>): Promise<Policy> {
+async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<Policy>): Promise<Policy> {
   const configPath = getConfigPath();
   const config = loadConfigFromFile(configPath);
   
@@ -323,11 +324,46 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule>): Promise<P
   }
   
   const existingRule = config.policyRules[index];
-  const updatedRule: PolicyRule = {
-    ...existingRule,
-    ...updates,
-    name: updates.name ?? existingRule.name,
-  };
+  
+  // Check if this is a Policy update (simplified) or PolicyRule update (full)
+  const isPolicyUpdate = "effect" in updates || "scope" in updates || "enabled" in updates;
+  
+  let updatedRule: PolicyRule;
+  
+  if (isPolicyUpdate) {
+    // Convert Policy update to PolicyRule update
+    const policyUpdate = updates as Partial<Policy>;
+    updatedRule = {
+      ...existingRule,
+      name: policyUpdate.name ?? existingRule.name,
+      description: policyUpdate.description !== undefined ? policyUpdate.description : existingRule.description,
+      priority: policyUpdate.priority !== undefined ? policyUpdate.priority : existingRule.priority,
+      archived: policyUpdate.enabled === false ? true : policyUpdate.enabled === true ? false : existingRule.archived,
+    };
+    
+    // Update action.operation if effect is provided
+    if (policyUpdate.effect) {
+      const operationMap: Record<string, PolicyOperation> = {
+        allow: "allow",
+        deny: "block",
+        log: "log",
+        webhook: "webhook",
+      };
+      updatedRule.action = {
+        ...existingRule.action,
+        operation: operationMap[policyUpdate.effect] ?? existingRule.action.operation,
+      };
+    }
+  } else {
+    // Full PolicyRule update
+    updatedRule = {
+      ...existingRule,
+      ...updates,
+      name: (updates as Partial<PolicyRule>).name ?? existingRule.name,
+      condition: (updates as Partial<PolicyRule>).condition ?? existingRule.condition,
+      action: (updates as Partial<PolicyRule>).action ?? existingRule.action,
+    };
+  }
   
   config.policyRules[index] = updatedRule;
   
@@ -359,7 +395,7 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule>): Promise<P
     scope: "global",
     effect: updatedRule.action.operation === "block" ? "deny" : updatedRule.action.operation === "allow" ? "allow" : updatedRule.action.operation === "log" ? "log" : "webhook",
     priority: updatedRule.priority ?? 0,
-    enabled: true,
+    enabled: !(updatedRule.archived ?? false),
   };
 }
 
@@ -611,13 +647,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     
     if (path.startsWith("/api/policies/") && method === "PUT") {
       const id = path.replace("/api/policies/", "");
-      const body = await parseBody(req) as Partial<PolicyRule>;
-      // Ensure required fields are present
-      if (!body.condition || !body.action) {
+      const body = await parseBody(req) as Partial<PolicyRule> | Partial<Policy>;
+      // Allow both PolicyRule and Policy updates
+      // PolicyRule updates require condition and action, but Policy updates don't
+      const isPolicyRuleUpdate = "condition" in body || "action" in body;
+      if (isPolicyRuleUpdate && (!body.condition || !body.action)) {
         sendJSON(res, 400, { error: "Missing required fields: condition and action" });
         return;
       }
-      const policy = await updatePolicy(id, body as Omit<PolicyRule, "name"> & { name?: string });
+      const policy = await updatePolicy(id, body);
       sendJSON(res, 200, policy);
       return;
     }

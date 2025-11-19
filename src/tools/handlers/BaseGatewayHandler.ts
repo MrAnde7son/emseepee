@@ -36,12 +36,15 @@ export abstract class BaseGatewayHandler {
       return this.createErrorResponse("Tool configuration not found");
     }
 
+    const startTime = Date.now();
+    const provider = 'cursor'; // Default provider, can be enhanced to detect from context
+
     // Step 1: Intent Layer - normalize and classify the tool call
     const toolCallEvent: ToolCallEvent = {
       toolName: this.getToolName(),
       arguments: args,
       agentId: agentContext.agentId,
-      provider: 'cursor', // Default provider, can be enhanced to detect from context
+      provider,
       requestId: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
     };
 
@@ -60,17 +63,21 @@ export abstract class BaseGatewayHandler {
       intent, // Pass intent to policy engine
     });
 
-    this.logRequest(agentContext, args, decision, intent);
-
     if (decision.decision === "deny") {
+      const latencyMs = Date.now() - startTime;
+      this.logRequest(agentContext, args, decision, intent, provider, latencyMs);
       return this.createDeniedResponse(decision.reason);
     }
 
     try {
       const result = await operation();
+      const latencyMs = Date.now() - startTime;
+      this.logRequest(agentContext, args, decision, intent, provider, latencyMs);
       this.logSuccess(agentContext, args);
       return result;
     } catch (error) {
+      const latencyMs = Date.now() - startTime;
+      this.logRequest(agentContext, args, decision, intent, provider, latencyMs);
       return this.handleError(error, args);
     }
   }
@@ -82,7 +89,9 @@ export abstract class BaseGatewayHandler {
     agentContext: AgentContext,
     args: Record<string, unknown>,
     decision: PolicyDecision,
-    intent?: import("../../intent/index.js").AgentIntent
+    intent?: import("../../intent/index.js").AgentIntent,
+    provider: string = 'cursor',
+    latencyMs?: number
   ): void {
     const logData: Record<string, unknown> = {
       tool: this.getToolName(),
@@ -106,6 +115,27 @@ export abstract class BaseGatewayHandler {
     }
 
     logger.info(`[MCP-GATEWAY] ${this.getToolName()} call`, logData);
+
+    // Log event to event store for UI display
+    const intentSummary = intent
+      ? `${intent.inferredIntent.operation}:${intent.inferredIntent.action}`
+      : this.getToolName();
+
+    // Determine event decision: if "log" operation is present and decision is "allow", use "log"
+    const eventDecision: "allow" | "deny" | "log" =
+      decision.decision === "allow" && decision.operations?.includes("log")
+        ? "log"
+        : (decision.decision as "allow" | "deny");
+
+    logger.logEvent({
+      provider,
+      agentId: agentContext.agentId,
+      toolName: this.getToolName(),
+      intentSummary,
+      decision: eventDecision,
+      riskLevel: intent?.inferredIntent.riskLevel,
+      latencyMs,
+    });
   }
 
   /**

@@ -8,6 +8,7 @@ import { Policy } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -28,6 +29,8 @@ export default function PoliciesPage() {
   const [showArchived, setShowArchived] = useState(false);
   const { data, isLoading, refetch } = usePolicies(showArchived);
   const [editingPolicy, setEditingPolicy] = useState<string | null>(null);
+  const [editingPolicyData, setEditingPolicyData] = useState<Policy | null>(null);
+  const [updatingPolicy, setUpdatingPolicy] = useState(false);
   const [deletingPolicy, setDeletingPolicy] = useState<string | null>(null);
   const [archivingPolicy, setArchivingPolicy] = useState<string | null>(null);
   const [restoringPolicy, setRestoringPolicy] = useState<string | null>(null);
@@ -117,6 +120,37 @@ export default function PoliciesPage() {
       alert(`Failed to restore policy: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setRestoringPolicy(null);
+    }
+  };
+
+  const handleEditClick = (id: string) => {
+    const policy = data?.find((p: Policy) => p.id === id);
+    if (policy) {
+      setEditingPolicyData({ ...policy });
+      setEditingPolicy(id);
+    }
+  };
+
+  const handleUpdatePolicy = async () => {
+    if (!editingPolicy || !editingPolicyData) return;
+    
+    setUpdatingPolicy(true);
+    try {
+      await Api.updatePolicy(editingPolicy, {
+        name: editingPolicyData.name,
+        description: editingPolicyData.description,
+        priority: editingPolicyData.priority,
+        effect: editingPolicyData.effect,
+        enabled: editingPolicyData.enabled,
+      });
+      await refetch();
+      setEditingPolicy(null);
+      setEditingPolicyData(null);
+    } catch (error) {
+      console.error("Failed to update policy:", error);
+      alert(`Failed to update policy: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setUpdatingPolicy(false);
     }
   };
 
@@ -261,7 +295,7 @@ export default function PoliciesPage() {
                       variant="outline"
                       size="sm"
                       className="text-xs h-6"
-                      onClick={() => setEditingPolicy(p.id)}
+                      onClick={() => handleEditClick(p.id)}
                     >
                       Edit
                     </Button>
@@ -321,21 +355,106 @@ export default function PoliciesPage() {
         </DialogContent>
       </Dialog>
       
-      {editingPolicy && (
-        <Dialog open={!!editingPolicy} onOpenChange={(open) => !open && setEditingPolicy(null)}>
-          <DialogContent>
+      {editingPolicy && editingPolicyData && (
+        <Dialog open={!!editingPolicy} onOpenChange={(open) => {
+          if (!open) {
+            setEditingPolicy(null);
+            setEditingPolicyData(null);
+          }
+        }}>
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Edit Policy</DialogTitle>
               <DialogDescription>
-                Edit policy rule. Note: Full policy editing requires direct config.json editing.
+                Update the policy settings. Note: Advanced condition editing requires direct config.json editing.
               </DialogDescription>
             </DialogHeader>
-            <div className="text-sm text-muted-foreground py-4">
-              Policy editing via UI is coming soon. For now, please edit config.json directly.
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <label htmlFor="edit-name" className="text-sm font-medium">
+                  Name
+                </label>
+                <Input
+                  id="edit-name"
+                  value={editingPolicyData.name}
+                  onChange={(e) => setEditingPolicyData({ ...editingPolicyData, name: e.target.value })}
+                  placeholder="Policy name"
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="edit-description" className="text-sm font-medium">
+                  Description
+                </label>
+                <Input
+                  id="edit-description"
+                  value={editingPolicyData.description || ""}
+                  onChange={(e) => setEditingPolicyData({ ...editingPolicyData, description: e.target.value })}
+                  placeholder="Policy description (optional)"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label htmlFor="edit-priority" className="text-sm font-medium">
+                    Priority
+                  </label>
+                  <Input
+                    id="edit-priority"
+                    type="number"
+                    value={editingPolicyData.priority}
+                    onChange={(e) => setEditingPolicyData({ ...editingPolicyData, priority: parseInt(e.target.value, 10) || 0 })}
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="edit-effect" className="text-sm font-medium">
+                    Effect
+                  </label>
+                  <Select
+                    value={editingPolicyData.effect}
+                    onValueChange={(value) => setEditingPolicyData({ ...editingPolicyData, effect: value as Policy["effect"] })}
+                  >
+                    <SelectTrigger id="edit-effect">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="allow">Allow</SelectItem>
+                      <SelectItem value="deny">Deny</SelectItem>
+                      <SelectItem value="log">Log</SelectItem>
+                      <SelectItem value="webhook">Webhook</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Status</label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="edit-enabled"
+                    checked={editingPolicyData.enabled}
+                    onCheckedChange={(checked) => setEditingPolicyData({ ...editingPolicyData, enabled: checked === true })}
+                  />
+                  <label htmlFor="edit-enabled" className="text-sm cursor-pointer">
+                    Enabled
+                  </label>
+                </div>
+              </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setEditingPolicy(null)}>
-                Close
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditingPolicy(null);
+                  setEditingPolicyData(null);
+                }}
+                disabled={updatingPolicy}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleUpdatePolicy}
+                disabled={updatingPolicy || !editingPolicyData.name}
+              >
+                {updatingPolicy ? "Saving..." : "Save Changes"}
               </Button>
             </DialogFooter>
           </DialogContent>
