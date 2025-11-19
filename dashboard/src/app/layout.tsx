@@ -14,6 +14,10 @@ import { Sidebar } from "@/components/sidebar";
 export const metadata: Metadata = {
   title: "Hakuna",
   description: "Gateway for AI agents and tools",
+  icons: {
+    icon: "/favicon.png",
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
