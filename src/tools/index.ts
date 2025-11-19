@@ -101,7 +101,8 @@ export async function registerBrowserTools(context: ToolRegistrationContext): Pr
         description: browserTools.web_search_gateway.description,
         inputSchema: {
           query: z.string().describe("Search query string."),
-          limit: z.number().int().min(1).max(20).optional().default(5),
+          limit: z.number().int().min(1).max(20).optional().default(5).describe("Maximum number of results to return (1-20)."),
+          provider: z.enum(["tavily", "serpapi", "google", "bing", "duckduckgo", "auto"]).optional().default("auto").describe("Search provider to use. 'auto' selects based on available API keys. Options: tavily (AI-optimized), serpapi (Google results), google (Custom Search), bing, duckduckgo (fallback, no API key required)."),
         },
       },
       async (args) => {

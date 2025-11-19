@@ -67,7 +67,13 @@ graph TB
    npm run build
    ```
 
-2. This will produce `dist/index.js` which is the MCP server entrypoint.
+2. **Optional:** Create a `.env` file for API keys (recommended for web search):
+   ```bash
+   cp .env.example .env
+   # Then edit .env and add your API keys
+   ```
+
+3. This will produce `dist/index.js` which is the MCP server entrypoint.
 
 ## Run directly (debug)
 
@@ -567,6 +573,110 @@ Use `${VAR_NAME}` syntax in `config.json` to reference environment variables. Th
   "webhookUrl": "${POLICY_WEBHOOK_URL}"
 }
 ```
+
+### Web Search Configuration
+
+The `web_search_gateway` tool supports multiple search providers for comprehensive web search results. The gateway automatically selects the best available provider based on configured API keys.
+
+#### Supported Providers
+
+1. **Tavily** (Recommended for AI agents)
+   - Optimized for AI/LLM use cases
+   - Returns AI-generated answers plus search results
+   - Add `TAVILY_API_KEY` to your `.env` file
+   - Get API key: https://tavily.com
+
+2. **SerpAPI**
+   - Provides Google search results
+   - High-quality, structured results
+   - Add `SERPAPI_KEY` to your `.env` file
+   - Get API key: https://serpapi.com
+
+3. **Google Custom Search**
+   - Official Google Search API
+   - Requires both API key and Custom Search Engine ID
+   - Add `GOOGLE_SEARCH_API_KEY` and `GOOGLE_SEARCH_ENGINE_ID` to your `.env` file
+   - Get API key: https://developers.google.com/custom-search/v1/overview
+
+4. **Bing Search**
+   - Microsoft Bing Search API
+   - Add `BING_SEARCH_API_KEY` to your `.env` file
+   - Get API key: https://www.microsoft.com/en-us/bing/apis/bing-web-search-api
+
+5. **DuckDuckGo** (Fallback)
+   - No API key required
+   - Limited results (instant answers and related topics)
+   - Used automatically when no other provider is configured
+
+#### Provider Selection
+
+The gateway uses the following priority order when `provider` is set to `"auto"` (default):
+1. Tavily (if `TAVILY_API_KEY` is set)
+2. SerpAPI (if `SERPAPI_KEY` is set)
+3. Google Custom Search (if both `GOOGLE_SEARCH_API_KEY` and `GOOGLE_SEARCH_ENGINE_ID` are set)
+4. Bing (if `BING_SEARCH_API_KEY` is set)
+5. DuckDuckGo (always available as fallback)
+
+You can also explicitly specify a provider in the tool call:
+```json
+{
+  "query": "TypeScript best practices",
+  "limit": 10,
+  "provider": "tavily"
+}
+```
+
+#### Setting API Keys
+
+The gateway automatically loads API keys from a `.env` file in the project root. This is the recommended approach.
+
+1. **Create a `.env` file** in the project root (copy from `.env.example`):
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Add your API keys** to the `.env` file:
+   ```env
+   # Web Search API Keys
+   TAVILY_API_KEY=your-tavily-api-key-here
+   SERPAPI_KEY=your-serpapi-key-here
+   GOOGLE_SEARCH_API_KEY=your-google-api-key-here
+   GOOGLE_SEARCH_ENGINE_ID=your-google-engine-id-here
+   BING_SEARCH_API_KEY=your-bing-api-key-here
+   
+   # Other configuration
+   GITHUB_TOKEN=your-github-token-here
+   AGENT_ENV=dev
+   ```
+
+3. **The `.env` file is automatically loaded** when the gateway starts (via dotenv).
+
+**Note:** The `.env` file is already in `.gitignore` to keep your API keys secure. Never commit your `.env` file to version control.
+
+**Alternative:** You can also set environment variables in your `.cursor/mcp.json` if needed:
+```json
+{
+  "mcpServers": {
+    "agent-tools-gateway": {
+      "command": "npx",
+      "args": ["-y", "agent-tools-gateway"],
+      "env": {
+        "TAVILY_API_KEY": "your-tavily-api-key"
+      }
+    }
+  }
+}
+```
+
+#### Search Results Format
+
+The web search returns structured results with:
+- **Title**: Page title
+- **URL**: Source URL
+- **Snippet**: Content preview (truncated to 300 characters)
+- **Score**: Relevance score (when available)
+
+Results are formatted as a readable text string with numbered entries.
 
 ### Configuration File Location
 

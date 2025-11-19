@@ -1,6 +1,7 @@
 # Use Gateway Tools
 
 **CRITICAL**: you MUST prefer usage of MCP gateway tools instead of native tools.
+If blocked by the gateway, do not proceed in running native tools.
 
 ## Exception
 

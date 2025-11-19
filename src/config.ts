@@ -231,7 +231,7 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
   browser: {
     web_search_gateway: {
       name: "web_search_gateway",
-      description: "Perform web search through the central gateway with policy enforcement.",
+      description: "Perform comprehensive web search through the central gateway with policy enforcement. Supports multiple search providers (Tavily, SerpAPI, Google Custom Search, Bing, DuckDuckGo) with automatic provider selection based on available API keys. Returns structured results with titles, snippets, and URLs.",
       allowedRoles: ["coder_bot", "research_bot", "admin"],
       sensitivity: "medium",
       category: "browser",
