@@ -4,6 +4,7 @@ import type { ToolPolicyConfig } from "../../config.js";
 import { BaseGatewayHandler, type AgentContext, type ToolExecutionResult } from "./BaseGatewayHandler.js";
 import { logger } from "../../logger.js";
 import { evaluatePolicy } from "../../policy.js";
+import { inferAgentIntent, type ToolCallEvent } from "../../intent/index.js";
 
 export interface FileReadArgs extends Record<string, unknown> {
   path: string;
@@ -63,8 +64,8 @@ export class FileOperationsHandler extends BaseGatewayHandler {
       return this.createErrorResponse("File read tool not configured");
     }
 
-    const decision = await this.evaluatePolicy(agentContext, args, toolCfg);
-    this.logRequest(agentContext, args, decision);
+    const { decision, intent } = await this.evaluatePolicy(agentContext, args, toolCfg);
+    this.logRequest(agentContext, args, decision, intent);
 
     if (decision.decision === "deny") {
       return this.createDeniedResponse(decision.reason);
@@ -99,8 +100,8 @@ export class FileOperationsHandler extends BaseGatewayHandler {
       return this.createErrorResponse("File write tool not configured");
     }
 
-    const decision = await this.evaluatePolicy(agentContext, args, toolCfg);
-    this.logRequest(agentContext, args, decision);
+    const { decision, intent } = await this.evaluatePolicy(agentContext, args, toolCfg);
+    this.logRequest(agentContext, args, decision, intent);
 
     if (decision.decision === "deny") {
       return this.createDeniedResponse(decision.reason);
@@ -140,8 +141,8 @@ export class FileOperationsHandler extends BaseGatewayHandler {
       return this.createErrorResponse("File search tool not configured");
     }
 
-    const decision = await this.evaluatePolicy(agentContext, args, toolCfg);
-    this.logRequest(agentContext, args, decision);
+    const { decision, intent } = await this.evaluatePolicy(agentContext, args, toolCfg);
+    this.logRequest(agentContext, args, decision, intent);
 
     if (decision.decision === "deny") {
       return this.createDeniedResponse(decision.reason);
@@ -245,14 +246,32 @@ export class FileOperationsHandler extends BaseGatewayHandler {
     agentContext: AgentContext,
     args: Record<string, unknown>,
     toolCfg: ToolPolicyConfig
-  ) {
-    return await evaluatePolicy({
+  ): Promise<{ decision: Awaited<ReturnType<typeof evaluatePolicy>>; intent: Awaited<ReturnType<typeof inferAgentIntent>> }> {
+    // Step 1: Intent Layer
+    const toolCallEvent: ToolCallEvent = {
+      toolName: toolCfg.name,
+      arguments: args,
+      agentId: agentContext.agentId,
+      provider: 'cursor',
+      requestId: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+    };
+
+    const intent = await inferAgentIntent(toolCallEvent, {
+      name: toolCfg.name,
+      description: toolCfg.description,
+    });
+
+    // Step 2: Policy Engine
+    const decision = await evaluatePolicy({
       tool: toolCfg,
       agentId: agentContext.agentId,
       agentRole: agentContext.agentRole,
       env: agentContext.env,
       args,
+      intent,
     });
+
+    return { decision, intent };
   }
 }
 

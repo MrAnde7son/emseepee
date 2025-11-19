@@ -1,7 +1,6 @@
 import type { ThirdPartyToolConfig, HttpExecutionConfig, CommandExecutionConfig } from "../../config.js";
 import { BaseGatewayHandler, type AgentContext, type ToolExecutionResult } from "./BaseGatewayHandler.js";
 import { logger } from "../../logger.js";
-import { evaluatePolicy } from "../../policy.js";
 
 /**
  * Generic handler for third-party tools that execute based on configuration.
@@ -30,21 +29,7 @@ export class GenericToolHandler extends BaseGatewayHandler {
     agentContext: AgentContext,
     args: Record<string, unknown>
   ): Promise<ToolExecutionResult> {
-    const decision = await evaluatePolicy({
-      tool: this.toolConfig,
-      agentId: agentContext.agentId,
-      agentRole: agentContext.agentRole,
-      env: agentContext.env,
-      args,
-    });
-
-    this.logRequest(agentContext, args, decision);
-
-    if (decision.decision === "deny") {
-      return this.createDeniedResponse(decision.reason);
-    }
-
-    try {
+    return this.executeWithPolicy(agentContext, args, async () => {
       let result: string;
 
       switch (this.toolConfig.execution.type) {
@@ -66,9 +51,7 @@ export class GenericToolHandler extends BaseGatewayHandler {
       });
 
       return this.createSuccessResponse(result);
-    } catch (error) {
-      return this.handleError(error, args);
-    }
+    });
   }
 
   /**
