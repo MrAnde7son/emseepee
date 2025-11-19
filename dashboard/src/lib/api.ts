@@ -54,8 +54,9 @@ export const Api = {
     const search = includeArchived ? "?includeArchived=true" : "";
     return fetchJSON<Policy[]>(`/api/policies${search}`);
   },
-  createPolicy: (policy: Omit<Policy, "id" | "enabled">) => postJSON<Policy>("/api/policies", policy),
-  updatePolicy: (id: string, policy: Partial<Policy>) => putJSON<Policy>(`/api/policies/${id}`, policy),
+  getPolicy: (id: string) => fetchJSON<Policy & { condition?: any }>(`/api/policies/${id}`),
+  createPolicy: (policy: Partial<Policy> & { scopeTarget?: string }) => postJSON<Policy>("/api/policies", policy),
+  updatePolicy: (id: string, policy: Partial<Policy> & { scopeTarget?: string }) => putJSON<Policy>(`/api/policies/${id}`, policy),
   deletePolicy: (id: string) => deleteJSON(`/api/policies/${id}`),
   archivePolicy: (id: string) => postJSON<{ success: boolean }>(`/api/policies/${id}/archive`, {}),
   restorePolicy: (id: string) => postJSON<{ success: boolean }>(`/api/policies/${id}/restore`, {}),

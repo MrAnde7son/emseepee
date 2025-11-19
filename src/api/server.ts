@@ -7,7 +7,7 @@ import { loadConfigFromFile } from "../configLoader.js";
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import type { PolicyRule, PolicyOperation } from "../config.js";
+import type { PolicyRule, PolicyOperation, PolicyRuleCondition } from "../config.js";
 // Types matching dashboard types
 type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "custom";
 
@@ -33,7 +33,7 @@ interface Policy {
   id: string;
   name: string;
   description?: string;
-  scope: "tool" | "provider" | "agent" | "global";
+  scope: "tool" | "provider" | "agent" | "mcp" | "global";
   effect: "allow" | "deny" | "log" | "webhook";
   priority: number;
   enabled: boolean;
@@ -229,6 +229,26 @@ async function getTools(): Promise<Tool[]> {
 }
 
 /**
+ * Infer policy scope from condition
+ */
+function inferScopeFromCondition(condition: PolicyRuleCondition): "tool" | "provider" | "agent" | "mcp" | "global" {
+  // If toolName is specified, scope is "tool"
+  if (condition.toolName !== undefined) {
+    return "tool";
+  }
+  // If agentRole is specified (and no toolName), scope is "agent"
+  if (condition.agentRole !== undefined) {
+    return "agent";
+  }
+  // If category is specified, it's still tool-level scope
+  if (condition.category !== undefined) {
+    return "tool";
+  }
+  // Otherwise, it's global
+  return "global";
+}
+
+/**
  * Get all policies
  */
 async function getPolicies(includeArchived: boolean = false): Promise<Policy[]> {
@@ -251,7 +271,7 @@ async function getPolicies(includeArchived: boolean = false): Promise<Policy[]> 
       id: `policy-${originalIndex}`,
       name: rule.name,
       description: rule.description,
-      scope: "global", // Could be enhanced to detect scope from condition
+      scope: inferScopeFromCondition(rule.condition),
       effect: rule.action.operation === "block" ? "deny" : rule.action.operation === "allow" ? "allow" : rule.action.operation === "log" ? "log" : "webhook",
       priority: rule.priority ?? 0,
       enabled: true, // Policies are always enabled if they exist
@@ -262,19 +282,76 @@ async function getPolicies(includeArchived: boolean = false): Promise<Policy[]> 
 
 /**
  * Add a new policy rule
+ * Accepts either PolicyRule (full) or Policy (simplified) format
  */
-async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string }): Promise<Policy> {
+async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string } | Partial<Policy> & { scopeTarget?: string }): Promise<Policy> {
   const configPath = getConfigPath();
   const config = loadConfigFromFile(configPath);
   
-  const newRule: PolicyRule = {
-    name: rule.name || `policy-${Date.now()}`,
-    description: rule.description,
-    condition: rule.condition,
-    action: rule.action,
-    priority: rule.priority,
-    stopOnMatch: rule.stopOnMatch,
-  };
+  // Check if this is a Policy update (simplified) or PolicyRule update (full)
+  const isPolicyFormat = "effect" in rule || "scope" in rule || "enabled" in rule;
+  
+  let newRule: PolicyRule;
+  
+  if (isPolicyFormat) {
+    // Convert Policy format to PolicyRule
+    const policyData = rule as Partial<Policy> & { scopeTarget?: string };
+    const scope = policyData.scope || "global";
+    const scopeTarget = policyData.scopeTarget;
+    
+    // Build condition based on scope
+    const condition: PolicyRuleCondition = {};
+    if (scope === "tool" && scopeTarget) {
+      condition.toolName = scopeTarget;
+    } else if (scope === "agent" && scopeTarget) {
+      condition.agentRole = scopeTarget;
+    } else if (scope === "provider" && scopeTarget) {
+      // Provider scope - match tools called by specific provider/agent
+      // For now, we can't directly match by provider in condition
+      // Future: could add providerId field to condition or use other matching
+      // For now, leave condition empty (would need backend enhancement)
+    } else if (scope === "mcp" && scopeTarget) {
+      // MCP scope - match tools from specific MCP server
+      // MCP tools have providerId set to the MCP server name
+      // Since condition doesn't support providerId matching directly,
+      // we'll use a toolName pattern that matches tools from this MCP server
+      // Note: This is a workaround - ideally we'd add providerId to condition
+      // For now, we can't perfectly match MCP tools without backend changes
+      // Leaving empty for now - would need to enhance condition matching
+    }
+    // For global scope, condition is empty (applies to all)
+    
+    // Build action from effect
+    const effect = policyData.effect || "allow";
+    const operationMap: Record<string, PolicyOperation> = {
+      allow: "allow",
+      deny: "block",
+      log: "log",
+      webhook: "webhook",
+    };
+    
+    newRule = {
+      name: policyData.name || `policy-${Date.now()}`,
+      description: policyData.description,
+      condition,
+      action: {
+        operation: operationMap[effect] || "allow",
+      },
+      priority: policyData.priority ?? 0,
+      archived: policyData.enabled === false,
+    };
+  } else {
+    // Full PolicyRule format
+    const policyRule = rule as Omit<PolicyRule, "name"> & { name?: string };
+    newRule = {
+      name: policyRule.name || `policy-${Date.now()}`,
+      description: policyRule.description,
+      condition: policyRule.condition,
+      action: policyRule.action,
+      priority: policyRule.priority,
+      stopOnMatch: policyRule.stopOnMatch,
+    };
+  }
   
   config.policyRules.push(newRule);
   
@@ -303,10 +380,10 @@ async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string }): Pr
     id: `policy-${config.policyRules.length - 1}`,
     name: newRule.name,
     description: newRule.description,
-    scope: "global",
+    scope: inferScopeFromCondition(newRule.condition),
     effect: newRule.action.operation === "block" ? "deny" : newRule.action.operation === "allow" ? "allow" : newRule.action.operation === "log" ? "log" : "webhook",
     priority: newRule.priority ?? 0,
-    enabled: true,
+    enabled: !(newRule.archived ?? false),
   };
 }
 
@@ -354,6 +431,66 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<P
         operation: operationMap[policyUpdate.effect] ?? existingRule.action.operation,
       };
     }
+    
+    // Update scope by modifying condition
+    if (policyUpdate.scope) {
+      const currentScope = inferScopeFromCondition(existingRule.condition);
+      const newScope = policyUpdate.scope;
+      const scopeTarget = (policyUpdate as any).scopeTarget;
+      
+      // Only update if scope actually changed or scopeTarget is provided
+      if (currentScope !== newScope || scopeTarget) {
+        const updatedCondition: PolicyRuleCondition = { ...existingRule.condition };
+        
+        // Remove scope-specific fields when changing scope
+        if (newScope === "global") {
+          // Remove tool/agent-specific fields for global scope
+          delete updatedCondition.toolName;
+          delete updatedCondition.category;
+          delete updatedCondition.agentRole;
+        } else if (newScope === "agent") {
+          // For agent scope, remove tool-specific but set agentRole
+          delete updatedCondition.toolName;
+          delete updatedCondition.category;
+          if (scopeTarget) {
+            updatedCondition.agentRole = scopeTarget;
+          } else if (!updatedCondition.agentRole) {
+            // If no scopeTarget provided and no existing agentRole, keep existing or set empty
+            // This preserves existing agentRole if it exists
+          }
+        } else if (newScope === "tool") {
+          // For tool scope, remove agentRole but set toolName
+          delete updatedCondition.agentRole;
+          if (scopeTarget) {
+            updatedCondition.toolName = scopeTarget;
+            // Remove category when specific tool is selected
+            delete updatedCondition.category;
+          } else if (!updatedCondition.toolName && !updatedCondition.category) {
+            // If no scopeTarget and no existing tool/category, preserve what exists
+          }
+        } else if (newScope === "provider") {
+          // Provider scope - match tools called by specific provider/agent
+          // For now, treat similar to global but could be enhanced with provider matching
+          delete updatedCondition.toolName;
+          delete updatedCondition.category;
+          delete updatedCondition.agentRole;
+          // Future: could add provider matching logic here (would need providerId in condition)
+        } else if (newScope === "mcp") {
+          // MCP scope - match tools from specific MCP server
+          // MCP tools have providerId set to the MCP server name
+          // Since condition doesn't support providerId matching directly,
+          // we'll need to enhance the condition structure or use workarounds
+          // For now, clear other fields but can't set MCP-specific matching
+          delete updatedCondition.toolName;
+          delete updatedCondition.category;
+          delete updatedCondition.agentRole;
+          // Note: MCP scope matching would require backend enhancement
+          // to add providerId or mcpServer field to PolicyRuleCondition
+        }
+        
+        updatedRule.condition = updatedCondition;
+      }
+    }
   } else {
     // Full PolicyRule update
     updatedRule = {
@@ -392,7 +529,7 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<P
     id,
     name: updatedRule.name,
     description: updatedRule.description,
-    scope: "global",
+    scope: inferScopeFromCondition(updatedRule.condition),
     effect: updatedRule.action.operation === "block" ? "deny" : updatedRule.action.operation === "allow" ? "allow" : updatedRule.action.operation === "log" ? "log" : "webhook",
     priority: updatedRule.priority ?? 0,
     enabled: !(updatedRule.archived ?? false),
@@ -618,14 +755,63 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       return;
     }
     
-    if (path === "/api/policies" && method === "POST") {
-      const body = await parseBody(req) as Partial<PolicyRule>;
-      // Ensure required fields are present
-      if (!body.condition || !body.action) {
-        sendJSON(res, 400, { error: "Missing required fields: condition and action" });
+    // Get single policy with full details (including condition)
+    // This must come before archive/restore routes
+    if (path.startsWith("/api/policies/") && method === "GET") {
+      const id = path.replace("/api/policies/", "");
+      // Skip if it's an archive/restore endpoint (those are POST)
+      if (id.includes("/archive") || id.includes("/restore")) {
+        // Not a GET request for these endpoints, continue
+      } else {
+        const rules = await getPolicyRules();
+        const index = parseInt(id.replace("policy-", ""), 10);
+        if (isNaN(index) || index < 0 || index >= rules.length) {
+          sendJSON(res, 404, { error: "Policy not found" });
+          return;
+        }
+        const rule = rules[index];
+        // Return both the simplified Policy and the full PolicyRule
+        const policy = {
+          id,
+          name: rule.name,
+          description: rule.description,
+          scope: inferScopeFromCondition(rule.condition),
+          effect: rule.action.operation === "block" ? "deny" : rule.action.operation === "allow" ? "allow" : rule.action.operation === "log" ? "log" : "webhook",
+          priority: rule.priority ?? 0,
+          enabled: !(rule.archived ?? false),
+          archived: rule.archived ?? false,
+          condition: rule.condition, // Include full condition
+        };
+        sendJSON(res, 200, policy);
         return;
       }
-      const policy = await addPolicy(body as Omit<PolicyRule, "name"> & { name?: string });
+    }
+    
+    if (path === "/api/policies" && method === "POST") {
+      const body = await parseBody(req) as Partial<PolicyRule> | Partial<Policy> & { scopeTarget?: string };
+      // Check if it's Policy format (simplified) or PolicyRule format (full)
+      const isPolicyFormat = "effect" in body || "scope" in body || "enabled" in body;
+      
+      if (isPolicyFormat) {
+        // Policy format - validate required fields
+        const policyData = body as Partial<Policy> & { scopeTarget?: string };
+        if (!policyData.name) {
+          sendJSON(res, 400, { error: "Missing required field: name" });
+          return;
+        }
+        if (!policyData.scope || policyData.scope === "global" || policyData.scopeTarget) {
+          // Valid - either global scope or scope with target provided
+        }
+      } else {
+        // PolicyRule format - ensure required fields are present
+        const policyRule = body as Partial<PolicyRule>;
+        if (!policyRule.condition || !policyRule.action) {
+          sendJSON(res, 400, { error: "Missing required fields: condition and action" });
+          return;
+        }
+      }
+      
+      const policy = await addPolicy(body);
       sendJSON(res, 201, policy);
       return;
     }

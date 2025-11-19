@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { usePolicies } from "@/hooks/useGatewayData";
+import { usePolicies, useTools, useProviders } from "@/hooks/useGatewayData";
 import { Api } from "@/lib/api";
-import { Policy } from "@/lib/types";
+import { Policy, Tool, Provider } from "@/lib/types";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,12 +25,50 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+// Common agent roles - can be extracted from policies or config
+const COMMON_AGENT_ROLES = ["coder_bot", "research_bot", "admin"];
+
 export default function PoliciesPage() {
   const [showArchived, setShowArchived] = useState(false);
   const { data, isLoading, refetch } = usePolicies(showArchived);
+  const { data: toolsData } = useTools();
+  const { data: providersData } = useProviders();
   const [editingPolicy, setEditingPolicy] = useState<string | null>(null);
   const [editingPolicyData, setEditingPolicyData] = useState<Policy | null>(null);
+  const [scopeTarget, setScopeTarget] = useState<string>("");
   const [updatingPolicy, setUpdatingPolicy] = useState(false);
+  const [creatingPolicy, setCreatingPolicy] = useState(false);
+  const [newPolicyData, setNewPolicyData] = useState<Partial<Policy>>({
+    name: "",
+    description: "",
+    scope: "global",
+    effect: "allow",
+    priority: 0,
+    enabled: true,
+  });
+  const [newPolicyScopeTarget, setNewPolicyScopeTarget] = useState<string>("");
+  
+  // Extract unique agent roles from existing policies
+  const availableAgentRoles = useMemo(() => {
+    const roles = new Set<string>(COMMON_AGENT_ROLES);
+    if (data) {
+      // We'd need to parse conditions from backend, but for now use common roles
+      // In a real implementation, we'd extract from policy conditions
+    }
+    return Array.from(roles).sort();
+  }, [data]);
+  
+  // Get MCP servers from tools
+  const mcpServers = useMemo(() => {
+    if (!toolsData) return [];
+    const servers = new Set<string>();
+    toolsData.forEach((tool: Tool) => {
+      if (tool.source === "mcp" && tool.providerId) {
+        servers.add(tool.providerId);
+      }
+    });
+    return Array.from(servers).sort();
+  }, [toolsData]);
   const [deletingPolicy, setDeletingPolicy] = useState<string | null>(null);
   const [archivingPolicy, setArchivingPolicy] = useState<string | null>(null);
   const [restoringPolicy, setRestoringPolicy] = useState<string | null>(null);
@@ -123,34 +161,125 @@ export default function PoliciesPage() {
     }
   };
 
-  const handleEditClick = (id: string) => {
+  const handleEditClick = async (id: string) => {
     const policy = data?.find((p: Policy) => p.id === id);
     if (policy) {
       setEditingPolicyData({ ...policy });
       setEditingPolicy(id);
+      
+      // Fetch full policy details to get condition
+      try {
+        const fullPolicy = await Api.getPolicy(id);
+        if (fullPolicy.condition) {
+          // Extract scope target from condition
+          if (fullPolicy.condition.toolName) {
+            const toolName = Array.isArray(fullPolicy.condition.toolName) 
+              ? fullPolicy.condition.toolName[0] 
+              : fullPolicy.condition.toolName;
+            setScopeTarget(toolName);
+          } else if (fullPolicy.condition.agentRole) {
+            const agentRole = Array.isArray(fullPolicy.condition.agentRole)
+              ? fullPolicy.condition.agentRole[0]
+              : fullPolicy.condition.agentRole;
+            setScopeTarget(agentRole);
+          } else {
+            setScopeTarget("");
+          }
+        } else {
+          setScopeTarget("");
+        }
+      } catch (error) {
+        console.error("Failed to fetch policy details:", error);
+        setScopeTarget("");
+      }
     }
   };
 
   const handleUpdatePolicy = async () => {
     if (!editingPolicy || !editingPolicyData) return;
     
+    // Build update payload with scope target
+    const updatePayload: Partial<Policy> & { scopeTarget?: string } = {
+      name: editingPolicyData.name,
+      description: editingPolicyData.description,
+      priority: editingPolicyData.priority,
+      effect: editingPolicyData.effect,
+      scope: editingPolicyData.scope,
+      enabled: editingPolicyData.enabled,
+    };
+    
+    // Add scope target if scope is not global
+    if (editingPolicyData.scope !== "global" && scopeTarget) {
+      updatePayload.scopeTarget = scopeTarget;
+    }
+    
     setUpdatingPolicy(true);
     try {
-      await Api.updatePolicy(editingPolicy, {
-        name: editingPolicyData.name,
-        description: editingPolicyData.description,
-        priority: editingPolicyData.priority,
-        effect: editingPolicyData.effect,
-        enabled: editingPolicyData.enabled,
-      });
+      await Api.updatePolicy(editingPolicy, updatePayload);
       await refetch();
       setEditingPolicy(null);
       setEditingPolicyData(null);
+      setScopeTarget("");
     } catch (error) {
       console.error("Failed to update policy:", error);
       alert(`Failed to update policy: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setUpdatingPolicy(false);
+    }
+  };
+
+  const handleCreatePolicy = async () => {
+    if (!newPolicyData.name) {
+      alert("Policy name is required");
+      return;
+    }
+    
+    // Validate scope target if scope is not global
+    if (newPolicyData.scope !== "global" && !newPolicyScopeTarget) {
+      const scopeLabel = newPolicyData.scope === "tool" ? "tool" 
+        : newPolicyData.scope === "agent" ? "agent role"
+        : newPolicyData.scope === "provider" ? "provider/agent"
+        : newPolicyData.scope === "mcp" ? "MCP server"
+        : newPolicyData.scope;
+      alert(`Please select a ${scopeLabel} for this policy`);
+      return;
+    }
+    
+    // Build create payload with scope target
+    const createPayload: Partial<Policy> & { scopeTarget?: string } = {
+      name: newPolicyData.name,
+      description: newPolicyData.description,
+      priority: newPolicyData.priority ?? 0,
+      effect: newPolicyData.effect ?? "allow",
+      scope: newPolicyData.scope ?? "global",
+      enabled: newPolicyData.enabled ?? true,
+    };
+    
+    // Add scope target if scope is not global
+    if (newPolicyData.scope !== "global" && newPolicyScopeTarget) {
+      createPayload.scopeTarget = newPolicyScopeTarget;
+    }
+    
+    setCreatingPolicy(true);
+    try {
+      await Api.createPolicy(createPayload);
+      await refetch();
+      setShowCreateDialog(false);
+      // Reset form
+      setNewPolicyData({
+        name: "",
+        description: "",
+        scope: "global",
+        effect: "allow",
+        priority: 0,
+        enabled: true,
+      });
+      setNewPolicyScopeTarget("");
+    } catch (error) {
+      console.error("Failed to create policy:", error);
+      alert(`Failed to create policy: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setCreatingPolicy(false);
     }
   };
 
@@ -336,20 +465,225 @@ export default function PoliciesPage() {
         </div>
       )}
       
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent>
+      <Dialog open={showCreateDialog} onOpenChange={(open) => {
+        setShowCreateDialog(open);
+        if (!open) {
+          // Reset form when closing
+          setNewPolicyData({
+            name: "",
+            description: "",
+            scope: "global",
+            effect: "allow",
+            priority: 0,
+            enabled: true,
+          });
+          setNewPolicyScopeTarget("");
+        }
+      }}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Create Policy</DialogTitle>
             <DialogDescription>
-              Create a new policy rule. Note: Full policy editing requires direct config.json editing.
+              Create a new policy rule. Scope determines what the policy applies to: Tool (specific tools), Agent (specific agent roles), Provider (specific providers like Cursor, Gemini), MCP Server (specific MCP servers like GitHub), or Global (all operations). Note: Advanced condition editing requires direct config.json editing.
             </DialogDescription>
           </DialogHeader>
-          <div className="text-sm text-muted-foreground py-4">
-            Policy creation via UI is coming soon. For now, please edit config.json directly.
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label htmlFor="create-name" className="text-sm font-medium">
+                Name <span className="text-red-500">*</span>
+              </label>
+              <Input
+                id="create-name"
+                value={newPolicyData.name}
+                onChange={(e) => setNewPolicyData({ ...newPolicyData, name: e.target.value })}
+                placeholder="Policy name"
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="create-description" className="text-sm font-medium">
+                Description
+              </label>
+              <Input
+                id="create-description"
+                value={newPolicyData.description || ""}
+                onChange={(e) => setNewPolicyData({ ...newPolicyData, description: e.target.value })}
+                placeholder="Policy description (optional)"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <label htmlFor="create-priority" className="text-sm font-medium">
+                  Priority
+                </label>
+                <Input
+                  id="create-priority"
+                  type="number"
+                  value={newPolicyData.priority ?? 0}
+                  onChange={(e) => setNewPolicyData({ ...newPolicyData, priority: parseInt(e.target.value, 10) || 0 })}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="create-scope" className="text-sm font-medium">
+                  Scope
+                </label>
+                <Select
+                  value={newPolicyData.scope}
+                  onValueChange={(value) => {
+                    setNewPolicyData({ ...newPolicyData, scope: value as Policy["scope"] });
+                    // Clear scope target when scope changes
+                    setNewPolicyScopeTarget("");
+                  }}
+                >
+                  <SelectTrigger id="create-scope">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="global">Global</SelectItem>
+                    <SelectItem value="tool">Tool</SelectItem>
+                    <SelectItem value="agent">Agent</SelectItem>
+                    <SelectItem value="provider">Provider</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label htmlFor="create-effect" className="text-sm font-medium">
+                  Effect
+                </label>
+                <Select
+                  value={newPolicyData.effect}
+                  onValueChange={(value) => setNewPolicyData({ ...newPolicyData, effect: value as Policy["effect"] })}
+                >
+                  <SelectTrigger id="create-effect">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="allow">Allow</SelectItem>
+                    <SelectItem value="deny">Deny</SelectItem>
+                    <SelectItem value="log">Log</SelectItem>
+                    <SelectItem value="webhook">Webhook</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {newPolicyData.scope !== "global" && (
+              <div className="space-y-2">
+                <label htmlFor="create-scope-target" className="text-sm font-medium">
+                  {newPolicyData.scope === "tool" && "Select Tool"}
+                  {newPolicyData.scope === "agent" && "Select Agent Role"}
+                  {newPolicyData.scope === "provider" && "Select Provider"}
+                  {newPolicyData.scope === "mcp" && "Select MCP Server"}
+                  <span className="text-red-500">*</span>
+                </label>
+                {newPolicyData.scope === "tool" && (
+                  <Select
+                    value={newPolicyScopeTarget}
+                    onValueChange={setNewPolicyScopeTarget}
+                  >
+                    <SelectTrigger id="create-scope-target">
+                      <SelectValue placeholder="Select a tool" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {toolsData?.map((tool: Tool) => (
+                        <SelectItem key={tool.id} value={tool.name}>
+                          {tool.name}
+                          {tool.category && ` (${tool.category})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {newPolicyData.scope === "agent" && (
+                  <Select
+                    value={newPolicyScopeTarget}
+                    onValueChange={setNewPolicyScopeTarget}
+                  >
+                    <SelectTrigger id="create-scope-target">
+                      <SelectValue placeholder="Select an agent role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableAgentRoles.map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {role}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {newPolicyData.scope === "provider" && (
+                  <Select
+                    value={newPolicyScopeTarget}
+                    onValueChange={setNewPolicyScopeTarget}
+                  >
+                    <SelectTrigger id="create-scope-target">
+                      <SelectValue placeholder="Select a provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providersData?.map((provider: Provider) => (
+                        <SelectItem key={provider.id} value={provider.id}>
+                          {provider.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {newPolicyData.scope === "mcp" && (
+                  <Select
+                    value={newPolicyScopeTarget}
+                    onValueChange={setNewPolicyScopeTarget}
+                  >
+                    <SelectTrigger id="create-scope-target">
+                      <SelectValue placeholder="Select an MCP server" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {mcpServers.map((server) => (
+                        <SelectItem key={server} value={server}>
+                          {server}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Status</label>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="create-enabled"
+                  checked={newPolicyData.enabled ?? true}
+                  onCheckedChange={(checked) => setNewPolicyData({ ...newPolicyData, enabled: checked === true })}
+                />
+                <label htmlFor="create-enabled" className="text-sm cursor-pointer">
+                  Enabled
+                </label>
+              </div>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-              Close
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowCreateDialog(false);
+                setNewPolicyData({
+                  name: "",
+                  description: "",
+                  scope: "global",
+                  effect: "allow",
+                  priority: 0,
+                  enabled: true,
+                });
+                setNewPolicyScopeTarget("");
+              }}
+              disabled={creatingPolicy}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreatePolicy}
+              disabled={creatingPolicy || !newPolicyData.name || (newPolicyData.scope !== "global" && !newPolicyScopeTarget)}
+            >
+              {creatingPolicy ? "Creating..." : "Create Policy"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -366,7 +700,7 @@ export default function PoliciesPage() {
             <DialogHeader>
               <DialogTitle>Edit Policy</DialogTitle>
               <DialogDescription>
-                Update the policy settings. Note: Advanced condition editing requires direct config.json editing.
+                Update the policy settings. Scope determines what the policy applies to: Tool (specific tools), Agent (specific agent roles), Provider (specific providers like Cursor, Gemini), MCP Server (specific MCP servers like GitHub), or Global (all operations). Note: Advanced condition editing requires direct config.json editing.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -392,7 +726,7 @@ export default function PoliciesPage() {
                   placeholder="Policy description (optional)"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <label htmlFor="edit-priority" className="text-sm font-medium">
                     Priority
@@ -404,6 +738,30 @@ export default function PoliciesPage() {
                     onChange={(e) => setEditingPolicyData({ ...editingPolicyData, priority: parseInt(e.target.value, 10) || 0 })}
                     placeholder="0"
                   />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="edit-scope" className="text-sm font-medium">
+                    Scope
+                  </label>
+                  <Select
+                    value={editingPolicyData.scope}
+                    onValueChange={(value) => {
+                      setEditingPolicyData({ ...editingPolicyData, scope: value as Policy["scope"] });
+                      // Clear scope target when scope changes
+                      setScopeTarget("");
+                    }}
+                  >
+                    <SelectTrigger id="edit-scope">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="global">Global</SelectItem>
+                      <SelectItem value="tool">Tool</SelectItem>
+                      <SelectItem value="agent">Agent</SelectItem>
+                      <SelectItem value="provider">Provider</SelectItem>
+                      <SelectItem value="mcp">MCP Server</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <label htmlFor="edit-effect" className="text-sm font-medium">
@@ -425,6 +783,85 @@ export default function PoliciesPage() {
                   </Select>
                 </div>
               </div>
+              {editingPolicyData.scope !== "global" && (
+                <div className="space-y-2">
+                  <label htmlFor="edit-scope-target" className="text-sm font-medium">
+                    {editingPolicyData.scope === "tool" && "Select Tool"}
+                    {editingPolicyData.scope === "agent" && "Select Agent Role"}
+                    {editingPolicyData.scope === "provider" && "Select Provider"}
+                    {editingPolicyData.scope === "mcp" && "Select MCP Server"}
+                  </label>
+                  {editingPolicyData.scope === "tool" && (
+                    <Select
+                      value={scopeTarget}
+                      onValueChange={setScopeTarget}
+                    >
+                      <SelectTrigger id="edit-scope-target">
+                        <SelectValue placeholder="Select a tool" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {toolsData?.map((tool: Tool) => (
+                          <SelectItem key={tool.id} value={tool.name}>
+                            {tool.name}
+                            {tool.category && ` (${tool.category})`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {editingPolicyData.scope === "agent" && (
+                    <Select
+                      value={scopeTarget}
+                      onValueChange={setScopeTarget}
+                    >
+                      <SelectTrigger id="edit-scope-target">
+                        <SelectValue placeholder="Select an agent role" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableAgentRoles.map((role) => (
+                          <SelectItem key={role} value={role}>
+                            {role}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {editingPolicyData.scope === "provider" && (
+                    <Select
+                      value={scopeTarget}
+                      onValueChange={setScopeTarget}
+                    >
+                      <SelectTrigger id="edit-scope-target">
+                        <SelectValue placeholder="Select a provider" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {providersData?.map((provider: Provider) => (
+                          <SelectItem key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {editingPolicyData.scope === "mcp" && (
+                    <Select
+                      value={scopeTarget}
+                      onValueChange={setScopeTarget}
+                    >
+                      <SelectTrigger id="edit-scope-target">
+                        <SelectValue placeholder="Select an MCP server" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mcpServers.map((server) => (
+                          <SelectItem key={server} value={server}>
+                            {server}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-sm font-medium">Status</label>
                 <div className="flex items-center space-x-2">

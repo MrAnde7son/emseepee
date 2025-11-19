@@ -22,7 +22,7 @@ export interface Policy {
   id: string;
   name: string;
   description?: string;
-  scope: "tool" | "provider" | "agent" | "global";
+  scope: "tool" | "provider" | "agent" | "mcp" | "global";
   effect: "allow" | "deny" | "log" | "webhook";
   priority: number;
   enabled: boolean;
