@@ -33,14 +33,14 @@ export default function EventsPage() {
         <div className="flex items-center gap-2">
           <Input
             placeholder="Search agent, tool, provider, intent…"
-            className="h-8 w-56 bg-slate-900 border-slate-700 text-xs"
+            className="h-8 w-56 text-xs"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
           />
           <Button
             size="icon"
             variant="outline"
-            className="h-8 w-8 border-slate-700 bg-slate-900/50 text-slate-200 hover:bg-slate-800 hover:text-white hover:border-slate-600"
+            className="h-8 w-8"
             onClick={() => refetch()}
           >
             <Filter className="h-4 w-4" />
@@ -95,13 +95,6 @@ export default function EventsPage() {
                         : e.decision === "log"
                         ? "outline"
                         : "default"
-                    }
-                    className={
-                      e.decision === "allow"
-                        ? "bg-emerald-500/80 text-slate-950"
-                        : e.decision === "deny"
-                        ? ""
-                        : "text-slate-300"
                     }
                   >
                     {e.decision}

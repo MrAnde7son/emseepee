@@ -86,9 +86,6 @@ export default function PoliciesPage() {
               <div>
                 <Badge
                   variant={p.enabled ? "default" : "outline"}
-                  className={
-                    p.enabled ? "bg-emerald-500/80 text-slate-950" : "text-slate-400"
-                  }
                 >
                   {p.enabled ? "enabled" : "disabled"}
                 </Badge>

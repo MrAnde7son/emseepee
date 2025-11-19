@@ -41,7 +41,6 @@ export default function ProvidersPage() {
             variant="outline" 
             size="sm" 
             onClick={() => refetch()}
-            className="border-slate-700 bg-slate-900/50 text-slate-200 hover:bg-slate-800 hover:text-white hover:border-slate-600"
           >
             <RefreshCcw className="h-3 w-3 mr-1" />
             Refresh
@@ -72,9 +71,6 @@ export default function ProvidersPage() {
                 <div className="font-semibold text-sm">{p.name}</div>
                 <Badge
                   variant={p.status === "connected" ? "default" : "outline"}
-                  className={
-                    p.status === "connected" ? "bg-emerald-500/80 text-slate-950" : ""
-                  }
                 >
                   {p.status}
                 </Badge>
