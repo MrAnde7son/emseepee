@@ -4,6 +4,24 @@
  */
 
 /**
+ * In-memory event storage (in production, use a database)
+ */
+interface GatewayEvent {
+  id: string;
+  timestamp: string;
+  provider: string;
+  agentId: string;
+  toolName: string;
+  intentSummary: string;
+  decision: "allow" | "deny" | "log";
+  riskLevel?: "low" | "medium" | "high";
+  latencyMs?: number;
+}
+
+const eventStore: GatewayEvent[] = [];
+const MAX_EVENTS = 10000; // Keep last 10k events
+
+/**
  * Safely serialize arguments for logging
  * Prevents issues with circular references and complex objects
  */
@@ -57,5 +75,29 @@ export const logger = {
     const serialized = args.map(serializeArg).join(" ");
     console.error("[ERROR]", serialized);
   },
+  /**
+   * Log a gateway event (tool call, policy decision, etc.)
+   */
+  logEvent: (event: Omit<GatewayEvent, "id" | "timestamp">) => {
+    const fullEvent: GatewayEvent = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date().toISOString(),
+      ...event,
+    };
+
+    eventStore.push(fullEvent);
+
+    // Keep only the last MAX_EVENTS events
+    if (eventStore.length > MAX_EVENTS) {
+      eventStore.shift();
+    }
+  },
 };
+
+/**
+ * Get all stored events
+ */
+export function getStoredEvents(): GatewayEvent[] {
+  return [...eventStore];
+}
 

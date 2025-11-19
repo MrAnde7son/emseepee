@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useProviders } from "@/hooks/useGatewayData";
+import { Api } from "@/lib/api";
 
 import { Button } from "@/components/ui/button";
 
@@ -10,6 +12,20 @@ import { PlusCircle, RefreshCcw } from "lucide-react";
 
 export default function ProvidersPage() {
   const { data, isLoading, refetch } = useProviders();
+  const [installing, setInstalling] = useState<string | null>(null);
+  
+  const handleInstall = async (providerId: string) => {
+    setInstalling(providerId);
+    try {
+      await Api.installProvider(providerId);
+      await refetch();
+    } catch (error) {
+      console.error("Failed to install provider:", error);
+      alert(`Failed to install provider: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setInstalling(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -72,12 +88,25 @@ export default function ProvidersPage() {
                 </div>
               )}
               <div className="mt-2 flex gap-2">
-                <Button variant="outline" size="sm" className="text-xs">
-                  View details
-                </Button>
-                <Button variant="outline" size="sm" className="text-xs">
-                  Policies
-                </Button>
+                {p.status === "pending" ? (
+                  <Button 
+                    size="sm" 
+                    className="text-xs"
+                    onClick={() => handleInstall(p.id)}
+                    disabled={installing === p.id}
+                  >
+                    {installing === p.id ? "Installing..." : "Install"}
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" size="sm" className="text-xs">
+                      View details
+                    </Button>
+                    <Button variant="outline" size="sm" className="text-xs">
+                      Policies
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           ))}

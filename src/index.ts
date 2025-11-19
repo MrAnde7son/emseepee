@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { getEnabledCategories, type ToolCategory } from "./config.js";
 import { logger } from "./logger.js";
 import { registerToolsByCategory, registerMcpServerProxies } from "./tools/index.js";
+import { startApiServer } from "./api/server.js";
 
 async function main() {
   // Set up error handlers after logger is initialized
@@ -76,6 +77,9 @@ async function main() {
   logger.info("Agent Tools MCP Gateway server starting...");
   await server.connect(transport);
 }
+
+// Start API server alongside MCP server
+startApiServer();
 
 main().catch((err) => {
   logger.error("Fatal error in MCP gateway server:", err);
