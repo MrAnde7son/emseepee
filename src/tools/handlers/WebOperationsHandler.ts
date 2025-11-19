@@ -1,8 +1,6 @@
 import type { ToolPolicyConfig } from "../../config.js";
 import { BaseGatewayHandler, type AgentContext, type ToolExecutionResult } from "./BaseGatewayHandler.js";
 import { logger } from "../../logger.js";
-import { evaluatePolicy } from "../../policy.js";
-import { inferAgentIntent, type ToolCallEvent } from "../../intent/index.js";
 
 export interface WebSearchArgs extends Record<string, unknown> {
   query: string;
@@ -409,52 +407,22 @@ export class WebOperationsHandler extends BaseGatewayHandler {
       return this.createErrorResponse("Web search tool not configured");
     }
 
-    // Step 1: Intent Layer
-    const toolCallEvent: ToolCallEvent = {
-      toolName: this.toolConfig.name,
-      arguments: args,
-      agentId: agentContext.agentId,
-      provider: 'cursor',
-      requestId: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-    };
-
-    const intent = await inferAgentIntent(toolCallEvent, {
-      name: this.toolConfig.name,
-      description: this.toolConfig.description,
-    });
-
-    // Step 2: Policy Engine
-    const decision = await evaluatePolicy({
-      tool: this.toolConfig,
-      agentId: agentContext.agentId,
-      agentRole: agentContext.agentRole,
-      env: agentContext.env,
-      args,
-      intent,
-    });
-
-    this.logRequest(agentContext, args, decision, intent);
-
-    if (decision.decision === "deny") {
-      return this.createDeniedResponse(decision.reason);
-    }
-
-    try {
+    return this.executeWithPolicy(agentContext, args, async () => {
       const limit = Math.min(args.limit || 5, 20);
       const query = args.query as string;
       const preferredProvider = args.provider as string | undefined;
 
-      const provider = this.getSearchProvider(preferredProvider);
+      const searchProvider = this.getSearchProvider(preferredProvider);
       let results: SearchResult[] = [];
 
       logger.info("[MCP-GATEWAY] web_search_gateway using provider", {
-        provider,
+        provider: searchProvider,
         query,
         limit,
       });
 
       try {
-        switch (provider) {
+        switch (searchProvider) {
           case "tavily":
             results = await this.searchWithTavily(query, limit);
             break;
@@ -471,13 +439,13 @@ export class WebOperationsHandler extends BaseGatewayHandler {
             results = await this.searchWithDuckDuckGo(query, limit);
             break;
           default:
-            throw new Error(`Unknown search provider: ${provider}`);
+            throw new Error(`Unknown search provider: ${searchProvider}`);
         }
       } catch (error) {
         // If primary provider fails and it's not duckduckgo, fallback to duckduckgo
-        if (provider !== "duckduckgo") {
+        if (searchProvider !== "duckduckgo") {
           logger.warn("[MCP-GATEWAY] Primary search provider failed, falling back to DuckDuckGo", {
-            provider,
+            provider: searchProvider,
             error: error instanceof Error ? error.message : String(error),
           });
           try {
@@ -485,7 +453,7 @@ export class WebOperationsHandler extends BaseGatewayHandler {
           } catch (fallbackError) {
             // If fallback also fails, throw a combined error
             throw new Error(
-              `Both primary provider (${provider}) and fallback (DuckDuckGo) failed. ` +
+              `Both primary provider (${searchProvider}) and fallback (DuckDuckGo) failed. ` +
               `Primary error: ${error instanceof Error ? error.message : String(error)}. ` +
               `Fallback error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`
             );
@@ -495,19 +463,17 @@ export class WebOperationsHandler extends BaseGatewayHandler {
         }
       }
 
-      const resultText = this.formatSearchResults(results, provider, query);
+      const resultText = this.formatSearchResults(results, searchProvider, query);
 
       logger.info("[MCP-GATEWAY] web_search_gateway success", {
         query,
         limit,
-        provider,
+        provider: searchProvider,
         resultsFound: results.length,
       });
 
       return this.createSuccessResponse(resultText);
-    } catch (error) {
-      return this.handleError(error, args);
-    }
+    });
   }
 }
 

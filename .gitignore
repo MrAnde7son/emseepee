@@ -39,3 +39,6 @@ coverage/
 Thumbs.db
 .DS_Store
 
+# Gateway runtime data
+.hakuna/
+

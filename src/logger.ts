@@ -3,8 +3,11 @@
  * All logging goes to stderr to avoid interfering with stdout (MCP protocol).
  */
 
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { join } from "path";
+
 /**
- * In-memory event storage (in production, use a database)
+ * File-based event storage (shared across all processes)
  */
 interface GatewayEvent {
   id: string;
@@ -18,8 +21,57 @@ interface GatewayEvent {
   latencyMs?: number;
 }
 
-const eventStore: GatewayEvent[] = [];
 const MAX_EVENTS = 10000; // Keep last 10k events
+
+// Get the events file path
+function getEventsFilePath(): string {
+  // Store in project root, or use a temp directory
+  const projectRoot = process.cwd();
+  const eventsDir = join(projectRoot, ".hakuna");
+  const eventsFile = join(eventsDir, "events.json");
+  
+  // Ensure directory exists
+  if (!existsSync(eventsDir)) {
+    mkdirSync(eventsDir, { recursive: true });
+  }
+  
+  return eventsFile;
+}
+
+// Load events from file
+function loadEventsFromFile(): GatewayEvent[] {
+  const eventsFile = getEventsFilePath();
+  
+  if (!existsSync(eventsFile)) {
+    return [];
+  }
+  
+  try {
+    const content = readFileSync(eventsFile, "utf-8");
+    const events = JSON.parse(content) as GatewayEvent[];
+    // Keep only the last MAX_EVENTS events
+    return events.slice(-MAX_EVENTS);
+  } catch (error) {
+    console.error("[EVENT-STORE] Error loading events from file:", error);
+    return [];
+  }
+}
+
+// Save events to file
+function saveEventsToFile(events: GatewayEvent[]): void {
+  const eventsFile = getEventsFilePath();
+  
+  try {
+    // Keep only the last MAX_EVENTS events
+    const eventsToSave = events.slice(-MAX_EVENTS);
+    writeFileSync(eventsFile, JSON.stringify(eventsToSave, null, 2), "utf-8");
+  } catch (error) {
+    console.error("[EVENT-STORE] Error saving events to file:", error);
+  }
+}
+
+// In-memory cache (synced with file)
+let eventStore: GatewayEvent[] = loadEventsFromFile();
 
 /**
  * Safely serialize arguments for logging
@@ -85,19 +137,26 @@ export const logger = {
       ...event,
     };
 
+    // Reload events from file to get latest state (in case another process added events)
+    eventStore = loadEventsFromFile();
+    
+    // Add new event
     eventStore.push(fullEvent);
-
-    // Keep only the last MAX_EVENTS events
-    if (eventStore.length > MAX_EVENTS) {
-      eventStore.shift();
-    }
+    
+    // Save to file immediately
+    saveEventsToFile(eventStore);
+    
+    // Debug logging to verify events are being stored
+    console.error(`[EVENT-LOG] Stored event: ${fullEvent.toolName} by ${fullEvent.agentId} - ${fullEvent.decision} (Total events: ${eventStore.length})`);
   },
 };
 
 /**
- * Get all stored events
+ * Get all stored events (reloads from file to get latest)
  */
 export function getStoredEvents(): GatewayEvent[] {
+  // Reload from file to get events from all processes
+  eventStore = loadEventsFromFile();
   return [...eventStore];
 }
 

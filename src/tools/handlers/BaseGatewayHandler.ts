@@ -29,9 +29,10 @@ export abstract class BaseGatewayHandler {
   protected async executeWithPolicy(
     agentContext: AgentContext,
     args: Record<string, unknown>,
-    operation: () => Promise<ToolExecutionResult>
+    operation: () => Promise<ToolExecutionResult>,
+    toolConfig?: ToolPolicyConfig
   ): Promise<ToolExecutionResult> {
-    const toolCfg = this.getToolConfig();
+    const toolCfg = toolConfig || this.getToolConfig();
     if (!toolCfg) {
       return this.createErrorResponse("Tool configuration not found");
     }

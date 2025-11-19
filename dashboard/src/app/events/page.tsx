@@ -10,6 +10,15 @@ import { Badge } from "@/components/ui/badge";
 
 import { Button } from "@/components/ui/button";
 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
 import { ShieldAlert, Filter } from "lucide-react";
 
 export default function EventsPage() {
@@ -53,59 +62,62 @@ export default function EventsPage() {
       {data && data.length === 0 && (
         <div className="border border-dashed border-border rounded-xl p-4 text-sm text-muted-foreground flex items-center gap-2">
           <ShieldAlert className="h-4 w-4 text-muted-foreground" />
-          No events yet. Once agents start calling tools through the gateway, they'll
+          No events yet. Once agents start calling tools through the gateway, they&apos;ll
           appear here.
         </div>
       )}
 
       {data && data.length > 0 && (
-        <div className="border border-border rounded-xl overflow-hidden text-xs">
-          <div className="grid grid-cols-[1.8fr,1fr,1fr,1.4fr,0.8fr,0.6fr] gap-2 px-3 py-2 bg-muted text-muted-foreground">
-            <div>Timestamp</div>
-            <div>Agent</div>
-            <div>Provider</div>
-            <div>Tool / intent</div>
-            <div>Decision</div>
-            <div>Latency</div>
-          </div>
-          <div className="divide-y divide-border">
-            {data.map((e) => (
-              <div
-                key={e.id}
-                className="grid grid-cols-[1.8fr,1fr,1fr,1.4fr,0.8fr,0.6fr] gap-2 px-3 py-2 bg-card/50"
-              >
-                <div className="text-[11px] text-foreground">
-                  {new Date(e.timestamp).toLocaleString()}
-                </div>
-                <div className="text-[11px] font-mono text-foreground">
-                  {e.agentId}
-                </div>
-                <div className="text-[11px] text-muted-foreground">{e.provider}</div>
-                <div className="text-[11px] text-foreground">
-                  <span className="font-mono text-[11px]">{e.toolName}</span>
-                  {e.intentSummary && (
-                    <span className="text-muted-foreground"> – {e.intentSummary}</span>
-                  )}
-                </div>
-                <div>
-                  <Badge
-                    variant={
-                      e.decision === "deny"
-                        ? "destructive"
-                        : e.decision === "log"
-                        ? "outline"
-                        : "default"
-                    }
-                  >
-                    {e.decision}
-                  </Badge>
-                </div>
-                <div className="text-[11px] text-muted-foreground">
-                  {e.latencyMs != null ? `${e.latencyMs} ms` : "-"}
-                </div>
-              </div>
-            ))}
-          </div>
+        <div className="border border-border rounded-xl overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted">
+                <TableHead className="text-xs text-muted-foreground">Timestamp</TableHead>
+                <TableHead className="text-xs text-muted-foreground">Agent</TableHead>
+                <TableHead className="text-xs text-muted-foreground">Provider</TableHead>
+                <TableHead className="text-xs text-muted-foreground">Tool / intent</TableHead>
+                <TableHead className="text-xs text-muted-foreground">Decision</TableHead>
+                <TableHead className="text-xs text-muted-foreground">Latency</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.map((e) => (
+                <TableRow key={e.id}>
+                  <TableCell className="text-[11px] text-foreground">
+                    {new Date(e.timestamp).toLocaleString()}
+                  </TableCell>
+                  <TableCell className="text-[11px] font-mono text-foreground">
+                    {e.agentId}
+                  </TableCell>
+                  <TableCell className="text-[11px] text-muted-foreground">
+                    {e.provider}
+                  </TableCell>
+                  <TableCell className="text-[11px] text-foreground">
+                    <span className="font-mono text-[11px]">{e.toolName}</span>
+                    {e.intentSummary && (
+                      <span className="text-muted-foreground"> – {e.intentSummary}</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={
+                        e.decision === "deny"
+                          ? "destructive"
+                          : e.decision === "log"
+                          ? "outline"
+                          : "default"
+                      }
+                    >
+                      {e.decision}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-[11px] text-muted-foreground">
+                    {e.latencyMs != null ? `${e.latencyMs} ms` : "-"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
     </div>

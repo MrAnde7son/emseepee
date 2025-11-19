@@ -3,8 +3,6 @@ import { join, resolve, dirname } from "path";
 import type { ToolPolicyConfig } from "../../config.js";
 import { BaseGatewayHandler, type AgentContext, type ToolExecutionResult } from "./BaseGatewayHandler.js";
 import { logger } from "../../logger.js";
-import { evaluatePolicy } from "../../policy.js";
-import { inferAgentIntent, type ToolCallEvent } from "../../intent/index.js";
 
 export interface FileReadArgs extends Record<string, unknown> {
   path: string;
@@ -33,6 +31,7 @@ export class FileOperationsHandler extends BaseGatewayHandler {
     write?: ToolPolicyConfig;
     search?: ToolPolicyConfig;
   };
+  private currentToolName: string = "file_operations";
 
   constructor(toolConfigs: {
     read?: ToolPolicyConfig;
@@ -44,7 +43,7 @@ export class FileOperationsHandler extends BaseGatewayHandler {
   }
 
   protected getToolName(): string {
-    return "file_operations";
+    return this.currentToolName;
   }
 
   protected getToolConfig(): ToolPolicyConfig | undefined {
@@ -64,14 +63,8 @@ export class FileOperationsHandler extends BaseGatewayHandler {
       return this.createErrorResponse("File read tool not configured");
     }
 
-    const { decision, intent } = await this.evaluatePolicy(agentContext, args, toolCfg);
-    this.logRequest(agentContext, args, decision, intent);
-
-    if (decision.decision === "deny") {
-      return this.createDeniedResponse(decision.reason);
-    }
-
-    try {
+    this.currentToolName = "file_read_gateway";
+    return this.executeWithPolicy(agentContext, args, async () => {
       const filePath = this.resolvePath(args.path);
       const encoding = (args.encoding || "utf-8") as BufferEncoding;
       const content = await fs.readFile(filePath, { encoding });
@@ -83,9 +76,7 @@ export class FileOperationsHandler extends BaseGatewayHandler {
       });
 
       return this.createSuccessResponse(content);
-    } catch (error) {
-      return this.handleError(error, args);
-    }
+    }, toolCfg);
   }
 
   /**
@@ -100,14 +91,8 @@ export class FileOperationsHandler extends BaseGatewayHandler {
       return this.createErrorResponse("File write tool not configured");
     }
 
-    const { decision, intent } = await this.evaluatePolicy(agentContext, args, toolCfg);
-    this.logRequest(agentContext, args, decision, intent);
-
-    if (decision.decision === "deny") {
-      return this.createDeniedResponse(decision.reason);
-    }
-
-    try {
+    this.currentToolName = "file_write_gateway";
+    return this.executeWithPolicy(agentContext, args, async () => {
       const filePath = this.resolvePath(args.path);
       const dir = dirname(filePath);
       await fs.mkdir(dir, { recursive: true });
@@ -124,9 +109,7 @@ export class FileOperationsHandler extends BaseGatewayHandler {
       return this.createSuccessResponse(
         `Successfully wrote ${args.contents.length} characters to ${filePath}`
       );
-    } catch (error) {
-      return this.handleError(error, args);
-    }
+    }, toolCfg);
   }
 
   /**
@@ -141,14 +124,8 @@ export class FileOperationsHandler extends BaseGatewayHandler {
       return this.createErrorResponse("File search tool not configured");
     }
 
-    const { decision, intent } = await this.evaluatePolicy(agentContext, args, toolCfg);
-    this.logRequest(agentContext, args, decision, intent);
-
-    if (decision.decision === "deny") {
-      return this.createDeniedResponse(decision.reason);
-    }
-
-    try {
+    this.currentToolName = "file_search_gateway";
+    return this.executeWithPolicy(agentContext, args, async () => {
       const searchDir = args.directory
         ? this.resolvePath(args.directory)
         : process.cwd();
@@ -172,9 +149,7 @@ export class FileOperationsHandler extends BaseGatewayHandler {
           : `No files found matching pattern "${args.pattern}"`;
 
       return this.createSuccessResponse(resultText);
-    } catch (error) {
-      return this.handleError(error, args);
-    }
+    }, toolCfg);
   }
 
   /**
@@ -239,39 +214,5 @@ export class FileOperationsHandler extends BaseGatewayHandler {
     }
   }
 
-  /**
-   * Evaluate policy for a specific tool
-   */
-  private async evaluatePolicy(
-    agentContext: AgentContext,
-    args: Record<string, unknown>,
-    toolCfg: ToolPolicyConfig
-  ): Promise<{ decision: Awaited<ReturnType<typeof evaluatePolicy>>; intent: Awaited<ReturnType<typeof inferAgentIntent>> }> {
-    // Step 1: Intent Layer
-    const toolCallEvent: ToolCallEvent = {
-      toolName: toolCfg.name,
-      arguments: args,
-      agentId: agentContext.agentId,
-      provider: 'cursor',
-      requestId: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-    };
-
-    const intent = await inferAgentIntent(toolCallEvent, {
-      name: toolCfg.name,
-      description: toolCfg.description,
-    });
-
-    // Step 2: Policy Engine
-    const decision = await evaluatePolicy({
-      tool: toolCfg,
-      agentId: agentContext.agentId,
-      agentRole: agentContext.agentRole,
-      env: agentContext.env,
-      args,
-      intent,
-    });
-
-    return { decision, intent };
-  }
 }
 
