@@ -4,7 +4,6 @@ import type { ChildProcess } from "child_process";
 import type { McpServerProxyConfig } from "../../config.js";
 import { BaseGatewayHandler, type AgentContext, type ToolExecutionResult } from "./BaseGatewayHandler.js";
 import { logger } from "../../logger.js";
-import { evaluatePolicy } from "../../policy.js";
 import type { ToolPolicyConfig } from "../../config.js";
 
 /**
@@ -41,21 +40,7 @@ export class McpServerProxyHandler extends BaseGatewayHandler {
     agentContext: AgentContext,
     args: Record<string, unknown>
   ): Promise<ToolExecutionResult> {
-    const decision = await evaluatePolicy({
-      tool: this.toolConfig,
-      agentId: agentContext.agentId,
-      agentRole: agentContext.agentRole,
-      env: agentContext.env,
-      args,
-    });
-
-    this.logRequest(agentContext, args, decision);
-
-    if (decision.decision === "deny") {
-      return this.createDeniedResponse(decision.reason);
-    }
-
-    try {
+    return this.executeWithPolicy(agentContext, args, async () => {
       // Get client from manager
       const client = this.manager.getClient(this.proxyConfig.name);
       if (!client) {
@@ -99,9 +84,7 @@ export class McpServerProxyHandler extends BaseGatewayHandler {
         content,
         isError: result.isError === true,
       };
-    } catch (error) {
-      return this.handleError(error, args);
-    }
+    });
   }
 
 }

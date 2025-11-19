@@ -1,6 +1,7 @@
 import type { ToolPolicyConfig } from "../../config.js";
 import { logger } from "../../logger.js";
 import { evaluatePolicy, type PolicyDecision } from "../../policy.js";
+import { inferAgentIntent, type ToolCallEvent } from "../../intent/index.js";
 
 export interface AgentContext {
   agentId: string;
@@ -35,15 +36,31 @@ export abstract class BaseGatewayHandler {
       return this.createErrorResponse("Tool configuration not found");
     }
 
+    // Step 1: Intent Layer - normalize and classify the tool call
+    const toolCallEvent: ToolCallEvent = {
+      toolName: this.getToolName(),
+      arguments: args,
+      agentId: agentContext.agentId,
+      provider: 'cursor', // Default provider, can be enhanced to detect from context
+      requestId: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+    };
+
+    const intent = await inferAgentIntent(toolCallEvent, {
+      name: toolCfg.name,
+      description: toolCfg.description,
+    });
+
+    // Step 2: Policy Engine - evaluate using intent
     const decision = await evaluatePolicy({
       tool: toolCfg,
       agentId: agentContext.agentId,
       agentRole: agentContext.agentRole,
       env: agentContext.env,
       args,
+      intent, // Pass intent to policy engine
     });
 
-    this.logRequest(agentContext, args, decision);
+    this.logRequest(agentContext, args, decision, intent);
 
     if (decision.decision === "deny") {
       return this.createDeniedResponse(decision.reason);
@@ -59,14 +76,15 @@ export abstract class BaseGatewayHandler {
   }
 
   /**
-   * Log the tool request
+   * Log the tool request (now includes intent information)
    */
   protected logRequest(
     agentContext: AgentContext,
     args: Record<string, unknown>,
-    decision: PolicyDecision
+    decision: PolicyDecision,
+    intent?: import("../../intent/index.js").AgentIntent
   ): void {
-    logger.info(`[MCP-GATEWAY] ${this.getToolName()} call`, {
+    const logData: Record<string, unknown> = {
       tool: this.getToolName(),
       args: this.sanitizeArgsForLogging(args),
       agentId: agentContext.agentId,
@@ -74,7 +92,20 @@ export abstract class BaseGatewayHandler {
       env: agentContext.env,
       decision: decision.decision,
       reason: decision.reason,
-    });
+    };
+
+    // Include intent information if available
+    if (intent) {
+      logData.intent = {
+        operation: intent.inferredIntent.operation,
+        action: intent.inferredIntent.action,
+        riskLevel: intent.inferredIntent.riskLevel,
+        confidence: intent.inferredIntent.confidence,
+        resources: intent.inferredIntent.resources,
+      };
+    }
+
+    logger.info(`[MCP-GATEWAY] ${this.getToolName()} call`, logData);
   }
 
   /**

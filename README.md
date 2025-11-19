@@ -6,6 +6,7 @@ This is a minimal **MCP server** that acts as a central tools gateway.
 It exposes MCP tools you can plug into Cursor (or any MCP client) and:
 
 - Route tool usage through a single gateway layer
+- **Intent Layer** that normalizes and classifies tool calls using rule-based and LLM-based inference
 - Apply simple per-tool / per-role policy decisions
 - Log every intercepted tool call
 - Policy engine with support of log/deny/webhook/custom
@@ -50,14 +51,18 @@ graph TB
 **Flow:**
 1. **MCP Client** (Cursor) sends tool calls to the **Gateway**
 2. **Gateway** loads configuration from `config.json` (no rebuild needed)
-3. **Policy Engine** evaluates rules based on tool, role, environment, and sensitivity
-4. If allowed, request is routed to appropriate **Tool Handler**
-5. **Handlers** execute via:
+3. **Intent Layer** normalizes and classifies the tool call:
+   - Rule-based inference from tool registry
+   - LLM-based classification for complex/unknown cases (optional)
+   - Produces structured intent (operation, action, resources, risk level)
+4. **Policy Engine** evaluates rules based on intent, tool, role, environment, and sensitivity
+5. If allowed, request is routed to appropriate **Tool Handler**
+6. **Handlers** execute via:
    - **Built-in tools**: Direct file/browser operations
    - **MCP Server Proxies**: Forward to external MCP servers
    - **Third-party tools**: HTTP APIs or command execution
-6. All operations are **logged** to stdout
-7. Policy rules can trigger **webhooks** for notifications
+7. All operations are **logged** to stdout with intent information
+8. Policy rules can trigger **webhooks** for notifications
 
 ## Install
 
@@ -68,13 +73,85 @@ graph TB
    npm run build
    ```
 
-2. **Optional:** Create a `.env` file for API keys (recommended for web search):
+2. **Optional:** Create a `.env` file for API keys (recommended for web search and LLM classification):
    ```bash
    cp .env.example .env
    # Then edit .env and add your API keys
    ```
+   
+   See `.env.example` for all available environment variables including:
+   - LLM provider configuration (OpenAI, Groq, Gemini, Bedrock)
+   - Web search API keys (Tavily, SerpAPI, Google, Bing)
+   - Gateway configuration options
 
 3. This will produce `dist/index.js` which is the MCP server entrypoint.
+
+## Intent Layer & LLM Classification
+
+The gateway includes an **Intent Layer** that normalizes and classifies every tool call before policy evaluation. This enables the policy engine to reason about *what the agent intends to do* rather than just tool names.
+
+### How It Works
+
+1. **Rule-Based Inference**: For known tools, the system uses a tool registry to infer intent (operation type, action, resources, risk level)
+2. **LLM Classification**: For unknown tools or low-confidence cases, an LLM can be used for semantic classification
+3. **Intent Merging**: When both methods are used, results are merged (agreement increases confidence, conflicts mark as high-risk)
+
+### LLM Provider Configuration
+
+The LLM classifier supports multiple providers. Configure via environment variables:
+
+**OpenAI:**
+```bash
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+LLM_MODEL=gpt-4o-mini  # Optional
+```
+
+**Groq:**
+```bash
+LLM_PROVIDER=groq
+GROQ_API_KEY=gsk_...
+LLM_MODEL=llama-3.1-70b-versatile  # Optional
+```
+
+**Gemini:**
+```bash
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=...
+LLM_MODEL=gemini-1.5-flash  # Optional
+```
+
+**AWS Bedrock:**
+```bash
+LLM_PROVIDER=bedrock
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_REGION=us-east-1  # Optional
+LLM_MODEL=anthropic.claude-3-5-sonnet-20241022-v2:0  # Optional
+```
+
+**Common Options:**
+```bash
+LLM_TEMPERATURE=0.3    # Default: 0.3
+LLM_MAX_TOKENS=1000    # Default: 1000
+LLM_TIMEOUT=30000      # Default: 30000ms
+```
+
+See [src/llm/README.md](src/llm/README.md) for detailed configuration.
+
+### Intent Structure
+
+Every tool call produces an `AgentIntent` with:
+- **Operation**: `read` | `write` | `delete` | `execute` | `admin`
+- **Action**: Descriptive action name (e.g., `delete_vm`, `create_issue`)
+- **Resources**: Extracted resource identifiers (e.g., `["vm:vm-123", "project:payments-prod"]`)
+- **Risk Level**: `low` | `medium` | `high`
+- **Confidence**: 0.0-1.0
+
+The policy engine can now reason about intents like:
+- "Block all delete operations on production resources"
+- "Require approval for high-risk operations"
+- "Log all write operations to sensitive files"
 
 ## Run directly (debug)
 

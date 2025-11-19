@@ -8,6 +8,7 @@ import type {
 import { getPolicyRules } from "./config.js";
 import { logger } from "./logger.js";
 import { createContext, runInContext } from "vm";
+import type { AgentIntent } from "./intent/index.js";
 
 export type DecisionValue = "allow" | "deny";
 
@@ -30,16 +31,19 @@ export interface PolicyInput {
   agentRole: string;
   env: string;
   args: Record<string, unknown>;
+  // Optional: include intent for enhanced policy evaluation
+  intent?: AgentIntent;
 }
 
 /**
  * Check if a condition matches the input
+ * Now also considers intent information if available
  */
 function matchesCondition(
   condition: PolicyRuleCondition,
   input: PolicyInput
 ): boolean {
-  const { tool, agentRole, env, args } = input;
+  const { tool, agentRole, env, args, intent } = input;
 
   // Check tool name
   if (condition.toolName !== undefined) {
@@ -122,6 +126,11 @@ function matchesCondition(
     }
   }
 
+  // TODO: Add intent-based condition matching
+  // For example, check intent.inferredIntent.operation, riskLevel, resources, etc.
+  // This allows policies to reason about "delete operations on production resources"
+  // rather than just tool names and arguments
+
   return true;
 }
 
@@ -135,18 +144,31 @@ async function executeWebhook(
   if (action.webhookUrl) {
     const method = action.webhookMethod || "POST";
     try {
+      const webhookPayload: Record<string, unknown> = {
+        tool: input.tool.name,
+        agentId: input.agentId,
+        agentRole: input.agentRole,
+        env: input.env,
+        args: input.args,
+      };
+      
+      // Include intent information if available
+      if (input.intent) {
+        webhookPayload.intent = {
+          operation: input.intent.inferredIntent.operation,
+          action: input.intent.inferredIntent.action,
+          resources: input.intent.inferredIntent.resources,
+          riskLevel: input.intent.inferredIntent.riskLevel,
+          confidence: input.intent.inferredIntent.confidence,
+        };
+      }
+      
       const response = await fetch(action.webhookUrl, {
         method,
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          tool: input.tool.name,
-          agentId: input.agentId,
-          agentRole: input.agentRole,
-          env: input.env,
-          args: input.args,
-        }),
+        body: JSON.stringify(webhookPayload),
       });
       logger.info(`[POLICY] Webhook executed: ${action.webhookUrl}`, {
         status: response.status,
@@ -257,9 +279,19 @@ function executeCustomCode(
 
 /**
  * Configurable policy engine that evaluates rules from config.json
+ * Now supports intent-based evaluation when AgentIntent is provided
  */
 export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision> {
-  const { tool, agentRole, env } = input;
+  const { tool, agentRole, env, intent } = input;
+  
+  // Log intent information if available
+  if (intent) {
+    logger.info(`[POLICY] Evaluating with intent: ${intent.inferredIntent.action} (${intent.inferredIntent.operation}, risk: ${intent.inferredIntent.riskLevel})`, {
+      tool: tool.name,
+      agentId: intent.agentId,
+      resources: intent.inferredIntent.resources,
+    });
+  }
   const policyRules = await getPolicyRules();
 
   // Sort rules by priority (lower priority first, undefined = 0)
@@ -386,6 +418,23 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
         reason: "High-sensitivity tool is restricted to admin role in prod",
         operations: ["block"],
       };
+    }
+    
+    // Intent-based policy: high-risk operations in prod require admin
+    if (intent && env === "prod" && intent.inferredIntent.riskLevel === "high" && agentRole !== "admin") {
+      return {
+        decision: "deny",
+        reason: `High-risk operation '${intent.inferredIntent.action}' is restricted to admin role in prod`,
+        operations: ["block"],
+      };
+    }
+    
+    // Intent-based policy: delete operations require extra caution
+    if (intent && intent.inferredIntent.operation === "delete" && intent.inferredIntent.riskLevel === "high") {
+      // Could require approval or additional checks here
+      logger.warn(`[POLICY] High-risk delete operation detected: ${intent.inferredIntent.action}`, {
+        resources: intent.inferredIntent.resources,
+      });
     }
 
     // If we have operations from rules but no explicit allow/block, apply default allow
