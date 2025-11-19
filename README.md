@@ -1,5 +1,5 @@
 
-# Agent Tools MCP Gateway (TypeScript, ESM)
+# Agent Tools MCP Gateway
 
 This is a minimal **MCP server** that acts as a central tools gateway.
 
