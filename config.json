@@ -37,7 +37,7 @@
         "@modelcontextprotocol/server-sqlite"
       ],
       "env": {},
-      "enabled": true,
+      "enabled": false,
       "defaultPolicy": {
         "allowedRoles": [
           "coder_bot",
@@ -57,7 +57,7 @@
       "env": {
         "POSTGRES_CONNECTION_STRING": ""
       },
-      "enabled": true,
+      "enabled": false,
       "defaultPolicy": {
         "allowedRoles": [
           "coder_bot",

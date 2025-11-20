@@ -29,7 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { PlusCircle, RefreshCcw, Info } from "lucide-react";
+import { RefreshCcw, Info, Clock } from "lucide-react";
 
 interface PolicyCondition {
   providerId?: string | string[];
@@ -163,85 +163,107 @@ export default function ProvidersPage() {
 
       {data && data.length > 0 && (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {data.map((p) => (
-            <div
-              key={p.id}
-              className="border border-border rounded-xl p-4 bg-card flex flex-col gap-2"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {p.icon && (
-                    p.icon.startsWith("http://") || p.icon.startsWith("https://") ? (
-                      <img 
-                        src={p.icon} 
-                        alt={`${p.name} icon`}
-                        className="w-5 h-5"
-                        onError={(e) => {
-                          // Fallback to a default icon if the image fails to load
-                          e.currentTarget.style.display = "none";
-                        }}
-                      />
-                    ) : (
-                      <span className="text-lg" role="img" aria-label={`${p.name} icon`}>
-                        {p.icon}
-                      </span>
-                    )
+          {data.map((p) => {
+            const isComingSoon = p.comingSoon === true;
+            
+            return (
+              <div
+                key={p.id}
+                className={`border border-border rounded-xl p-4 bg-card flex flex-col gap-2 ${isComingSoon ? "opacity-75" : ""}`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {p.icon && (
+                      p.icon.startsWith("http://") || p.icon.startsWith("https://") ? (
+                        <img 
+                          src={p.icon} 
+                          alt={`${p.name} icon`}
+                          className="w-5 h-5"
+                          onError={(e) => {
+                            // Fallback to a default icon if the image fails to load
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      ) : (
+                        <span className="text-lg" role="img" aria-label={`${p.name} icon`}>
+                          {p.icon}
+                        </span>
+                      )
+                    )}
+                    <div className="font-semibold text-sm">{p.name}</div>
+                  </div>
+                  {isComingSoon ? (
+                    <Badge variant="outline" className="border-amber-500/50 text-amber-500 bg-amber-500/10">
+                      <Clock className="h-3 w-3 mr-1" />
+                      Coming soon
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant={p.status === "connected" ? "default" : "outline"}
+                    >
+                      {p.status}
+                    </Badge>
                   )}
-                  <div className="font-semibold text-sm">{p.name}</div>
                 </div>
-                <Badge
-                  variant={p.status === "connected" ? "default" : "outline"}
-                >
-                  {p.status}
-                </Badge>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Type: <span className="font-mono">{p.type}</span>
-              </div>
-              {p.lastHeartbeat && (
-                <div className="text-[11px] text-muted-foreground">
-                  Last heartbeat: {new Date(p.lastHeartbeat).toLocaleString()}
+                <div className="text-xs text-muted-foreground">
+                  Type: <span className="font-mono">{p.type}</span>
                 </div>
-              )}
-              <div className="mt-2 flex gap-2">
-                {p.status === "pending" ? (
-                  <Button 
-                    size="sm" 
-                    className="text-xs"
-                    onClick={() => handleInstall(p.id)}
-                    disabled={installing === p.id}
-                  >
-                    {installing === p.id ? "Installing..." : "Install"}
-                  </Button>
+                {isComingSoon ? (
+                  <div className="mt-2 p-3 rounded-lg bg-muted/50 border border-dashed border-border flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <p className="text-xs text-muted-foreground">
+                      This provider integration is coming soon. Stay tuned for updates!
+                    </p>
+                  </div>
                 ) : (
                   <>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="text-xs"
-                      onClick={() => {
-                        setSelectedProvider(p);
-                        setViewMode("details");
-                      }}
-                    >
-                      View details
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="text-xs"
-                      onClick={() => {
-                        setSelectedProvider(p);
-                        setViewMode("policies");
-                      }}
-                    >
-                      Policies
-                    </Button>
+                    {p.lastHeartbeat && (
+                      <div className="text-[11px] text-muted-foreground">
+                        Last heartbeat: {new Date(p.lastHeartbeat).toLocaleString()}
+                      </div>
+                    )}
+                    <div className="mt-2 flex gap-2">
+                      {p.status === "pending" ? (
+                        <Button 
+                          size="sm" 
+                          className="text-xs"
+                          onClick={() => handleInstall(p.id)}
+                          disabled={installing === p.id}
+                        >
+                          {installing === p.id ? "Installing..." : "Install"}
+                        </Button>
+                      ) : (
+                        <>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="text-xs"
+                            onClick={() => {
+                              setSelectedProvider(p);
+                              setViewMode("details");
+                            }}
+                          >
+                            View details
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="text-xs"
+                            onClick={() => {
+                              setSelectedProvider(p);
+                              setViewMode("policies");
+                            }}
+                          >
+                            Policies
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </>
                 )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

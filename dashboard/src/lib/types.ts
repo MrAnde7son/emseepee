@@ -7,6 +7,7 @@ export interface Provider {
   status: "connected" | "error" | "pending";
   lastHeartbeat?: string;
   icon?: string;
+  comingSoon?: boolean;
 }
 
 export interface Tool {

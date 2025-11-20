@@ -67,19 +67,19 @@ export abstract class BaseGatewayHandler {
 
     if (decision.decision === "deny") {
       const latencyMs = Date.now() - startTime;
-      this.logRequest(agentContext, args, decision, intent, provider, latencyMs);
+      await this.logRequest(agentContext, args, decision, intent, provider, latencyMs);
       return this.createDeniedResponse(decision.reason);
     }
 
     try {
       const result = await operation();
       const latencyMs = Date.now() - startTime;
-      this.logRequest(agentContext, args, decision, intent, provider, latencyMs);
+      await this.logRequest(agentContext, args, decision, intent, provider, latencyMs);
       this.logSuccess(agentContext, args);
       return result;
     } catch (error) {
       const latencyMs = Date.now() - startTime;
-      this.logRequest(agentContext, args, decision, intent, provider, latencyMs);
+      await this.logRequest(agentContext, args, decision, intent, provider, latencyMs);
       return this.handleError(error, args);
     }
   }
@@ -87,14 +87,14 @@ export abstract class BaseGatewayHandler {
   /**
    * Log the tool request (now includes intent information)
    */
-  protected logRequest(
+  protected async logRequest(
     agentContext: AgentContext,
     args: Record<string, unknown>,
     decision: PolicyDecision,
     intent?: import("../../intent/index.js").AgentIntent,
     provider: string = 'cursor',
     latencyMs?: number
-  ): void {
+  ): Promise<void> {
     const logData: Record<string, unknown> = {
       tool: this.getToolName(),
       args: this.sanitizeArgsForLogging(args),
@@ -129,7 +129,7 @@ export abstract class BaseGatewayHandler {
         ? "log"
         : (decision.decision as "allow" | "deny");
 
-    logger.logEvent({
+    await logger.logEvent({
       provider,
       agentId: agentContext.agentId,
       toolName: this.getToolName(),
