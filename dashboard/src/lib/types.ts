@@ -29,6 +29,7 @@ export interface Policy {
   enabled: boolean;
   archived?: boolean;
   customCode?: string;
+  scopeTarget?: string;
 }
 
 export interface GatewayEvent {

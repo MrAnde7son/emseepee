@@ -40,6 +40,7 @@ interface Policy {
   enabled: boolean;
   archived?: boolean;
   customCode?: string;
+  scopeTarget?: string;
 }
 
 interface GatewayEvent {
@@ -138,6 +139,40 @@ function installCursorProvider(): { success: boolean; error?: string } {
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/**
+ * Helper function to save config file while preserving all existing fields
+ */
+function saveConfigFile(
+  configPath: string,
+  updatedPolicyRules: PolicyRule[]
+): void {
+  let fullConfig: {
+    mcpServerProxies?: Record<string, unknown>;
+    toolsProxies?: Record<string, unknown>;
+    policyRules?: PolicyRule[];
+    [key: string]: unknown; // Allow other fields
+  };
+  
+  // Read existing config to preserve all fields
+  try {
+    fullConfig = JSON.parse(readFileSync(configPath, "utf-8"));
+    // Update only the policyRules array
+    fullConfig.policyRules = updatedPolicyRules;
+  } catch {
+    // If config doesn't exist or is invalid, create new structure
+    const config = loadConfigFromFile(configPath);
+    fullConfig = {
+      mcpServerProxies: config.mcpServerProxies,
+      toolsProxies: {},
+      policyRules: updatedPolicyRules,
+    };
+  }
+  
+  writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
+  // Clear cache so next request loads fresh config
+  clearConfigCache();
 }
 
 /**
@@ -522,12 +557,32 @@ function inferScopeFromCondition(condition: PolicyRuleCondition): "tool" | "prov
   if (condition.agentRole !== undefined) {
     return "agent";
   }
+  // If providerId is specified, scope is "provider"
+  if (condition.providerId !== undefined) {
+    return "provider";
+  }
   // If category is specified, it's still tool-level scope
   if (condition.category !== undefined) {
     return "tool";
   }
   // Otherwise, it's global
   return "global";
+}
+
+/**
+ * Extract scope target from condition based on scope type
+ */
+function extractScopeTarget(condition: PolicyRuleCondition, scope: "tool" | "provider" | "agent" | "mcp" | "global"): string | undefined {
+  if (scope === "tool" && condition.toolName) {
+    return Array.isArray(condition.toolName) ? condition.toolName[0] : condition.toolName;
+  }
+  if (scope === "agent" && condition.agentRole) {
+    return Array.isArray(condition.agentRole) ? condition.agentRole[0] : condition.agentRole;
+  }
+  if (scope === "provider" && condition.providerId) {
+    return Array.isArray(condition.providerId) ? condition.providerId[0] : condition.providerId;
+  }
+  return undefined;
 }
 
 /**
@@ -549,15 +604,17 @@ async function getPolicies(includeArchived: boolean = false): Promise<Policy[]> 
   
   return filteredRules.map((rule) => {
     const originalIndex = nameToIndex.get(rule.name) ?? 0;
+    const scope = inferScopeFromCondition(rule.condition);
     return {
       id: `policy-${originalIndex}`,
       name: rule.name,
       description: rule.description,
-      scope: inferScopeFromCondition(rule.condition),
+      scope,
+      scopeTarget: extractScopeTarget(rule.condition, scope),
       effect: rule.action.operation === "block" ? "deny" : rule.action.operation === "allow" ? "allow" : rule.action.operation === "log" ? "log" : rule.action.operation === "custom" ? "custom" : "webhook",
       customCode: rule.action.operation === "custom" ? rule.action.customCode : undefined,
       priority: rule.priority ?? 0,
-      enabled: true, // Policies are always enabled if they exist
+      enabled: !(rule.archived ?? false),
       archived: rule.archived ?? false,
     };
   });
@@ -647,31 +704,15 @@ async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string } | Pa
   config.policyRules.push(newRule);
   
   // Write back to config file
-  const fullConfig = {
-    mcpServerProxies: config.mcpServerProxies,
-    toolsProxies: {}, // We don't modify tools here
-    policyRules: config.policyRules,
-  };
+  saveConfigFile(configPath, config.policyRules);
   
-  // Read existing config to preserve toolsProxies
-  try {
-    const existingConfig = JSON.parse(readFileSync(configPath, "utf-8"));
-    fullConfig.toolsProxies = existingConfig.toolsProxies || {};
-    fullConfig.mcpServerProxies = existingConfig.mcpServerProxies || {};
-  } catch {
-    // If config doesn't exist or is invalid, use defaults
-  }
-  
-  writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
-  
-  // Clear cache so next request loads fresh config
-  clearConfigCache();
-  
+  const scope = inferScopeFromCondition(newRule.condition);
   return {
     id: `policy-${config.policyRules.length - 1}`,
     name: newRule.name,
     description: newRule.description,
-    scope: inferScopeFromCondition(newRule.condition),
+    scope,
+    scopeTarget: extractScopeTarget(newRule.condition, scope),
     effect: newRule.action.operation === "block" ? "deny" : newRule.action.operation === "allow" ? "allow" : newRule.action.operation === "log" ? "log" : "webhook",
     priority: newRule.priority ?? 0,
     enabled: !(newRule.archived ?? false),
@@ -746,14 +787,16 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<P
         
         // Remove scope-specific fields when changing scope
         if (newScope === "global") {
-          // Remove tool/agent-specific fields for global scope
+          // Remove tool/agent/provider-specific fields for global scope
           delete updatedCondition.toolName;
           delete updatedCondition.category;
           delete updatedCondition.agentRole;
+          delete updatedCondition.providerId;
         } else if (newScope === "agent") {
-          // For agent scope, remove tool-specific but set agentRole
+          // For agent scope, remove tool/provider-specific but set agentRole
           delete updatedCondition.toolName;
           delete updatedCondition.category;
+          delete updatedCondition.providerId;
           if (scopeTarget) {
             updatedCondition.agentRole = scopeTarget;
           } else if (!updatedCondition.agentRole) {
@@ -761,8 +804,9 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<P
             // This preserves existing agentRole if it exists
           }
         } else if (newScope === "tool") {
-          // For tool scope, remove agentRole but set toolName
+          // For tool scope, remove agent/provider-specific but set toolName
           delete updatedCondition.agentRole;
+          delete updatedCondition.providerId;
           if (scopeTarget) {
             updatedCondition.toolName = scopeTarget;
             // Remove category when specific tool is selected
@@ -771,12 +815,16 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<P
             // If no scopeTarget and no existing tool/category, preserve what exists
           }
         } else if (newScope === "provider") {
-          // Provider scope - match tools called by specific provider/agent
-          // For now, treat similar to global but could be enhanced with provider matching
+          // Provider scope - match tools called by specific provider
           delete updatedCondition.toolName;
           delete updatedCondition.category;
           delete updatedCondition.agentRole;
-          // Future: could add provider matching logic here (would need providerId in condition)
+          if (scopeTarget) {
+            updatedCondition.providerId = scopeTarget;
+          } else {
+            // If no scopeTarget provided, clear providerId
+            delete updatedCondition.providerId;
+          }
         } else if (newScope === "mcp") {
           // MCP scope - match tools from specific MCP server
           // MCP tools have providerId set to the MCP server name
@@ -786,6 +834,7 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<P
           delete updatedCondition.toolName;
           delete updatedCondition.category;
           delete updatedCondition.agentRole;
+          delete updatedCondition.providerId;
           // Note: MCP scope matching would require backend enhancement
           // to add providerId or mcpServer field to PolicyRuleCondition
         }
@@ -807,31 +856,15 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<P
   config.policyRules[index] = updatedRule;
   
   // Write back to config file
-  const fullConfig = {
-    mcpServerProxies: config.mcpServerProxies,
-    toolsProxies: {},
-    policyRules: config.policyRules,
-  };
+  saveConfigFile(configPath, config.policyRules);
   
-  // Read existing config to preserve toolsProxies
-  try {
-    const existingConfig = JSON.parse(readFileSync(configPath, "utf-8"));
-    fullConfig.toolsProxies = existingConfig.toolsProxies || {};
-    fullConfig.mcpServerProxies = existingConfig.mcpServerProxies || {};
-  } catch {
-    // If config doesn't exist or is invalid, use defaults
-  }
-  
-  writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
-  
-  // Clear cache so next request loads fresh config
-  clearConfigCache();
-  
+  const scope = inferScopeFromCondition(updatedRule.condition);
   return {
     id,
     name: updatedRule.name,
     description: updatedRule.description,
-    scope: inferScopeFromCondition(updatedRule.condition),
+    scope,
+    scopeTarget: extractScopeTarget(updatedRule.condition, scope),
     effect: updatedRule.action.operation === "block" ? "deny" : updatedRule.action.operation === "allow" ? "allow" : updatedRule.action.operation === "log" ? "log" : "webhook",
     priority: updatedRule.priority ?? 0,
     enabled: !(updatedRule.archived ?? false),
@@ -855,25 +888,7 @@ async function archivePolicy(id: string): Promise<void> {
   config.policyRules[index].archived = true;
   
   // Write back to config file
-  const fullConfig = {
-    mcpServerProxies: config.mcpServerProxies,
-    toolsProxies: {},
-    policyRules: config.policyRules,
-  };
-  
-  // Read existing config to preserve toolsProxies
-  try {
-    const existingConfig = JSON.parse(readFileSync(configPath, "utf-8"));
-    fullConfig.toolsProxies = existingConfig.toolsProxies || {};
-    fullConfig.mcpServerProxies = existingConfig.mcpServerProxies || {};
-  } catch {
-    // If config doesn't exist or is invalid, use defaults
-  }
-  
-  writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
-  
-  // Clear cache so next request loads fresh config
-  clearConfigCache();
+  saveConfigFile(configPath, config.policyRules);
 }
 
 /**
@@ -893,25 +908,7 @@ async function restorePolicy(id: string): Promise<void> {
   config.policyRules[index].archived = false;
   
   // Write back to config file
-  const fullConfig = {
-    mcpServerProxies: config.mcpServerProxies,
-    toolsProxies: {},
-    policyRules: config.policyRules,
-  };
-  
-  // Read existing config to preserve toolsProxies
-  try {
-    const existingConfig = JSON.parse(readFileSync(configPath, "utf-8"));
-    fullConfig.toolsProxies = existingConfig.toolsProxies || {};
-    fullConfig.mcpServerProxies = existingConfig.mcpServerProxies || {};
-  } catch {
-    // If config doesn't exist or is invalid, use defaults
-  }
-  
-  writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
-  
-  // Clear cache so next request loads fresh config
-  clearConfigCache();
+  saveConfigFile(configPath, config.policyRules);
 }
 
 /**
@@ -929,25 +926,7 @@ async function deletePolicy(id: string): Promise<void> {
   config.policyRules.splice(index, 1);
   
   // Write back to config file
-  const fullConfig = {
-    mcpServerProxies: config.mcpServerProxies,
-    toolsProxies: {},
-    policyRules: config.policyRules,
-  };
-  
-  // Read existing config to preserve toolsProxies
-  try {
-    const existingConfig = JSON.parse(readFileSync(configPath, "utf-8"));
-    fullConfig.toolsProxies = existingConfig.toolsProxies || {};
-    fullConfig.mcpServerProxies = existingConfig.mcpServerProxies || {};
-  } catch {
-    // If config doesn't exist or is invalid, use defaults
-  }
-  
-  writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
-  
-  // Clear cache so next request loads fresh config
-  clearConfigCache();
+  saveConfigFile(configPath, config.policyRules);
 }
 
 /**
@@ -1151,12 +1130,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           return;
         }
         const rule = rules[index];
+        const scope = inferScopeFromCondition(rule.condition);
         // Return both the simplified Policy and the full PolicyRule
         const policy = {
           id,
           name: rule.name,
           description: rule.description,
-          scope: inferScopeFromCondition(rule.condition),
+          scope,
+          scopeTarget: extractScopeTarget(rule.condition, scope),
           effect: rule.action.operation === "block" ? "deny" : rule.action.operation === "allow" ? "allow" : rule.action.operation === "log" ? "log" : rule.action.operation === "custom" ? "custom" : "webhook",
           customCode: rule.action.operation === "custom" ? rule.action.customCode : undefined,
           priority: rule.priority ?? 0,

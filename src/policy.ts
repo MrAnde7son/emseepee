@@ -33,6 +33,8 @@ export interface PolicyInput {
   args: Record<string, unknown>;
   // Optional: include intent for enhanced policy evaluation
   intent?: AgentIntent;
+  // Optional: provider ID for provider-scoped policies
+  providerId?: string;
 }
 
 /**
@@ -43,7 +45,7 @@ function matchesCondition(
   condition: PolicyRuleCondition,
   input: PolicyInput
 ): boolean {
-  const { tool, agentRole, env, args, intent } = input;
+  const { tool, agentRole, env, args, intent, providerId } = input;
 
   // Check tool name
   if (condition.toolName !== undefined) {
@@ -123,6 +125,16 @@ function matchesCondition(
         // For non-strings, use exact match
         return false;
       }
+    }
+  }
+
+  // Check provider ID
+  if (condition.providerId !== undefined && providerId !== undefined) {
+    const providerIds = Array.isArray(condition.providerId)
+      ? condition.providerId
+      : [condition.providerId];
+    if (!providerIds.includes(providerId)) {
+      return false;
     }
   }
 

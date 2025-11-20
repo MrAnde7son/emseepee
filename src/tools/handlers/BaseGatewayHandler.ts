@@ -62,6 +62,7 @@ export abstract class BaseGatewayHandler {
       env: agentContext.env,
       args,
       intent, // Pass intent to policy engine
+      providerId: provider, // Pass provider ID for provider-scoped policies
     });
 
     if (decision.decision === "deny") {

@@ -11,7 +11,7 @@ It exposes MCP tools you can plug into Cursor (or any MCP client) and:
 - Log every intercepted tool call
 - Policy engine with support of log/deny/webhook/custom
 
-The gateway provides built-in tools for file operations and browser operations, plus the ability to proxy entire MCP servers and add custom third-party integrations.
+The gateway provides built-in tools for file operations and web operations, plus the ability to proxy entire MCP servers and add custom third-party integrations.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ graph TB
     Policy -->|Allow| Handlers[Tool Handlers]
     Policy -->|Block| Response[Deny Response]
     
-    Handlers --> BuiltIn[Built-in Tools<br/>File Operations<br/>Browser Operations]
+    Handlers --> BuiltIn[Built-in Tools<br/>File Operations<br/>Web Operations]
     Handlers --> MCPProxy[MCP Server Proxies<br/>GitHub, Slack, etc.]
     Handlers --> ThirdParty[Third-party Tools<br/>HTTP APIs<br/>Commands]
     
@@ -35,7 +35,7 @@ graph TB
     ThirdParty -->|Execute| Commands[System Commands<br/>Scripts]
     
     BuiltIn -->|Read/Write| FileSystem[File System]
-    BuiltIn -->|Browse| Browser[Browser Operations]
+    BuiltIn -->|Browse| Web[Web Operations]
     
     Gateway -->|Log All Calls| Logger[Logging<br/>stdout]
     
@@ -58,7 +58,7 @@ graph TB
 4. **Policy Engine** evaluates rules based on intent, tool, role, environment, and sensitivity
 5. If allowed, request is routed to appropriate **Tool Handler**
 6. **Handlers** execute via:
-   - **Built-in tools**: Direct file/browser operations
+   - **Built-in tools**: Direct file/web operations
    - **MCP Server Proxies**: Forward to external MCP servers
    - **Third-party tools**: HTTP APIs or command execution
 7. All operations are **logged** to stdout with intent information
@@ -191,7 +191,7 @@ Browse and manage all available tools and MCP servers organized by category:
 
 - **File Operations**: Built-in file read, write, and search tools
 - **Terminal Commands**: Terminal command execution tools
-- **Browser Operations**: Web search and browser automation
+- **Web Operations**: Web search
 - **Third-Party Tools**: Custom HTTP-based integrations
 - **MCP Servers**: Proxied MCP servers with all their tools
 
@@ -342,7 +342,7 @@ Only use native tools (`read_file`, `write`, etc.) if:
 ## Adding Tools to the Gateway
 
 The gateway supports three types of tools:
-1. **Built-in tools** (file/browser operations) - pre-configured, can be customized
+1. **Built-in tools** (file/web operations) - pre-configured, can be customized
 2. **MCP server proxies** - automatically proxy all tools from an MCP server
 3. **Third-party tools** - custom HTTP/command integrations
 
@@ -485,7 +485,7 @@ To add a custom tool that calls an HTTP API or runs a command, add it to `toolsP
 
 ### Method 3: Customize Built-in Tools
 
-Built-in tools (file/browser operations) have defaults but can be customized by adding them to `toolsProxies`:
+Built-in tools (file/web operations) have defaults but can be customized by adding them to `toolsProxies`:
 
 ```json
 {
@@ -509,7 +509,7 @@ Built-in tools (file/browser operations) have defaults but can be customized by 
       "description": "Perform web search",
       "allowedRoles": ["coder_bot", "research_bot", "admin"],
       "sensitivity": "medium",
-      "category": "browser"
+      "category": "web"
     }
   }
 }
@@ -608,10 +608,10 @@ Match rules based on any combination of:
   "toolName": ["file_write_gateway", "file_delete_gateway"]
   ```
 
-- **`category`**: Tool category (`file`, `browser`, `third_party`)
+- **`category`**: Tool category (`file`, `web`, `third_party`)
   ```json
   "category": "file"
-  "category": ["file", "browser"]
+  "category": ["file", "web"]
   ```
 
 - **`agentRole`**: Agent role(s)
@@ -925,7 +925,7 @@ Here's a complete `config.json` example combining all features:
       "description": "Perform web search",
       "allowedRoles": ["coder_bot", "research_bot", "admin"],
       "sensitivity": "medium",
-      "category": "browser"
+      "category": "web"
     },
     "slack_send_message": {
       "name": "slack_send_message",

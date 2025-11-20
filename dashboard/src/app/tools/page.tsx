@@ -60,9 +60,9 @@ const categories: CategoryInfo[] = [
     color: "bg-green-500/10 text-green-500 border-green-500/20",
   },
   {
-    id: "browser",
-    name: "Browser Operations",
-    description: "Web search and browser automation capabilities",
+    id: "web",
+    name: "Web Operations",
+    description: "Web search capabilities",
     icon: Globe,
     color: "bg-purple-500/10 text-purple-500 border-purple-500/20",
   },

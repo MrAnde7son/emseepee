@@ -644,7 +644,7 @@
         "admin"
       ],
       "sensitivity": "medium",
-      "category": "browser",
+      "category": "web",
       "enabled": false
     },
     "terminal_command": {
@@ -733,16 +733,14 @@
       "condition": {
         "env": "prod",
         "sensitivity": "high",
-        "agentRole": [
-          "coder_bot",
-          "research_bot"
-        ]
+        "providerId": "cursor"
       },
       "action": {
         "operation": "block",
         "message": "High-sensitivity operations require admin role in production"
       },
-      "stopOnMatch": true
+      "stopOnMatch": true,
+      "archived": false
     },
     {
       "name": "webhook_on_sensitive_operations",

@@ -43,7 +43,7 @@ describe("Config Functions", () => {
             description: "Web search",
             allowedRoles: ["coder_bot"],
             sensitivity: "medium",
-            category: "browser",
+            category: "web",
           },
         },
         policyRules: [],
@@ -52,10 +52,10 @@ describe("Config Functions", () => {
       const registry = await getToolRegistry();
 
       expect(registry).toHaveProperty("file");
-      expect(registry).toHaveProperty("browser");
+      expect(registry).toHaveProperty("web");
       expect(registry).toHaveProperty("third_party");
       expect(registry.file).toHaveProperty("file_read_gateway");
-      expect(registry.browser).toHaveProperty("web_search_gateway");
+      expect(registry.web).toHaveProperty("web_search_gateway");
     });
 
     it("should merge configured tools with defaults", async () => {
@@ -104,14 +104,14 @@ describe("Config Functions", () => {
       expect(tools).toHaveProperty("file_search_gateway");
     });
 
-    it("should return tools for browser category", async () => {
+    it("should return tools for web category", async () => {
       vi.spyOn(configLoaderModule, "loadConfigFromFile").mockReturnValue({
         mcpServerProxies: {},
         toolsProxies: {},
         policyRules: [],
       });
 
-      const tools = await getToolsByCategory("browser");
+      const tools = await getToolsByCategory("web");
 
       expect(tools).toHaveProperty("web_search_gateway");
     });
@@ -192,7 +192,7 @@ describe("Config Functions", () => {
       expect(tool?.name).toBe("file_read_gateway");
     });
 
-    it("should return tool when found in browser category", async () => {
+    it("should return tool when found in web category", async () => {
       vi.spyOn(configLoaderModule, "loadConfigFromFile").mockReturnValue({
         mcpServerProxies: {},
         toolsProxies: {},
@@ -228,9 +228,9 @@ describe("Config Functions", () => {
 
       const categories = await getEnabledCategories();
 
-      // Should include file and browser (have default tools)
+      // Should include file and web (have default tools)
       expect(categories).toContain("file");
-      expect(categories).toContain("browser");
+      expect(categories).toContain("web");
     });
 
     it("should not include empty categories", async () => {

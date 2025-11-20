@@ -85,21 +85,21 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
 }
 
 /**
- * Register all browser tools using WebOperationsHandler
+ * Register all web tools using WebOperationsHandler
  */
-export async function registerBrowserTools(context: ToolRegistrationContext): Promise<void> {
+export async function registerWebTools(context: ToolRegistrationContext): Promise<void> {
   const { server, getAgentContext } = context;
-  const browserTools = await getToolsByCategory("browser");
+  const webTools = await getToolsByCategory("web");
 
   // Initialize web operations handler
-  const webHandler = new WebOperationsHandler(browserTools.web_search_gateway);
+  const webHandler = new WebOperationsHandler(webTools.web_search_gateway);
 
   // WEB SEARCH GATEWAY
-  if (browserTools.web_search_gateway && browserTools.web_search_gateway.enabled === true) {
+  if (webTools.web_search_gateway && webTools.web_search_gateway.enabled === true) {
     server.registerTool(
       "web_search_gateway",
       {
-        description: browserTools.web_search_gateway.description,
+        description: webTools.web_search_gateway.description,
         inputSchema: {
           query: z.string().describe("Search query string."),
           limit: z.number().int().min(1).max(20).optional().default(5).describe("Maximum number of results to return (1-20)."),
@@ -339,13 +339,13 @@ function convertMcpInputSchemaToZod(inputSchema: unknown): z.ZodObject<Record<st
  */
 export async function registerToolsByCategory(
   context: ToolRegistrationContext,
-  enabledCategories: ToolCategory[] = ["file", "browser", "terminal", "third_party"]
+  enabledCategories: ToolCategory[] = ["file", "web", "terminal", "third_party"]
 ): Promise<void> {
   if (enabledCategories.includes("file")) {
     await registerFileTools(context);
   }
-  if (enabledCategories.includes("browser")) {
-    await registerBrowserTools(context);
+  if (enabledCategories.includes("web")) {
+    await registerWebTools(context);
   }
   if (enabledCategories.includes("terminal")) {
     await registerTerminalTools(context);

@@ -508,7 +508,7 @@ describe("Policy Evaluation", () => {
         name: "block_multiple_categories",
         priority: 10,
         condition: {
-          category: ["file", "browser"],
+          category: ["file", "web"],
         },
         action: {
           operation: "block",

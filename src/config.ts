@@ -1,7 +1,7 @@
 
 
 export type Sensitivity = "low" | "medium" | "high";
-export type ToolCategory = "file" | "browser" | "terminal" | "third_party";
+export type ToolCategory = "file" | "web" | "terminal" | "third_party";
 export type ToolExecutionType = "http" | "command" | "custom";
 export type PolicyOperation = "allow" | "log" | "block" | "webhook" | "custom";
 
@@ -21,6 +21,8 @@ export interface PolicyRuleCondition {
   sensitivity?: Sensitivity | Sensitivity[];
   // Match by argument values (key-value pairs)
   args?: Record<string, unknown>;
+  // Match by provider ID (for provider-scoped policies)
+  providerId?: string | string[];
 }
 
 /**
@@ -218,7 +220,7 @@ export async function getMcpServerProxies(): Promise<McpServerProxyRegistry> {
 }
 
 /**
- * Default built-in tool registry (file and browser tools)
+ * Default built-in tool registry (file and web tools)
  * These are the defaults if not overridden in config.json
  */
 const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
@@ -245,13 +247,13 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
       category: "file",
     },
   },
-  browser: {
+  web: {
     web_search_gateway: {
       name: "web_search_gateway",
       description: "Perform comprehensive web search through the central gateway with policy enforcement. Supports multiple search providers (Tavily, SerpAPI, Google Custom Search, Bing, DuckDuckGo) with automatic provider selection based on available API keys. Returns structured results with titles, snippets, and URLs.",
       allowedRoles: ["coder_bot", "research_bot", "admin"],
       sensitivity: "medium",
-      category: "browser",
+      category: "web",
     },
   },
   terminal: {
@@ -276,7 +278,7 @@ export async function getToolRegistry(): Promise<ToolCategoryRegistry> {
   
   // Separate tools by category
   const fileTools: Record<string, ToolPolicyConfig> = {};
-  const browserTools: Record<string, ToolPolicyConfig> = {};
+  const webTools: Record<string, ToolPolicyConfig> = {};
   const terminalTools: Record<string, ToolPolicyConfig> = {};
   const thirdPartyTools: Record<string, ThirdPartyToolConfig> = {};
   
@@ -285,8 +287,8 @@ export async function getToolRegistry(): Promise<ToolCategoryRegistry> {
       thirdPartyTools[toolName] = toolConfig;
     } else if (toolConfig.category === "file") {
       fileTools[toolName] = toolConfig;
-    } else if (toolConfig.category === "browser") {
-      browserTools[toolName] = toolConfig;
+    } else if (toolConfig.category === "web") {
+      webTools[toolName] = toolConfig;
     } else if (toolConfig.category === "terminal") {
       terminalTools[toolName] = toolConfig;
     } else if (toolConfig.category === "third_party") {
@@ -301,9 +303,9 @@ export async function getToolRegistry(): Promise<ToolCategoryRegistry> {
     ...fileTools,
   };
   
-  const mergedBrowserTools = {
-    ...DEFAULT_BUILT_IN_TOOLS.browser,
-    ...browserTools,
+  const mergedWebTools = {
+    ...DEFAULT_BUILT_IN_TOOLS.web,
+    ...webTools,
   };
   
   const mergedTerminalTools = {
@@ -313,7 +315,7 @@ export async function getToolRegistry(): Promise<ToolCategoryRegistry> {
   
   return {
     file: mergedFileTools,
-    browser: mergedBrowserTools,
+    web: mergedWebTools,
     terminal: mergedTerminalTools,
     third_party: thirdPartyTools,
   };
