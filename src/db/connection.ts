@@ -41,7 +41,7 @@ export function getDatabaseConfig(): DatabaseConfig {
   // Default to file-based SQLite (more reliable than in-memory)
   return {
     type: "sqlite",
-    filename: "./data/gateway.db",
+    filename: "./data/hakuna.db",
   };
 }
 
@@ -81,7 +81,7 @@ export async function initializeDatabase(): Promise<unknown> {
     } else {
       // SQLite - try to import, but handle gracefully if not available
       let Database: DatabaseConstructor;
-      let filename = config.filename || "./data/gateway.db";
+      let filename = config.filename || "./data/hakuna.db";
       
       // Ensure data directory exists
       if (filename !== ":memory:") {
