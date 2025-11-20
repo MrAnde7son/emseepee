@@ -94,13 +94,11 @@ async function initialize() {
     }
     
     // Verify initialization succeeded
-    const isInit = isDatabaseInitialized();
-    if (!isInit) {
+    if (!isDatabaseInitialized()) {
       throw new Error("Database initialization completed but isDatabaseInitialized() returns false");
     }
     
     logger.info("[DB] Database initialized and ready");
-    logger.info(`[DB] Verification: isDatabaseInitialized() = ${isInit}`);
   } catch (error) {
     logger.error("[DB] Database initialization failed:", error);
     if (error instanceof Error) {

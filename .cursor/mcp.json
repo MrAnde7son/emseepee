@@ -3,9 +3,9 @@
     "hakuna": {
       "command": "node",
       "args": [
-        "/Users/imizrahi/Downloads/agent-tools-gateway/dist/index.js"
+        "/Users/imizrahi/Downloads/hakuna/dist/index.js"
       ],
-      "cwd": "/Users/imizrahi/Downloads/agent-tools-gateway"
+      "cwd": "/Users/imizrahi/Downloads/hakuna"
     }
   }
 }

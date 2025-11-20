@@ -22,10 +22,8 @@ const MAX_EVENTS = 10000; // Keep last 10k events
  * Save event to database
  */
 export async function saveEvent(event: Omit<GatewayEvent, "id" | "timestamp">): Promise<void> {
-  // Check if database is initialized
-  let isInitialized = isDatabaseInitialized();
-  
-  if (!isInitialized) {
+  // Check if database is initialized, and try to initialize if not
+  if (!isDatabaseInitialized()) {
     logger.warn("[EVENT-SERVICE] Database not initialized, attempting to initialize...");
     try {
       await initDb();
@@ -33,19 +31,13 @@ export async function saveEvent(event: Omit<GatewayEvent, "id" | "timestamp">): 
       if (!exists) {
         await createSchema();
       }
-      logger.info("[EVENT-SERVICE] Database initialization completed");
-      
-      // Verify it's now initialized
-      isInitialized = isDatabaseInitialized();
-      logger.info(`[EVENT-SERVICE] After initialization, isDatabaseInitialized() returns: ${isInitialized}`);
-      
-      if (!isInitialized) {
+      if (!isDatabaseInitialized()) {
         throw new Error("Database initialization completed but isDatabaseInitialized() still returns false");
       }
     } catch (initError) {
       logger.error("[EVENT-SERVICE] Failed to initialize database:", initError);
       if (initError instanceof Error) {
-        logger.error("[EVENT-SERVICE] Init error details:", initError.message, initError.stack);
+        logger.error("[EVENT-SERVICE] Init error details:", initError.message);
       }
       throw new Error("Database not initialized and initialization failed");
     }
@@ -167,7 +159,10 @@ export async function getEvents(limit: number = MAX_EVENTS): Promise<GatewayEven
     metadata: string | null;
   }>(query, [limit]);
 
-  logger.info(`[EVENT-SERVICE] Retrieved ${results.length} events from database`);
+  // Only log if there are events to reduce noise
+  if (results.length > 0) {
+    logger.info(`[EVENT-SERVICE] Retrieved ${results.length} events from database`);
+  }
 
   return results.map((row) => ({
     id: row.id,
@@ -267,7 +262,10 @@ export async function searchEvents(searchQuery: string, limit: number = MAX_EVEN
     metadata: string | null;
   }>(sql, params);
 
-  logger.info(`[EVENT-SERVICE] Retrieved ${results.length} events from database (search: "${searchQuery}")`);
+  // Only log if there are results to reduce noise
+  if (results.length > 0) {
+    logger.info(`[EVENT-SERVICE] Retrieved ${results.length} events from database (search: "${searchQuery}")`);
+  }
 
   return results.map((row) => ({
     id: row.id,
