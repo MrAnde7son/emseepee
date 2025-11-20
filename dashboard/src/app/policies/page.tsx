@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef, startTransition } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { usePolicies, useTools, useProviders } from "@/hooks/useGatewayData";
 import { Api } from "@/lib/api";
 import { Policy, Tool, Provider } from "@/lib/types";
@@ -37,7 +38,17 @@ import {
 const COMMON_AGENT_ROLES = ["coder_bot", "research_bot", "admin"];
 
 export default function PoliciesPage() {
-  const [showArchived, setShowArchived] = useState(false);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
+  // Initialize from URL params
+  const initialSearch = searchParams.get("q") || "";
+  const initialScope = searchParams.get("scope") || "all";
+  const initialEffect = searchParams.get("effect") || "all";
+  const initialStatus = searchParams.get("status") || "all";
+  const initialArchived = searchParams.get("archived") === "true";
+
+  const [showArchived, setShowArchived] = useState(initialArchived);
   const { data, isLoading, refetch } = usePolicies(showArchived);
   const { data: toolsData } = useTools();
   const { data: providersData } = useProviders();
@@ -57,6 +68,9 @@ export default function PoliciesPage() {
   });
   const [newPolicyScopeTarget, setNewPolicyScopeTarget] = useState<string>("");
   const [newPolicyCustomCode, setNewPolicyCustomCode] = useState<string>("");
+  
+  const isUpdatingFromUrl = useRef(false);
+  const prevSearchParamsRef = useRef<string>("");
   
   // Extract unique agent roles from existing policies
   const availableAgentRoles = useMemo(() => {
@@ -83,10 +97,102 @@ export default function PoliciesPage() {
   const [archivingPolicy, setArchivingPolicy] = useState<string | null>(null);
   const [restoringPolicy, setRestoringPolicy] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterScope, setFilterScope] = useState<string>("all");
-  const [filterEffect, setFilterEffect] = useState<string>("all");
-  const [filterEnabled, setFilterEnabled] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const [filterScope, setFilterScope] = useState<string>(initialScope);
+  const [filterEffect, setFilterEffect] = useState<string>(initialEffect);
+  const [filterEnabled, setFilterEnabled] = useState<string>(initialStatus);
+  
+  // Sync state from URL params when they change externally (e.g., browser back/forward)
+  useEffect(() => {
+    const currentParamsString = searchParams.toString();
+    
+    // Only update if searchParams actually changed
+    if (currentParamsString === prevSearchParamsRef.current) {
+      return;
+    }
+    
+    prevSearchParamsRef.current = currentParamsString;
+
+    const urlSearch = searchParams.get("q") || "";
+    const urlScope = searchParams.get("scope") || "all";
+    const urlEffect = searchParams.get("effect") || "all";
+    const urlStatus = searchParams.get("status") || "all";
+    const urlArchived = searchParams.get("archived") === "true";
+
+    // Check if URL params differ from current state
+    const searchChanged = urlSearch !== searchQuery;
+    const scopeChanged = urlScope !== filterScope;
+    const effectChanged = urlEffect !== filterEffect;
+    const statusChanged = urlStatus !== filterEnabled;
+    const archivedChanged = urlArchived !== showArchived;
+
+    if (searchChanged || scopeChanged || effectChanged || statusChanged || archivedChanged) {
+      isUpdatingFromUrl.current = true;
+      
+      startTransition(() => {
+        if (searchChanged) {
+          setSearchQuery(urlSearch);
+        }
+        if (scopeChanged) {
+          setFilterScope(urlScope);
+        }
+        if (effectChanged) {
+          setFilterEffect(urlEffect);
+        }
+        if (statusChanged) {
+          setFilterEnabled(urlStatus);
+        }
+        if (archivedChanged) {
+          setShowArchived(urlArchived);
+        }
+      });
+      
+      // Reset flag after state updates
+      setTimeout(() => {
+        isUpdatingFromUrl.current = false;
+      }, 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]); // Only depend on searchParams
+
+  // Update URL when filters change (but not when updating from URL)
+  useEffect(() => {
+    if (isUpdatingFromUrl.current) {
+      return;
+    }
+
+    const params = new URLSearchParams();
+    
+    if (searchQuery) {
+      params.set("q", searchQuery);
+    }
+    
+    if (filterScope !== "all") {
+      params.set("scope", filterScope);
+    }
+    
+    if (filterEffect !== "all") {
+      params.set("effect", filterEffect);
+    }
+    
+    if (filterEnabled !== "all") {
+      params.set("status", filterEnabled);
+    }
+    
+    if (showArchived) {
+      params.set("archived", "true");
+    }
+    
+    const currentParams = new URLSearchParams(window.location.search);
+    const newParamsString = params.toString();
+    const currentParamsString = currentParams.toString();
+    
+    // Only update URL if it's different to avoid unnecessary updates
+    if (newParamsString !== currentParamsString) {
+      const newUrl = newParamsString ? `?${newParamsString}` : window.location.pathname;
+      router.replace(newUrl, { scroll: false });
+    }
+  }, [searchQuery, filterScope, filterEffect, filterEnabled, showArchived, router]);
   
   // Filter policies based on search and filters
   const filteredPolicies = useMemo(() => {
