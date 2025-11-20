@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,27 +14,100 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Lock, User, Palette } from "lucide-react";
+import { Api } from "@/lib/api";
+
+interface User {
+  id: number;
+  email: string;
+  name: string | null;
+  role: string;
+}
+
+/**
+ * Parse name into first and last name
+ */
+function parseName(name: string | null): { firstName: string; lastName: string } {
+  if (!name) {
+    return { firstName: "", lastName: "" };
+  }
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: "" };
+  }
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(" "),
+  };
+}
+
+/**
+ * Load user from localStorage
+ */
+function loadUserFromStorage(): User | null {
+  if (typeof window === "undefined") return null;
+  
+  const userStr = localStorage.getItem("user");
+  if (userStr) {
+    try {
+      return JSON.parse(userStr);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 // Helper function to get user initials
 function getInitials(firstName: string, lastName: string): string {
-  return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  const first = firstName.charAt(0) || "";
+  const last = lastName.charAt(0) || "";
+  if (!first && !last) return "U";
+  return `${first}${last}`.toUpperCase();
 }
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
-  const [show2FASetup, setShow2FASetup] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
-  // User data - in a real app, this would come from an API or context
+  // Initialize user data from localStorage
+  useEffect(() => {
+    const loadedUser = loadUserFromStorage();
+    if (!loadedUser) {
+      // Redirect to login if no user found
+      router.push("/login");
+      return;
+    }
+    setUser(loadedUser);
+  }, [router]);
+
+  // Parse user name into first and last name
+  const nameParts = user ? parseName(user.name) : { firstName: "", lastName: "" };
+  
   const [userData, setUserData] = useState({
-    firstName: "Itamar",
-    lastName: "Mizrahi",
-    email: "mizrahi.itamar@gmail.com",
-    role: "Owner",
+    firstName: nameParts.firstName,
+    lastName: nameParts.lastName,
+    email: user?.email || "",
+    role: user?.role || "user",
     twoFactorEnabled: false,
   });
+
+  // Update userData when user loads
+  useEffect(() => {
+    if (user) {
+      const nameParts = parseName(user.name);
+      setUserData({
+        firstName: nameParts.firstName,
+        lastName: nameParts.lastName,
+        email: user.email,
+        role: user.role,
+        twoFactorEnabled: false,
+      });
+    }
+  }, [user]);
 
   const [passwordData, setPasswordData] = useState({
     currentPassword: "",
@@ -50,22 +124,52 @@ export default function SettingsPage() {
   };
 
   const handleSave = async () => {
+    if (!user) return;
+    
     setIsSaving(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      // In real implementation, save to backend
-      console.log("Saving user data:", userData);
+      const token = localStorage.getItem("auth_token");
+      if (!token) {
+        router.push("/login");
+        return;
+      }
+
+      // Update user via API
+      const fullName = userData.firstName.trim() + (userData.lastName.trim() ? ` ${userData.lastName.trim()}` : "");
+      const updatedUser = await Api.updateUser(user.id, {
+        name: fullName || null,
+      });
+
+      // Update localStorage with new user data
+      localStorage.setItem("user", JSON.stringify({
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        role: updatedUser.role,
+      }));
+
+      // Update local state
+      setUser(updatedUser);
+      const nameParts = parseName(updatedUser.name);
+      setUserData((prev) => ({
+        ...prev,
+        firstName: nameParts.firstName,
+        lastName: nameParts.lastName,
+      }));
+
       alert("Settings saved successfully!");
     } catch (error) {
       console.error("Failed to save settings:", error);
-      alert("Failed to save settings. Please try again.");
+      const errorMessage = error instanceof Error ? error.message : "Failed to save settings. Please try again.";
+      alert(errorMessage);
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleChangePassword = async () => {
+    if (!user) return;
+
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       alert("New passwords do not match");
       return;
@@ -77,9 +181,11 @@ export default function SettingsPage() {
 
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      console.log("Changing password");
+      // Update password via API
+      await Api.updateUser(user.id, {
+        password: passwordData.newPassword,
+      });
+
       alert("Password changed successfully!");
       setPasswordData({
         currentPassword: "",
@@ -89,17 +195,26 @@ export default function SettingsPage() {
       setShowChangePassword(false);
     } catch (error) {
       console.error("Failed to change password:", error);
-      alert("Failed to change password. Please try again.");
+      const errorMessage = error instanceof Error ? error.message : "Failed to change password. Please try again.";
+      alert(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleEnable2FA = () => {
-    setShow2FASetup(true);
     // In real implementation, this would initiate 2FA setup flow
     alert("2FA setup flow would start here");
   };
+
+  // Show loading state while user data is being loaded
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -179,10 +294,14 @@ export default function SettingsPage() {
                   id="email"
                   type="email"
                   value={userData.email}
-                  onChange={(e) => handleUserDataChange("email", e.target.value)}
+                  readOnly
+                  disabled
+                  className="bg-muted cursor-not-allowed"
                   placeholder="email@example.com"
-                  required
                 />
+                <p className="text-xs text-muted-foreground">
+                  Email address cannot be changed. Contact support if you need to update your email.
+                </p>
               </div>
             </div>
           </div>
@@ -322,11 +441,11 @@ export default function SettingsPage() {
 
           <Separator />
 
-          {/* Personalisation */}
+          {/* Personalization */}
           <div>
             <h3 className="text-base font-semibold mb-4 flex items-center gap-2">
               <Palette className="h-4 w-4" />
-              Personalisation
+              Personalization
             </h3>
             <div className="space-y-2">
               <label htmlFor="theme" className="text-sm font-medium">

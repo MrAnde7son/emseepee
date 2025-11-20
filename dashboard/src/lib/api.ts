@@ -140,5 +140,63 @@ export const Api = {
     return fetchJSON<{ data: GatewayEvent[]; total: number; page: number; limit: number; totalPages: number }>(`/api/events${search}`);
   },
   getEventFilterOptions: () => fetchJSON<{ decisions: string[]; providers: string[]; agents: string[]; tools: string[]; riskLevels: string[] }>("/api/events?filterOptions=true"),
+  register: async (data: { name?: string; email: string; password: string }) => {
+    const res = await fetch(`${BASE_URL}/api/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
+      throw new Error(error.error || `Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<{ token: string; user: { id: number; email: string; name: string | null; role: string } }>;
+  },
+  login: async (data: { email: string; password: string }) => {
+    const res = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
+      throw new Error(error.error || `Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<{ token: string; user: { id: number; email: string; name: string | null; role: string } }>;
+  },
+  getMe: async (token: string) => {
+    const res = await fetch(`${BASE_URL}/api/auth/me`, {
+      method: "GET",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
+      throw new Error(error.error || `Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<{ user: { id: number; email: string; name: string | null; role: string } }>;
+  },
+  updateUser: async (userId: number, updates: { name?: string | null; password?: string }) => {
+    const token = localStorage.getItem("auth_token");
+    const res = await fetch(`${BASE_URL}/api/users/${userId}`, {
+      method: "PUT",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(updates),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
+      throw new Error(error.error || `Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<{ id: number; email: string; name: string | null; role: string; createdAt: string; updatedAt: string }>;
+  },
 };
 

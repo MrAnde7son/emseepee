@@ -8,6 +8,7 @@ import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import type { PolicyRule, PolicyOperation, PolicyRuleCondition, Sensitivity } from "../config.js";
+import { generateToken, verifyToken, extractTokenFromHeader } from "./auth.js";
 // Types matching dashboard types
 type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "bedrock" | "copilot" | "langchain" | "custom";
 
@@ -1230,7 +1231,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   
   if (method === "OPTIONS") {
     res.writeHead(200);
@@ -1239,6 +1240,193 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
   
   try {
+    // Authentication endpoints
+    if (path === "/api/auth/register" && method === "POST") {
+      try {
+        const body = await parseBody(req) as { name?: string; email: string; password: string };
+        
+        if (!body.email || !body.password) {
+          sendJSON(res, 400, { error: "Email and password are required" });
+          return;
+        }
+
+        if (body.password.length < 8) {
+          sendJSON(res, 400, { error: "Password must be at least 8 characters long" });
+          return;
+        }
+
+        const { createUser, getUserByEmail } = await import("../db/services/userService.js");
+        
+        // Check if user already exists
+        const existingUser = await getUserByEmail(body.email);
+        if (existingUser) {
+          sendJSON(res, 409, { error: "User with this email already exists" });
+          return;
+        }
+
+        // Create user
+        const user = await createUser({
+          email: body.email,
+          name: body.name,
+          password: body.password,
+          role: "user",
+        });
+
+        // Generate token
+        const token = generateToken(user.id, user.email, user.role);
+
+        sendJSON(res, 201, {
+          token,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          },
+        });
+        return;
+      } catch (error) {
+        logger.error("[API] Registration error:", error);
+        const errorMessage = error instanceof Error ? error.message : "Registration failed";
+        sendJSON(res, 500, { error: errorMessage });
+        return;
+      }
+    }
+
+    if (path === "/api/auth/login" && method === "POST") {
+      try {
+        const body = await parseBody(req) as { email: string; password: string };
+        
+        if (!body.email || !body.password) {
+          sendJSON(res, 400, { error: "Email and password are required" });
+          return;
+        }
+
+        const { verifyPassword } = await import("../db/services/userService.js");
+        
+        // Verify credentials
+        const user = await verifyPassword(body.email, body.password);
+        if (!user) {
+          sendJSON(res, 401, { error: "Invalid email or password" });
+          return;
+        }
+
+        // Generate token
+        const token = generateToken(user.id, user.email, user.role);
+
+        sendJSON(res, 200, {
+          token,
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          },
+        });
+        return;
+      } catch (error) {
+        logger.error("[API] Login error:", error);
+        const errorMessage = error instanceof Error ? error.message : "Login failed";
+        sendJSON(res, 500, { error: errorMessage });
+        return;
+      }
+    }
+
+    if (path === "/api/auth/me" && method === "GET") {
+      try {
+        const authHeader = req.headers.authorization;
+        const token = extractTokenFromHeader(authHeader);
+        
+        if (!token) {
+          sendJSON(res, 401, { error: "No token provided" });
+          return;
+        }
+
+        const payload = verifyToken(token);
+        if (!payload) {
+          sendJSON(res, 401, { error: "Invalid or expired token" });
+          return;
+        }
+
+        const { getUserById } = await import("../db/services/userService.js");
+        const user = await getUserById(payload.userId);
+        
+        if (!user) {
+          sendJSON(res, 404, { error: "User not found" });
+          return;
+        }
+
+        sendJSON(res, 200, {
+          user: {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          },
+        });
+        return;
+      } catch (error) {
+        logger.error("[API] Auth me error:", error);
+        const errorMessage = error instanceof Error ? error.message : "Authentication failed";
+        sendJSON(res, 500, { error: errorMessage });
+        return;
+      }
+    }
+
+    // User update endpoint
+    if (path.startsWith("/api/users/") && method === "PUT") {
+      try {
+        const authHeader = req.headers.authorization;
+        const token = extractTokenFromHeader(authHeader);
+        
+        if (!token) {
+          sendJSON(res, 401, { error: "No token provided" });
+          return;
+        }
+
+        const payload = verifyToken(token);
+        if (!payload) {
+          sendJSON(res, 401, { error: "Invalid or expired token" });
+          return;
+        }
+
+        const userId = parseInt(path.replace("/api/users/", ""), 10);
+        if (isNaN(userId)) {
+          sendJSON(res, 400, { error: "Invalid user ID" });
+          return;
+        }
+
+        // Users can only update their own profile
+        if (payload.userId !== userId) {
+          sendJSON(res, 403, { error: "Forbidden: You can only update your own profile" });
+          return;
+        }
+
+        const body = await parseBody(req) as { name?: string | null; password?: string };
+        const { updateUser } = await import("../db/services/userService.js");
+        
+        const updatedUser = await updateUser(userId, {
+          name: body.name !== undefined && body.name !== null ? body.name : undefined,
+          password: body.password,
+        });
+
+        sendJSON(res, 200, {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          name: updatedUser.name,
+          role: updatedUser.role,
+          createdAt: updatedUser.createdAt,
+          updatedAt: updatedUser.updatedAt,
+        });
+        return;
+      } catch (error) {
+        logger.error("[API] Update user error:", error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to update user";
+        sendJSON(res, 500, { error: errorMessage });
+        return;
+      }
+    }
+    
     // Providers endpoints
     if (path === "/api/providers" && method === "GET") {
       const providers = await getProviders();

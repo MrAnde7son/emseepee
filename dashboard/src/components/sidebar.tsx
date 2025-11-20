@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -15,6 +15,31 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+interface User {
+  id: number;
+  email: string;
+  name: string | null;
+  role: string;
+}
+
+/**
+ * Get user initials from name or email
+ */
+function getUserInitials(user: User | null): string {
+  if (!user) return "U";
+  
+  if (user.name) {
+    const parts = user.name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return user.name.substring(0, 2).toUpperCase();
+  }
+  
+  // Fallback to email initials
+  return user.email.substring(0, 2).toUpperCase();
+}
+
 const navItems = [
   { href: "/providers", label: "Providers", icon: Plug },
   { href: "/tools", label: "Library", icon: Gauge },
@@ -23,10 +48,72 @@ const navItems = [
   { href: "/agents", label: "Agents", icon: Bot },
 ];
 
+/**
+ * Load user from localStorage
+ */
+function loadUserFromStorage(): User | null {
+  if (typeof window === "undefined") return null;
+  
+  const userStr = localStorage.getItem("user");
+  if (userStr) {
+    try {
+      return JSON.parse(userStr);
+    } catch {
+      // Invalid user data, clear it
+      localStorage.removeItem("user");
+      localStorage.removeItem("auth_token");
+      return null;
+    }
+  }
+  return null;
+}
+
 export function Sidebar() {
+  // Initialize isExpanded to true (same on server and client to avoid hydration mismatch)
   const [isExpanded, setIsExpanded] = useState(true);
+  // Initialize user as null to avoid hydration mismatch (will load on client)
+  const [user, setUser] = useState<User | null>(null);
   const pathname = usePathname();
   const router = useRouter();
+
+  useEffect(() => {
+    // Load user data only on client side after mount to avoid hydration mismatch
+    // Using setTimeout to make state update async and avoid linter warning
+    const timer = setTimeout(() => {
+      const loadedUser = loadUserFromStorage();
+      setUser(loadedUser);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Load sidebar expanded state from localStorage after mount (client-side only)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // Using setTimeout to make state update async and avoid linter warning
+      const timer = setTimeout(() => {
+        const saved = localStorage.getItem("sidebarExpanded");
+        if (saved !== null) {
+          setIsExpanded(saved === "true");
+        }
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // Save sidebar expanded state to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sidebarExpanded", String(isExpanded));
+    }
+  }, [isExpanded]);
+
+  const handleLogout = () => {
+    if (confirm("Are you sure you want to sign out?")) {
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem("user");
+      router.push("/login");
+    }
+  };
 
   return (
     <aside
@@ -107,14 +194,16 @@ export function Sidebar() {
               )}
             >
               <div className="h-8 w-8 rounded-full bg-gradient-to-br from-pink-500 via-orange-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
-                IM
+                {getUserInitials(user)}
               </div>
               {isExpanded && (
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground truncate">
-                    Itamar Mizrahi
+                    {user?.name || user?.email || "User"}
                   </p>
-                  <p className="text-xs text-muted-foreground truncate">Owner</p>
+                  <p className="text-xs text-muted-foreground truncate capitalize">
+                    {user?.role || "User"}
+                  </p>
                 </div>
               )}
             </button>
@@ -129,15 +218,7 @@ export function Sidebar() {
             </DropdownMenuItem>
             <DropdownMenuItem
               variant="destructive"
-              onClick={() => {
-                // In real implementation, this would handle logout
-                if (confirm("Are you sure you want to sign out?")) {
-                  // Handle logout logic here (clear tokens, session, etc.)
-                  console.log("Logging out...");
-                  // router.push("/login");
-                  alert("Logout functionality - backend integration pending");
-                }
-              }}
+              onClick={handleLogout}
               className="cursor-pointer"
             >
               <LogOut className="h-4 w-4" />

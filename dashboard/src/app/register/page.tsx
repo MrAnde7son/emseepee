@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Api } from "@/lib/api";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -45,23 +46,22 @@ export default function RegisterPage() {
 
     setIsLoading(true);
 
-    // Mock registration - will be replaced with backend integration
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Mock success - in real implementation, this would handle the response
-      console.log("Registration data:", {
+      const response = await Api.register({
         name: formData.name,
         email: formData.email,
-        // Don't log password in production
+        password: formData.password,
       });
 
-      // Redirect to login or dashboard after successful registration
-      // router.push("/login");
-      alert("Registration successful! (Mocked - backend integration pending)");
+      // Store token in localStorage
+      localStorage.setItem("auth_token", response.token);
+      localStorage.setItem("user", JSON.stringify(response.user));
+
+      // Redirect to dashboard after successful registration
+      router.push("/");
     } catch (err) {
-      setError("Registration failed. Please try again.");
+      const errorMessage = err instanceof Error ? err.message : "Registration failed. Please try again.";
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

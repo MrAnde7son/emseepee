@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Api } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,22 +34,21 @@ export default function LoginPage() {
 
     setIsLoading(true);
 
-    // Mock login - will be replaced with backend integration
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Mock success - in real implementation, this would handle the response
-      console.log("Login attempt:", {
+      const response = await Api.login({
         email: formData.email,
-        // Don't log password in production
+        password: formData.password,
       });
 
+      // Store token in localStorage
+      localStorage.setItem("auth_token", response.token);
+      localStorage.setItem("user", JSON.stringify(response.user));
+
       // Redirect to dashboard after successful login
-      // router.push("/");
-      alert("Login successful! (Mocked - backend integration pending)");
+      router.push("/");
     } catch (err) {
-      setError("Invalid email or password. Please try again.");
+      const errorMessage = err instanceof Error ? err.message : "Invalid email or password. Please try again.";
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
