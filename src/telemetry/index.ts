@@ -1,5 +1,8 @@
 import { logger } from "../logger.js";
 import { getTelemetryConfig, TelemetryConfig, TelemetryMode } from "./config.js";
+import { createHash } from "crypto";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
 
 /**
  * Telemetry service using PostHog
@@ -176,22 +179,20 @@ class TelemetryService {
    * Hash user ID for privacy
    */
   private hashUserId(userId: string): string {
-    const crypto = require("crypto");
-    return crypto.createHash("sha256").update(userId).digest("hex").substring(0, 16);
+    return createHash("sha256").update(userId).digest("hex").substring(0, 16);
   }
 
   /**
    * Generate a unique instance ID
    */
   private async generateInstanceId(): Promise<string> {
-    const crypto = require("crypto");
     const systemInfo = [
       process.platform,
       process.arch,
       process.env.HOME || process.env.USERPROFILE || "",
     ].join("|");
     
-    return crypto.createHash("sha256").update(systemInfo).digest("hex").substring(0, 16);
+    return createHash("sha256").update(systemInfo).digest("hex").substring(0, 16);
   }
 
   /**
@@ -199,11 +200,9 @@ class TelemetryService {
    */
   private getVersion(): string {
     try {
-      const fs = require("fs");
-      const path = require("path");
-      const packagePath = path.join(process.cwd(), "package.json");
-      if (fs.existsSync(packagePath)) {
-        const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf-8"));
+      const packagePath = join(process.cwd(), "package.json");
+      if (existsSync(packagePath)) {
+        const packageJson = JSON.parse(readFileSync(packagePath, "utf-8"));
         return packageJson.version || "0.1.0";
       }
     } catch {
