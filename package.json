@@ -11,6 +11,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "npm run build && npm run start",
+    "dev:backend": "npm run build && npm run start",
+    "dev:frontend": "cd dashboard && npm run dev",
+    "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" --names \"backend,frontend\" --prefix-colors \"blue,green\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -23,6 +26,7 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^2.1.8",
+    "concurrently": "^9.1.0",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }
