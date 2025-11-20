@@ -428,9 +428,13 @@ async function getMcpServerDetails(mcpId: string): Promise<{
 }
 
 /**
- * Get all tools (builtin, MCP, third-party)
+ * Get all tools (builtin, MCP, third-party) with pagination and filtering
  */
-async function getTools(): Promise<Tool[]> {
+async function getTools(
+  page: number = 1,
+  limit: number = 50,
+  searchQuery?: string
+): Promise<{ data: Tool[]; total: number; page: number; limit: number; totalPages: number }> {
   const tools: Tool[] = [];
   
   // Get built-in tools
@@ -535,7 +539,24 @@ async function getTools(): Promise<Tool[]> {
     }
   }
   
-  return tools;
+  // Apply search filter if provided
+  let filteredTools = tools;
+  if (searchQuery) {
+    const query = searchQuery.toLowerCase();
+    filteredTools = tools.filter((tool) =>
+      tool.name.toLowerCase().includes(query) ||
+      tool.category?.toLowerCase().includes(query) ||
+      tool.providerId?.toLowerCase().includes(query)
+    );
+  }
+  
+  const total = filteredTools.length;
+  const totalPages = Math.ceil(total / limit);
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  const paginatedTools = filteredTools.slice(startIndex, endIndex);
+  
+  return { data: paginatedTools, total, page, limit, totalPages };
 }
 
 /**
@@ -579,9 +600,20 @@ function extractScopeTarget(condition: PolicyRuleCondition, scope: "tool" | "pro
 }
 
 /**
- * Get all policies
+ * Get all policies with pagination and filtering
  */
-async function getPolicies(includeArchived: boolean = false): Promise<Policy[]> {
+async function getPolicies(
+  includeArchived: boolean = false,
+  page: number = 1,
+  limit: number = 50,
+  filters?: {
+    search?: string;
+    scope?: string;
+    effect?: string;
+    enabled?: string;
+    priority?: string;
+  }
+): Promise<{ data: Policy[]; total: number; page: number; limit: number; totalPages: number }> {
   const rules = await getPolicyRules();
   
   // Create a map of policy names to their original indices for stable IDs
@@ -590,27 +622,92 @@ async function getPolicies(includeArchived: boolean = false): Promise<Policy[]> 
     nameToIndex.set(rule.name, idx);
   });
   
-  // Filter archived policies based on includeArchived flag
-  const filteredRules = includeArchived 
-    ? rules 
-    : rules.filter((rule) => !rule.archived);
-  
-  return filteredRules.map((rule) => {
-    const originalIndex = nameToIndex.get(rule.name) ?? 0;
+  // Convert rules to Policy objects for filtering
+  const allPolicies: Policy[] = rules.map((rule, idx): Policy => {
     const scope = inferScopeFromCondition(rule.condition);
+    
+    // Map action operation to Policy effect type
+    let effect: Policy["effect"];
+    if (rule.action.operation === "block") {
+      effect = "deny";
+    } else if (rule.action.operation === "allow") {
+      effect = "allow";
+    } else if (rule.action.operation === "log") {
+      effect = "log";
+    } else if (rule.action.operation === "custom") {
+      effect = "custom";
+    } else if (rule.action.operation === "webhook") {
+      effect = "webhook";
+    } else {
+      effect = "allow"; // default fallback
+    }
+    
     return {
-      id: `policy-${originalIndex}`,
+      id: `policy-${idx}`,
       name: rule.name,
       description: rule.description,
       scope,
       scopeTarget: extractScopeTarget(rule.condition, scope),
-      effect: rule.action.operation === "block" ? "deny" : rule.action.operation === "allow" ? "allow" : rule.action.operation === "log" ? "log" : rule.action.operation === "custom" ? "custom" : "webhook",
+      effect,
       customCode: rule.action.operation === "custom" ? rule.action.customCode : undefined,
       priority: rule.priority ?? 0,
       enabled: !(rule.archived ?? false),
       archived: rule.archived ?? false,
     };
   });
+  
+  // Apply filters
+  let filteredPolicies = allPolicies.filter((policy) => {
+    // Filter archived policies based on includeArchived flag
+    if (!includeArchived && policy.archived) {
+      return false;
+    }
+    
+    // Search filter
+    if (filters?.search) {
+      const query = filters.search.toLowerCase();
+      const matchesSearch =
+        policy.name.toLowerCase().includes(query) ||
+        policy.description?.toLowerCase().includes(query) ||
+        policy.scope.toLowerCase().includes(query) ||
+        policy.effect.toLowerCase().includes(query);
+      if (!matchesSearch) return false;
+    }
+    
+    // Scope filter
+    if (filters?.scope && filters.scope !== "all" && policy.scope !== filters.scope) {
+      return false;
+    }
+    
+    // Effect filter
+    if (filters?.effect && filters.effect !== "all" && policy.effect !== filters.effect) {
+      return false;
+    }
+    
+    // Enabled filter
+    if (filters?.enabled && filters.enabled !== "all") {
+      const isEnabled = filters.enabled === "enabled";
+      if (policy.enabled !== isEnabled) return false;
+    }
+    
+    // Priority filter
+    if (filters?.priority && filters.priority !== "all") {
+      const priorityValue = parseInt(filters.priority, 10);
+      if (!isNaN(priorityValue) && policy.priority !== priorityValue) {
+        return false;
+      }
+    }
+    
+    return true;
+  });
+  
+  const total = filteredPolicies.length;
+  const totalPages = Math.ceil(total / limit);
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  const paginatedPolicies = filteredPolicies.slice(startIndex, endIndex);
+  
+  return { data: paginatedPolicies, total, page, limit, totalPages };
 }
 
 /**
@@ -923,24 +1020,57 @@ async function deletePolicy(id: string): Promise<void> {
 }
 
 /**
- * Get events with optional search
+ * Get events with optional search, filters, and pagination
  */
-async function getEvents(searchQuery?: string): Promise<GatewayEvent[]> {
+async function getEvents(
+  searchQuery?: string,
+  page: number = 1,
+  limit: number = 50,
+  filters?: {
+    decisions?: string[];
+    providers?: string[];
+    agents?: string[];
+    tools?: string[];
+    riskLevels?: string[];
+  }
+): Promise<{ data: GatewayEvent[]; total: number; page: number; limit: number; totalPages: number }> {
   try {
-    const { getEvents: getEventsFromDb, searchEvents } = await import("../db/services/eventService.js");
-    if (searchQuery) {
-      return await searchEvents(searchQuery);
+    const { getEvents: getEventsFromDb, searchEvents, getEventsCount, searchEventsCount, getEventsWithFilters, getEventsWithFiltersCount } = await import("../db/services/eventService.js");
+    
+    let data: GatewayEvent[];
+    let total: number;
+    
+    // Check if we have filters
+    const hasFilters = filters && (
+      (filters.decisions && filters.decisions.length > 0) ||
+      (filters.providers && filters.providers.length > 0) ||
+      (filters.agents && filters.agents.length > 0) ||
+      (filters.tools && filters.tools.length > 0) ||
+      (filters.riskLevels && filters.riskLevels.length > 0)
+    );
+    
+    if (hasFilters || searchQuery) {
+      // Use filtered/search function
+      total = await getEventsWithFiltersCount(searchQuery, filters);
+      data = await getEventsWithFilters(searchQuery, filters, limit, (page - 1) * limit);
+    } else {
+      // Get total count
+      total = await getEventsCount();
+      data = await getEventsFromDb(limit, (page - 1) * limit);
     }
-    return await getEventsFromDb();
+    
+    const totalPages = Math.ceil(total / limit);
+    
+    return { data, total, page, limit, totalPages };
   } catch (error) {
     // If database is not available, return empty array (fallback to file storage was removed)
     // In the future, we could add file-based fallback here if needed
     if (error instanceof Error && error.message.includes("Database not initialized")) {
       logger.warn("[API] Database not available, returning empty events list");
-      return [];
+      return { data: [], total: 0, page: 1, limit, totalPages: 0 };
     }
     logger.error("[API] Failed to get events from database:", error);
-    return [];
+    return { data: [], total: 0, page: 1, limit, totalPages: 0 };
   }
 }
 
@@ -1016,7 +1146,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     
     // Tools endpoints
     if (path === "/api/tools" && method === "GET") {
-      const tools = await getTools();
+      const page = parseInt(url.searchParams.get("page") || "1", 10);
+      const limit = parseInt(url.searchParams.get("limit") || "50", 10);
+      const searchQuery = url.searchParams.get("q") || undefined;
+      const tools = await getTools(page, limit, searchQuery);
       sendJSON(res, 200, tools);
       return;
     }
@@ -1103,7 +1236,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     // Policies endpoints
     if (path === "/api/policies" && method === "GET") {
       const includeArchived = url.searchParams.get("includeArchived") === "true";
-      const policies = await getPolicies(includeArchived);
+      const page = parseInt(url.searchParams.get("page") || "1", 10);
+      const limit = parseInt(url.searchParams.get("limit") || "50", 10);
+      const filters = {
+        search: url.searchParams.get("q") || undefined,
+        scope: url.searchParams.get("scope") || undefined,
+        effect: url.searchParams.get("effect") || undefined,
+        enabled: url.searchParams.get("status") || undefined,
+        priority: url.searchParams.get("priority") || undefined,
+      };
+      const policies = await getPolicies(includeArchived, page, limit, filters);
       sendJSON(res, 200, policies);
       return;
     }
@@ -1211,8 +1353,25 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     
     // Events endpoints
     if (path === "/api/events" && method === "GET") {
+      // Check if requesting filter options
+      if (url.searchParams.get("filterOptions") === "true") {
+        const { getEventFilterOptions } = await import("../db/services/eventService.js");
+        const filterOptions = await getEventFilterOptions();
+        sendJSON(res, 200, filterOptions);
+        return;
+      }
+      
       const searchQuery = url.searchParams.get("q") || undefined;
-      const events = await getEvents(searchQuery);
+      const page = parseInt(url.searchParams.get("page") || "1", 10);
+      const limit = parseInt(url.searchParams.get("limit") || "50", 10);
+      const filters = {
+        decisions: url.searchParams.get("decision")?.split(",").filter(Boolean),
+        providers: url.searchParams.get("provider") ? [url.searchParams.get("provider")!] : undefined,
+        agents: url.searchParams.get("agent") ? [url.searchParams.get("agent")!] : undefined,
+        tools: url.searchParams.get("tool") ? [url.searchParams.get("tool")!] : undefined,
+        riskLevels: url.searchParams.get("risk")?.split(",").filter(Boolean),
+      };
+      const events = await getEvents(searchQuery, page, limit, filters);
       sendJSON(res, 200, events);
       return;
     }

@@ -11,24 +11,24 @@ export function useProviders() {
   });
 }
 
-export function useTools() {
+export function useTools(page?: number, limit?: number, search?: string) {
   return useQuery({
-    queryKey: ["tools"],
-    queryFn: () => Api.getTools(),
+    queryKey: ["tools", page, limit, search],
+    queryFn: () => Api.getTools(page, limit, search),
   });
 }
 
-export function usePolicies(includeArchived?: boolean) {
+export function usePolicies(includeArchived?: boolean, page?: number, limit?: number, filters?: { search?: string; scope?: string; effect?: string; enabled?: string; priority?: string }) {
   return useQuery({
-    queryKey: ["policies", includeArchived],
-    queryFn: () => Api.getPolicies(includeArchived),
+    queryKey: ["policies", includeArchived, page, limit, filters],
+    queryFn: () => Api.getPolicies(includeArchived, page, limit, filters),
   });
 }
 
-export function useEvents(search: string) {
+export function useEvents(search: string, page?: number, limit?: number, filters?: { decision?: string[]; provider?: string; agent?: string; tool?: string; risk?: string[] }) {
   return useQuery({
-    queryKey: ["events", search],
-    queryFn: () => Api.getEvents(search ? { q: search } : undefined),
+    queryKey: ["events", search, page, limit, filters],
+    queryFn: () => Api.getEvents({ q: search, page, limit, ...filters }),
   });
 }
 

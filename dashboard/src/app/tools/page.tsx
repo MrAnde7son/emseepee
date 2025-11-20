@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useTools } from "@/hooks/useGatewayData";
 import { Api } from "@/lib/api";
 import { Tool } from "@/lib/types";
@@ -35,6 +36,7 @@ import {
   Info,
   Wrench,
 } from "lucide-react";
+import { Pagination } from "@/components/ui/pagination";
 
 interface CategoryInfo {
   id: string;
@@ -133,8 +135,83 @@ function IconRenderer({ icon, className }: { icon?: string; className?: string }
 }
 
 export default function ToolsPage() {
-  const { data: tools, isLoading, refetch } = useTools();
-  const [searchQuery, setSearchQuery] = useState("");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
+  // Initialize from URL params
+  const initialPage = parseInt(searchParams.get("page") || "1", 10);
+  const initialSearch = searchParams.get("q") || "";
+  
+  const [currentPage, setCurrentPage] = useState(initialPage);
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const pageSize = 50;
+  const { data: toolsResponse, isLoading, refetch } = useTools(currentPage, pageSize, searchQuery);
+  const tools = toolsResponse?.data;
+  
+  const isUpdatingFromUrl = React.useRef(false);
+  const prevSearchParamsRef = React.useRef<string>("");
+  
+  // Sync state from URL params when they change externally (e.g., browser back/forward)
+  useEffect(() => {
+    const currentParamsString = searchParams.toString();
+    
+    // Only update if searchParams actually changed
+    if (currentParamsString === prevSearchParamsRef.current) {
+      return;
+    }
+    
+    prevSearchParamsRef.current = currentParamsString;
+
+    const urlPage = parseInt(searchParams.get("page") || "1", 10);
+    const urlSearch = searchParams.get("q") || "";
+
+    // Check if URL params differ from current state
+    const pageChanged = urlPage !== currentPage;
+    const searchChanged = urlSearch !== searchQuery;
+
+    if (pageChanged || searchChanged) {
+      isUpdatingFromUrl.current = true;
+      
+      if (pageChanged) {
+        setCurrentPage(urlPage);
+      }
+      if (searchChanged) {
+        setSearchQuery(urlSearch);
+      }
+      
+      // Reset flag after state updates
+      setTimeout(() => {
+        isUpdatingFromUrl.current = false;
+      }, 0);
+    }
+  }, [searchParams, currentPage, searchQuery]);
+  
+  // Update URL when page or search change (but not when updating from URL)
+  useEffect(() => {
+    if (isUpdatingFromUrl.current) {
+      return;
+    }
+
+    const params = new URLSearchParams();
+    
+    if (searchQuery) {
+      params.set("q", searchQuery);
+    }
+    
+    if (currentPage > 1) {
+      params.set("page", currentPage.toString());
+    }
+    
+    const currentParams = new URLSearchParams(window.location.search);
+    const newParamsString = params.toString();
+    const currentParamsString = currentParams.toString();
+    
+    // Only update URL if it's different to avoid unnecessary updates
+    if (newParamsString !== currentParamsString) {
+      const newUrl = newParamsString ? `?${newParamsString}` : window.location.pathname;
+      router.replace(newUrl, { scroll: false });
+    }
+  }, [searchQuery, currentPage, router]);
   const [installing, setInstalling] = useState<Set<string>>(new Set());
   const [selectedItem, setSelectedItem] = useState<{ type: "category" | "mcp"; id: string } | null>(null);
   const [mcpDetails, setMcpDetails] = useState<McpServerDetails | null>(null);
@@ -410,22 +487,8 @@ export default function ToolsPage() {
     return items;
   }, [tools, toolsByCategory, mcpServers, mcpIcons]);
 
-  // Filter items by search query
-  const filteredItems = useMemo(() => {
-    if (!searchQuery) return allItems;
-    const query = searchQuery.toLowerCase();
-    return allItems.filter(
-      (item) =>
-        item.name.toLowerCase().includes(query) ||
-        item.description.toLowerCase().includes(query) ||
-        (item.type === "category" && (toolsByCategory[item.id]?.some((tool) =>
-          tool.name.toLowerCase().includes(query)
-        ) ?? false)) ||
-        (item.type === "mcp" && selectedTools.some((tool) =>
-          tool.name.toLowerCase().includes(query)
-        ))
-    );
-  }, [searchQuery, allItems, toolsByCategory, selectedTools]);
+  // Items are already filtered by backend search, so use allItems directly
+  const filteredItems = allItems;
 
   return (
     <div className="space-y-6">
@@ -578,6 +641,22 @@ export default function ToolsPage() {
               </div>
             )}
           </div>
+
+          {toolsResponse && toolsResponse.totalPages > 1 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={toolsResponse.totalPages}
+              totalItems={toolsResponse.total}
+              pageSize={pageSize}
+              onPageChange={(page) => {
+                setCurrentPage(page);
+                setSelectedItem(null); // Close detail dialog when changing pages
+                // Scroll to top when page changes
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              className="mt-6"
+            />
+          )}
         </>
       )}
 

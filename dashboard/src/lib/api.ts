@@ -49,7 +49,14 @@ async function deleteJSON(path: string): Promise<void> {
 export const Api = {
   getProviders: () => fetchJSON<Provider[]>("/api/providers"),
   installProvider: (providerId: string) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/install`, {}),
-  getTools: () => fetchJSON<Tool[]>("/api/tools"),
+  getTools: (page?: number, limit?: number, search?: string) => {
+    const params = new URLSearchParams();
+    if (page) params.set("page", page.toString());
+    if (limit) params.set("limit", limit.toString());
+    if (search) params.set("q", search);
+    const searchStr = params.toString() ? `?${params.toString()}` : "";
+    return fetchJSON<{ data: Tool[]; total: number; page: number; limit: number; totalPages: number }>(`/api/tools${searchStr}`);
+  },
   enableTool: (toolId: string) => postJSON<{ success: boolean }>(`/api/tools/${toolId}/enable`, {}),
   disableTool: (toolId: string) => postJSON<{ success: boolean }>(`/api/tools/${toolId}/disable`, {}),
   enableMcpServer: (mcpId: string) => postJSON<{ success: boolean }>(`/api/mcp/${mcpId}/enable`, {}),
@@ -74,19 +81,38 @@ export const Api = {
     }>;
     disabledTools?: string[];
   }>(`/api/mcp/${mcpId}`),
-  getPolicies: (includeArchived?: boolean) => {
-    const search = includeArchived ? "?includeArchived=true" : "";
-    return fetchJSON<Policy[]>(`/api/policies${search}`);
+  getPolicies: (includeArchived?: boolean, page?: number, limit?: number, filters?: { search?: string; scope?: string; effect?: string; enabled?: string; priority?: string }) => {
+    const params = new URLSearchParams();
+    if (includeArchived) params.set("includeArchived", "true");
+    if (page) params.set("page", page.toString());
+    if (limit) params.set("limit", limit.toString());
+    if (filters?.search) params.set("q", filters.search);
+    if (filters?.scope && filters.scope !== "all") params.set("scope", filters.scope);
+    if (filters?.effect && filters.effect !== "all") params.set("effect", filters.effect);
+    if (filters?.enabled && filters.enabled !== "all") params.set("status", filters.enabled);
+    if (filters?.priority && filters.priority !== "all") params.set("priority", filters.priority);
+    const search = params.toString() ? `?${params.toString()}` : "";
+    return fetchJSON<{ data: Policy[]; total: number; page: number; limit: number; totalPages: number }>(`/api/policies${search}`);
   },
-  getPolicy: (id: string) => fetchJSON<Policy & { condition?: any }>(`/api/policies/${id}`),
+  getPolicy: (id: string) => fetchJSON<Policy & { condition?: Record<string, unknown> }>(`/api/policies/${id}`),
   createPolicy: (policy: Partial<Policy> & { scopeTarget?: string }) => postJSON<Policy>("/api/policies", policy),
   updatePolicy: (id: string, policy: Partial<Policy> & { scopeTarget?: string }) => putJSON<Policy>(`/api/policies/${id}`, policy),
   deletePolicy: (id: string) => deleteJSON(`/api/policies/${id}`),
   archivePolicy: (id: string) => postJSON<{ success: boolean }>(`/api/policies/${id}/archive`, {}),
   restorePolicy: (id: string) => postJSON<{ success: boolean }>(`/api/policies/${id}/restore`, {}),
-  getEvents: (params?: { q?: string }) => {
-    const search = params?.q ? `?q=${encodeURIComponent(params.q)}` : "";
-    return fetchJSON<GatewayEvent[]>(`/api/events${search}`);
+  getEvents: (params?: { q?: string; page?: number; limit?: number; decision?: string[]; provider?: string; agent?: string; tool?: string; risk?: string[] }) => {
+    const urlParams = new URLSearchParams();
+    if (params?.q) urlParams.set("q", params.q);
+    if (params?.page) urlParams.set("page", params.page.toString());
+    if (params?.limit) urlParams.set("limit", params.limit.toString());
+    if (params?.decision && params.decision.length > 0) urlParams.set("decision", params.decision.join(","));
+    if (params?.provider) urlParams.set("provider", params.provider);
+    if (params?.agent) urlParams.set("agent", params.agent);
+    if (params?.tool) urlParams.set("tool", params.tool);
+    if (params?.risk && params.risk.length > 0) urlParams.set("risk", params.risk.join(","));
+    const search = urlParams.toString() ? `?${urlParams.toString()}` : "";
+    return fetchJSON<{ data: GatewayEvent[]; total: number; page: number; limit: number; totalPages: number }>(`/api/events${search}`);
   },
+  getEventFilterOptions: () => fetchJSON<{ decisions: string[]; providers: string[]; agents: string[]; tools: string[]; riskLevels: string[] }>("/api/events?filterOptions=true"),
 };
 

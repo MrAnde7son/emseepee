@@ -2,8 +2,10 @@
 
 import { useState, useMemo, useEffect, useRef, startTransition } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 
 import { useEvents } from "@/hooks/useGatewayData";
+import { Api } from "@/lib/api";
 
 import { Input } from "@/components/ui/input";
 
@@ -37,6 +39,7 @@ import {
 } from "@/components/ui/select";
 
 import { Checkbox } from "@/components/ui/checkbox";
+import { Pagination } from "@/components/ui/pagination";
 
 import { ShieldAlert, Filter, X } from "lucide-react";
 
@@ -59,6 +62,7 @@ export default function EventsPage() {
   const initialAgent = searchParams.get("agent") || "";
   const initialTool = searchParams.get("tool") || "";
   const initialRiskLevels = searchParams.get("risk")?.split(",").filter(Boolean) || [];
+  const initialPage = parseInt(searchParams.get("page") || "1", 10);
 
   const [search, setSearch] = useState(initialSearch);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -70,7 +74,16 @@ export default function EventsPage() {
     riskLevels: initialRiskLevels,
   });
 
-  const { data, isLoading } = useEvents(search);
+  const [currentPage, setCurrentPage] = useState(initialPage);
+  const pageSize = 50;
+  const eventFilters = {
+    decision: filters.decisions.length > 0 ? filters.decisions : undefined,
+    provider: filters.providers.length > 0 ? filters.providers[0] : undefined,
+    agent: filters.agents.length > 0 ? filters.agents[0] : undefined,
+    tool: filters.tools.length > 0 ? filters.tools[0] : undefined,
+    risk: filters.riskLevels.length > 0 ? filters.riskLevels : undefined,
+  };
+  const { data, isLoading } = useEvents(search, currentPage, pageSize, eventFilters);
   const isUpdatingFromUrl = useRef(false);
   const prevSearchParamsRef = useRef<string>("");
 
@@ -91,6 +104,7 @@ export default function EventsPage() {
     const urlAgent = searchParams.get("agent") || "";
     const urlTool = searchParams.get("tool") || "";
     const urlRiskLevels = searchParams.get("risk")?.split(",").filter(Boolean) || [];
+    const urlPage = parseInt(searchParams.get("page") || "1", 10);
 
     const urlProviderArray = urlProvider ? [urlProvider] : [];
     const urlAgentArray = urlAgent ? [urlAgent] : [];
@@ -103,8 +117,9 @@ export default function EventsPage() {
     const agentsChanged = JSON.stringify(urlAgentArray) !== JSON.stringify(filters.agents);
     const toolsChanged = JSON.stringify(urlToolArray) !== JSON.stringify(filters.tools);
     const riskLevelsChanged = JSON.stringify(urlRiskLevels) !== JSON.stringify(filters.riskLevels);
+    const pageChanged = urlPage !== currentPage;
 
-    if (searchChanged || decisionsChanged || providersChanged || agentsChanged || toolsChanged || riskLevelsChanged) {
+    if (searchChanged || decisionsChanged || providersChanged || agentsChanged || toolsChanged || riskLevelsChanged || pageChanged) {
       isUpdatingFromUrl.current = true;
       
       startTransition(() => {
@@ -120,6 +135,10 @@ export default function EventsPage() {
             tools: urlToolArray,
             riskLevels: urlRiskLevels,
           });
+        }
+        
+        if (pageChanged) {
+          setCurrentPage(urlPage);
         }
       });
       
@@ -163,6 +182,10 @@ export default function EventsPage() {
       params.set("risk", filters.riskLevels.join(","));
     }
     
+    if (currentPage > 1) {
+      params.set("page", currentPage.toString());
+    }
+    
     const currentParams = new URLSearchParams(window.location.search);
     const newParamsString = params.toString();
     const currentParamsString = currentParams.toString();
@@ -172,68 +195,31 @@ export default function EventsPage() {
       const newUrl = newParamsString ? `?${newParamsString}` : window.location.pathname;
       router.replace(newUrl, { scroll: false });
     }
-  }, [search, filters, router]);
+  }, [search, filters, currentPage, router]);
 
   const onSearchChange = (value: string) => {
     setSearch(value);
+    setCurrentPage(1); // Reset to first page on search
   };
 
-  // Extract unique values for filter options
-  const filterOptions = useMemo(() => {
-    if (!data) return { providers: [], decisions: [], agents: [], tools: [], riskLevels: [] };
-    
-    const providers = Array.from(new Set(data.map((e) => e.provider))).sort();
-    const decisions = Array.from(new Set(data.map((e) => e.decision))).sort();
-    const agents = Array.from(new Set(data.map((e) => e.agentId))).sort();
-    const tools = Array.from(new Set(data.map((e) => e.toolName))).sort();
-    const riskLevels = Array.from(
-      new Set(
-        data
-          .map((e) => e.riskLevel)
-          .filter((r): r is "low" | "medium" | "high" => 
-            r === "low" || r === "medium" || r === "high"
-          )
-      )
-    ).sort();
-    
-    return { providers, decisions, agents, tools, riskLevels };
-  }, [data]);
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters, search]);
 
-  // Apply filters to data
-  const filteredData = useMemo(() => {
-    if (!data) return [];
-    
-    return data.filter((event) => {
-      // Filter by decision
-      if (filters.decisions.length > 0 && !filters.decisions.includes(event.decision)) {
-        return false;
-      }
-      
-      // Filter by provider
-      if (filters.providers.length > 0 && !filters.providers.includes(event.provider)) {
-        return false;
-      }
-      
-      // Filter by agent
-      if (filters.agents.length > 0 && !filters.agents.includes(event.agentId)) {
-        return false;
-      }
-      
-      // Filter by tool
-      if (filters.tools.length > 0 && !filters.tools.includes(event.toolName)) {
-        return false;
-      }
-      
-      // Filter by risk level
-      if (filters.riskLevels.length > 0) {
-        if (!event.riskLevel || !filters.riskLevels.includes(event.riskLevel)) {
-          return false;
-        }
-      }
-      
-      return true;
-    });
-  }, [data, filters]);
+  // Fetch filter options from backend (all unique values across all events)
+  const { data: filterOptionsData } = useQuery({
+    queryKey: ["eventFilterOptions"],
+    queryFn: () => Api.getEventFilterOptions(),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+  
+  const filterOptions = useMemo(() => {
+    return filterOptionsData || { providers: [], decisions: [], agents: [], tools: [], riskLevels: [] };
+  }, [filterOptionsData]);
+
+  // Use data directly from backend (already filtered)
+  const filteredData = data?.data || [];
 
   // Count active filters
   const activeFilterCount = useMemo(() => {
@@ -323,7 +309,7 @@ export default function EventsPage() {
 
       {isLoading && <div className="text-sm text-muted-foreground">Loading events…</div>}
 
-      {!isLoading && data && data.length === 0 && (
+      {!isLoading && (!data?.data || data.data.length === 0) && (
         <div className="border border-dashed border-border rounded-xl p-4 text-sm text-muted-foreground flex items-center gap-2">
           <ShieldAlert className="h-4 w-4 text-muted-foreground" />
           No events yet. Once agents start calling tools through the gateway, they&apos;ll
@@ -331,7 +317,7 @@ export default function EventsPage() {
         </div>
       )}
 
-      {!isLoading && filteredData && filteredData.length === 0 && data && data.length > 0 && (
+      {!isLoading && filteredData && filteredData.length === 0 && data && data.data.length > 0 && (
         <div className="border border-dashed border-border rounded-xl p-4 text-sm text-muted-foreground flex items-center gap-2">
           <ShieldAlert className="h-4 w-4 text-muted-foreground" />
           No events match the current filters. Try adjusting your filter criteria.
@@ -390,6 +376,20 @@ export default function EventsPage() {
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {data && data.totalPages > 1 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={data.totalPages}
+          totalItems={data.total}
+          pageSize={pageSize}
+          onPageChange={(page) => {
+            setCurrentPage(page);
+            // Scroll to top when page changes
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        />
       )}
 
       {/* Filters Sheet */}

@@ -33,6 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Pagination } from "@/components/ui/pagination";
 
 // Common agent roles - can be extracted from policies or config
 const COMMON_AGENT_ROLES = ["coder_bot", "research_bot", "admin"];
@@ -46,10 +47,27 @@ export default function PoliciesPage() {
   const initialScope = searchParams.get("scope") || "all";
   const initialEffect = searchParams.get("effect") || "all";
   const initialStatus = searchParams.get("status") || "all";
+  const initialPriority = searchParams.get("priority") || "all";
   const initialArchived = searchParams.get("archived") === "true";
+  const initialPage = parseInt(searchParams.get("page") || "1", 10);
 
   const [showArchived, setShowArchived] = useState(initialArchived);
-  const { data, isLoading, refetch } = usePolicies(showArchived);
+  const [currentPage, setCurrentPage] = useState(initialPage);
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const [filterScope, setFilterScope] = useState<string>(initialScope);
+  const [filterEffect, setFilterEffect] = useState<string>(initialEffect);
+  const [filterEnabled, setFilterEnabled] = useState<string>(initialStatus);
+  const [filterPriority, setFilterPriority] = useState<string>(initialPriority);
+  
+  const pageSize = 50;
+  const filters = {
+    search: searchQuery || undefined,
+    scope: filterScope !== "all" ? filterScope : undefined,
+    effect: filterEffect !== "all" ? filterEffect : undefined,
+    enabled: filterEnabled !== "all" ? filterEnabled : undefined,
+    priority: filterPriority !== "all" ? filterPriority : undefined,
+  };
+  const { data, isLoading, refetch } = usePolicies(showArchived, currentPage, pageSize, filters);
   const { data: toolsData } = useTools();
   const { data: providersData } = useProviders();
   const [editingPolicy, setEditingPolicy] = useState<string | null>(null);
@@ -75,32 +93,28 @@ export default function PoliciesPage() {
   // Extract unique agent roles from existing policies
   const availableAgentRoles = useMemo(() => {
     const roles = new Set<string>(COMMON_AGENT_ROLES);
-    if (data) {
+    if (data?.data) {
       // We'd need to parse conditions from backend, but for now use common roles
       // In a real implementation, we'd extract from policy conditions
     }
     return Array.from(roles).sort();
-  }, [data]);
+  }, [data?.data]);
   
   // Get MCP servers from tools
   const mcpServers = useMemo(() => {
-    if (!toolsData) return [];
+    if (!toolsData?.data) return [];
     const servers = new Set<string>();
-    toolsData.forEach((tool: Tool) => {
+    toolsData.data.forEach((tool: Tool) => {
       if (tool.source === "mcp" && tool.providerId) {
         servers.add(tool.providerId);
       }
     });
     return Array.from(servers).sort();
-  }, [toolsData]);
+  }, [toolsData?.data]);
   const [deletingPolicy, setDeletingPolicy] = useState<string | null>(null);
   const [archivingPolicy, setArchivingPolicy] = useState<string | null>(null);
   const [restoringPolicy, setRestoringPolicy] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [searchQuery, setSearchQuery] = useState(initialSearch);
-  const [filterScope, setFilterScope] = useState<string>(initialScope);
-  const [filterEffect, setFilterEffect] = useState<string>(initialEffect);
-  const [filterEnabled, setFilterEnabled] = useState<string>(initialStatus);
   
   // Sync state from URL params when they change externally (e.g., browser back/forward)
   useEffect(() => {
@@ -117,16 +131,20 @@ export default function PoliciesPage() {
     const urlScope = searchParams.get("scope") || "all";
     const urlEffect = searchParams.get("effect") || "all";
     const urlStatus = searchParams.get("status") || "all";
+    const urlPriority = searchParams.get("priority") || "all";
     const urlArchived = searchParams.get("archived") === "true";
+    const urlPage = parseInt(searchParams.get("page") || "1", 10);
 
     // Check if URL params differ from current state
     const searchChanged = urlSearch !== searchQuery;
     const scopeChanged = urlScope !== filterScope;
     const effectChanged = urlEffect !== filterEffect;
     const statusChanged = urlStatus !== filterEnabled;
+    const priorityChanged = urlPriority !== filterPriority;
     const archivedChanged = urlArchived !== showArchived;
+    const pageChanged = urlPage !== currentPage;
 
-    if (searchChanged || scopeChanged || effectChanged || statusChanged || archivedChanged) {
+    if (searchChanged || scopeChanged || effectChanged || statusChanged || priorityChanged || archivedChanged || pageChanged) {
       isUpdatingFromUrl.current = true;
       
       startTransition(() => {
@@ -142,8 +160,14 @@ export default function PoliciesPage() {
         if (statusChanged) {
           setFilterEnabled(urlStatus);
         }
+        if (priorityChanged) {
+          setFilterPriority(urlPriority);
+        }
         if (archivedChanged) {
           setShowArchived(urlArchived);
+        }
+        if (pageChanged) {
+          setCurrentPage(urlPage);
         }
       });
       
@@ -179,8 +203,16 @@ export default function PoliciesPage() {
       params.set("status", filterEnabled);
     }
     
+    if (filterPriority !== "all") {
+      params.set("priority", filterPriority);
+    }
+    
     if (showArchived) {
       params.set("archived", "true");
+    }
+    
+    if (currentPage > 1) {
+      params.set("page", currentPage.toString());
     }
     
     const currentParams = new URLSearchParams(window.location.search);
@@ -192,47 +224,15 @@ export default function PoliciesPage() {
       const newUrl = newParamsString ? `?${newParamsString}` : window.location.pathname;
       router.replace(newUrl, { scroll: false });
     }
-  }, [searchQuery, filterScope, filterEffect, filterEnabled, showArchived, router]);
+  }, [searchQuery, filterScope, filterEffect, filterEnabled, filterPriority, showArchived, currentPage, router]);
   
-  // Filter policies based on search and filters
-  const filteredPolicies = useMemo(() => {
-    if (!data) return [];
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterScope, filterEffect, filterEnabled, filterPriority, showArchived]);
 
-    return data.filter((policy: Policy) => {
-      // If showing archived, only show archived policies; otherwise, only show non-archived
-      if (showArchived && !policy.archived) return false;
-      if (!showArchived && policy.archived) return false;
-
-      // Search filter
-      if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        const matchesSearch =
-          policy.name.toLowerCase().includes(query) ||
-          policy.description?.toLowerCase().includes(query) ||
-          policy.scope.toLowerCase().includes(query) ||
-          policy.effect.toLowerCase().includes(query);
-        if (!matchesSearch) return false;
-      }
-
-      // Scope filter
-      if (filterScope !== "all" && policy.scope !== filterScope) {
-        return false;
-      }
-
-      // Effect filter
-      if (filterEffect !== "all" && policy.effect !== filterEffect) {
-        return false;
-      }
-
-      // Enabled filter
-      if (filterEnabled !== "all") {
-        const isEnabled = filterEnabled === "enabled";
-        if (policy.enabled !== isEnabled) return false;
-      }
-
-      return true;
-    });
-  }, [data, searchQuery, filterScope, filterEffect, filterEnabled, showArchived]);
+  // Use data directly from backend (already filtered)
+  const filteredPolicies = data?.data || [];
   
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to permanently delete this policy? This cannot be undone.")) return;
@@ -278,7 +278,7 @@ export default function PoliciesPage() {
   };
 
   const handleEditClick = async (id: string) => {
-    const policy = data?.find((p: Policy) => p.id === id);
+    const policy = data?.data?.find((p: Policy) => p.id === id);
     if (policy) {
       setEditingPolicyData({ ...policy });
       setEditingPolicy(id);
@@ -436,9 +436,10 @@ export default function PoliciesPage() {
     setFilterScope("all");
     setFilterEffect("all");
     setFilterEnabled("all");
+    setFilterPriority("all");
   };
 
-  const hasActiveFilters = searchQuery || filterScope !== "all" || filterEffect !== "all" || filterEnabled !== "all";
+  const hasActiveFilters = searchQuery || filterScope !== "all" || filterEffect !== "all" || filterEnabled !== "all" || filterPriority !== "all";
 
   return (
     <div className="space-y-4">
@@ -513,6 +514,16 @@ export default function PoliciesPage() {
             <SelectItem value="disabled">Disabled</SelectItem>
           </SelectContent>
         </Select>
+        <Input
+          type="number"
+          placeholder="Priority"
+          value={filterPriority === "all" ? "" : filterPriority}
+          onChange={(e) => {
+            const value = e.target.value;
+            setFilterPriority(value === "" ? "all" : value);
+          }}
+          className="w-[120px]"
+        />
         {hasActiveFilters && (
           <Button
             variant="ghost"
@@ -527,7 +538,7 @@ export default function PoliciesPage() {
 
       {isLoading && <div className="text-sm text-muted-foreground">Loading policies...</div>}
 
-      {!isLoading && filteredPolicies.length === 0 && (
+      {!isLoading && (!data?.data || data.data.length === 0) && (
         <div className="text-sm text-muted-foreground text-center py-8">
           {hasActiveFilters
             ? "No policies found matching your filters."
@@ -634,6 +645,20 @@ export default function PoliciesPage() {
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {data && data.totalPages > 1 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={data.totalPages}
+          totalItems={data.total}
+          pageSize={pageSize}
+          onPageChange={(page) => {
+            setCurrentPage(page);
+            // Scroll to top when page changes
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        />
       )}
       
       <Dialog open={showCreateDialog} onOpenChange={(open) => {
@@ -775,7 +800,7 @@ export default function PoliciesPage() {
                       <SelectValue placeholder="Select a tool" />
                     </SelectTrigger>
                     <SelectContent>
-                      {toolsData?.map((tool: Tool) => (
+                      {toolsData?.data?.map((tool: Tool) => (
                         <SelectItem key={tool.id} value={tool.name}>
                           {tool.name}
                           {tool.category && ` (${tool.category})`}
@@ -1013,7 +1038,7 @@ export default function PoliciesPage() {
                         <SelectValue placeholder="Select a tool" />
                       </SelectTrigger>
                       <SelectContent>
-                        {toolsData?.map((tool: Tool) => (
+                        {toolsData?.data?.map((tool: Tool) => (
                           <SelectItem key={tool.id} value={tool.name}>
                             {tool.name}
                             {tool.category && ` (${tool.category})`}
