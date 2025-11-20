@@ -233,14 +233,11 @@ export async function registerMcpServerProxies(
         }
 
         // Create policy config for this tool
-        const toolPolicyOverride = proxyConfig.toolPolicyOverrides?.[tool.name];
         const toolPolicy: ToolPolicyConfig = {
           name: tool.name,
           description: tool.description,
-          allowedRoles:
-            toolPolicyOverride?.allowedRoles || proxyConfig.defaultPolicy.allowedRoles,
-          sensitivity:
-            toolPolicyOverride?.sensitivity || proxyConfig.defaultPolicy.sensitivity,
+          allowedRoles: proxyConfig.defaultPolicy.allowedRoles,
+          sensitivity: proxyConfig.defaultPolicy.sensitivity,
           category: "third_party",
         };
 

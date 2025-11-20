@@ -75,12 +75,38 @@ export const Api = {
       allowedRoles: string[];
       sensitivity: string;
     };
-    toolPolicyOverrides?: Record<string, {
-      allowedRoles?: string[];
-      sensitivity?: string;
-    }>;
     disabledTools?: string[];
   }>(`/api/mcp/${mcpId}`),
+  updateMcpServerConfig: (mcpId: string, updates: Partial<{
+    name: string;
+    description?: string;
+    command: string;
+    args: string[];
+    env?: Record<string, string>;
+    cwd?: string;
+    enabled?: boolean;
+    icon?: string;
+    defaultPolicy: {
+      allowedRoles: string[];
+      sensitivity: string;
+    };
+    disabledTools?: string[];
+  }>) => putJSON<{
+    id: string;
+    name: string;
+    description?: string;
+    command: string;
+    args: string[];
+    env?: Record<string, string>;
+    cwd?: string;
+    enabled?: boolean;
+    icon?: string;
+    defaultPolicy: {
+      allowedRoles: string[];
+      sensitivity: string;
+    };
+    disabledTools?: string[];
+  }>(`/api/mcp/${mcpId}`, updates),
   getPolicies: (includeArchived?: boolean, page?: number, limit?: number, filters?: { search?: string; scope?: string; effect?: string; enabled?: string; priority?: string }) => {
     const params = new URLSearchParams();
     if (includeArchived) params.set("includeArchived", "true");

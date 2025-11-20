@@ -740,6 +740,7 @@ export default function PoliciesPage() {
                     <SelectItem value="tool">Tool</SelectItem>
                     <SelectItem value="agent">Agent</SelectItem>
                     <SelectItem value="provider">Provider</SelectItem>
+                    <SelectItem value="sensitivity">Sensitivity</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -789,6 +790,7 @@ export default function PoliciesPage() {
                   {newPolicyData.scope === "agent" && "Select Agent Role"}
                   {newPolicyData.scope === "provider" && "Select Provider"}
                   {newPolicyData.scope === "mcp" && "Select MCP Server"}
+                  {newPolicyData.scope === "sensitivity" && "Select Sensitivity Level"}
                   <span className="text-red-500">*</span>
                 </label>
                 {newPolicyData.scope === "tool" && (
@@ -840,6 +842,21 @@ export default function PoliciesPage() {
                           {provider.name}
                         </SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {newPolicyData.scope === "sensitivity" && (
+                  <Select
+                    value={newPolicyScopeTarget}
+                    onValueChange={setNewPolicyScopeTarget}
+                  >
+                    <SelectTrigger id="create-scope-target">
+                      <SelectValue placeholder="Select sensitivity level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
                     </SelectContent>
                   </Select>
                 )}
@@ -979,6 +996,7 @@ export default function PoliciesPage() {
                       <SelectItem value="agent">Agent</SelectItem>
                       <SelectItem value="provider">Provider</SelectItem>
                       <SelectItem value="mcp">MCP Server</SelectItem>
+                      <SelectItem value="sensitivity">Sensitivity</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1028,6 +1046,7 @@ export default function PoliciesPage() {
                     {editingPolicyData.scope === "agent" && "Select Agent Role"}
                     {editingPolicyData.scope === "provider" && "Select Provider"}
                     {editingPolicyData.scope === "mcp" && "Select MCP Server"}
+                    {editingPolicyData.scope === "sensitivity" && "Select Sensitivity Level"}
                   </label>
                   {editingPolicyData.scope === "tool" && (
                     <Select
@@ -1078,6 +1097,21 @@ export default function PoliciesPage() {
                             {provider.name}
                           </SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {editingPolicyData.scope === "sensitivity" && (
+                    <Select
+                      value={scopeTarget}
+                      onValueChange={setScopeTarget}
+                    >
+                      <SelectTrigger id="edit-scope-target">
+                        <SelectValue placeholder="Select sensitivity level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
                       </SelectContent>
                     </Select>
                   )}

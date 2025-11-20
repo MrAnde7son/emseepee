@@ -18,14 +18,6 @@
           "admin"
         ],
         "sensitivity": "medium"
-      },
-      "toolPolicyOverrides": {
-        "github_create_issue": {
-          "sensitivity": "high",
-          "allowedRoles": [
-            "admin"
-          ]
-        }
       }
     },
     "sqlite": {

@@ -23,6 +23,13 @@ import {
   TabsContent,
 } from "@/components/ui/tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   FileText,
   Terminal,
   Globe,
@@ -35,6 +42,9 @@ import {
   Settings,
   Info,
   Wrench,
+  Edit,
+  Save,
+  X,
 } from "lucide-react";
 import { Pagination } from "@/components/ui/pagination";
 
@@ -92,10 +102,6 @@ interface McpServerDetails {
     allowedRoles: string[];
     sensitivity: string;
   };
-  toolPolicyOverrides?: Record<string, {
-    allowedRoles?: string[];
-    sensitivity?: string;
-  }>;
   disabledTools?: string[];
 }
 
@@ -217,6 +223,9 @@ export default function ToolsPage() {
   const [mcpDetails, setMcpDetails] = useState<McpServerDetails | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [mcpIcons, setMcpIcons] = useState<Map<string, string>>(new Map());
+  const [isEditingConfig, setIsEditingConfig] = useState(false);
+  const [editedConfig, setEditedConfig] = useState<Partial<McpServerDetails>>({});
+  const [updatingConfig, setUpdatingConfig] = useState(false);
 
   // Group tools by category (exclude MCP tools as they're shown separately)
   const toolsByCategory = useMemo(() => {
@@ -422,6 +431,8 @@ export default function ToolsPage() {
   useEffect(() => {
     if (selectedItem?.type === "mcp") {
       setLoadingDetails(true);
+      setIsEditingConfig(false);
+      setEditedConfig({});
       Api.getMcpServerDetails(selectedItem.id)
         .then((details) => {
           setMcpDetails(details);
@@ -440,8 +451,69 @@ export default function ToolsPage() {
     } else {
       setMcpDetails(null);
       setLoadingDetails(false);
+      setIsEditingConfig(false);
+      setEditedConfig({});
     }
   }, [selectedItem]);
+
+  const handleStartEdit = () => {
+    if (mcpDetails) {
+      setEditedConfig({
+        ...mcpDetails,
+        defaultPolicy: {
+          ...mcpDetails.defaultPolicy,
+        },
+      });
+      setIsEditingConfig(true);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingConfig(false);
+    setEditedConfig({});
+  };
+
+  const handleSaveConfig = async () => {
+    if (!selectedItem || selectedItem.type !== "mcp" || !mcpDetails) return;
+    
+    // Clean up the config before saving
+    const cleanedConfig: Partial<McpServerDetails> = { ...editedConfig };
+    
+    // Filter out empty roles
+    if (cleanedConfig.defaultPolicy?.allowedRoles) {
+      cleanedConfig.defaultPolicy.allowedRoles = cleanedConfig.defaultPolicy.allowedRoles.filter(role => role.trim() !== "");
+    }
+    
+    // Filter out empty env vars
+    if (cleanedConfig.env) {
+      const cleanedEnv: Record<string, string> = {};
+      Object.entries(cleanedConfig.env).forEach(([key, value]) => {
+        if (key.trim() !== "" && value.trim() !== "") {
+          cleanedEnv[key.trim()] = value.trim();
+        }
+      });
+      cleanedConfig.env = Object.keys(cleanedEnv).length > 0 ? cleanedEnv : undefined;
+    }
+    
+    // Remove empty cwd
+    if (cleanedConfig.cwd?.trim() === "") {
+      cleanedConfig.cwd = undefined;
+    }
+    
+    setUpdatingConfig(true);
+    try {
+      const updated = await Api.updateMcpServerConfig(selectedItem.id, cleanedConfig);
+      setMcpDetails(updated);
+      setIsEditingConfig(false);
+      setEditedConfig({});
+      await refetch(); // Refresh tools list
+    } catch (error) {
+      console.error("Failed to update MCP server configuration:", error);
+      alert(`Failed to update configuration: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setUpdatingConfig(false);
+    }
+  };
 
   // Combine categories and MCP servers into unified items
   const allItems = useMemo(() => {
@@ -905,74 +977,285 @@ export default function ToolsPage() {
                 <TabsContent value="configuration" className="space-y-4 overflow-y-auto flex-1 px-6 pb-6">
                 {mcpDetails ? (
                   <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-sm">Configuration</h3>
+                      {!isEditingConfig ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleStartEdit}
+                          className="gap-2"
+                        >
+                          <Edit className="h-4 w-4" />
+                          Edit
+                        </Button>
+                      ) : (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleCancelEdit}
+                            disabled={updatingConfig}
+                            className="gap-2"
+                          >
+                            <X className="h-4 w-4" />
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={handleSaveConfig}
+                            disabled={updatingConfig}
+                            className="gap-2"
+                          >
+                            <Save className="h-4 w-4" />
+                            {updatingConfig ? "Saving..." : "Save"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
                     <div>
                       <h3 className="font-semibold text-sm mb-2">Execution Configuration</h3>
-                      <div className="space-y-2 text-sm">
+                      <div className="space-y-3 text-sm">
                         <div className="flex items-start gap-2">
-                          <span className="font-medium min-w-[100px]">Command:</span>
-                          <code className="bg-muted px-2 py-1 rounded text-xs">{mcpDetails.command}</code>
+                          <span className="font-medium min-w-[100px] pt-2">Command:</span>
+                          {isEditingConfig ? (
+                            <Input
+                              value={editedConfig.command || ""}
+                              onChange={(e) => setEditedConfig({ ...editedConfig, command: e.target.value })}
+                              className="flex-1"
+                              placeholder="e.g., npx, node"
+                            />
+                          ) : (
+                            <code className="bg-muted px-2 py-1 rounded text-xs">{mcpDetails.command}</code>
+                          )}
                         </div>
                         <div className="flex items-start gap-2">
-                          <span className="font-medium min-w-[100px]">Arguments:</span>
-                          <code className="bg-muted px-2 py-1 rounded text-xs">
-                            {mcpDetails.args.length > 0 ? mcpDetails.args.join(" ") : "None"}
-                          </code>
+                          <span className="font-medium min-w-[100px] pt-2">Arguments:</span>
+                          {isEditingConfig ? (
+                            <Input
+                              value={editedConfig.args?.join(" ") || ""}
+                              onChange={(e) => setEditedConfig({ 
+                                ...editedConfig, 
+                                args: e.target.value.split(" ").filter(Boolean) 
+                              })}
+                              className="flex-1"
+                              placeholder="Space-separated arguments"
+                            />
+                          ) : (
+                            <code className="bg-muted px-2 py-1 rounded text-xs">
+                              {mcpDetails.args.length > 0 ? mcpDetails.args.join(" ") : "None"}
+                            </code>
+                          )}
                         </div>
-                        {mcpDetails.cwd && (
-                          <div className="flex items-start gap-2">
-                            <span className="font-medium min-w-[100px]">Working Dir:</span>
-                            <code className="bg-muted px-2 py-1 rounded text-xs">{mcpDetails.cwd}</code>
-                          </div>
-                        )}
+                        <div className="flex items-start gap-2">
+                          <span className="font-medium min-w-[100px] pt-2">Working Dir:</span>
+                          {isEditingConfig ? (
+                            <Input
+                              value={editedConfig.cwd || ""}
+                              onChange={(e) => setEditedConfig({ ...editedConfig, cwd: e.target.value || undefined })}
+                              className="flex-1"
+                              placeholder="Optional working directory"
+                            />
+                          ) : (
+                            <code className="bg-muted px-2 py-1 rounded text-xs">
+                              {mcpDetails.cwd || "Not set"}
+                            </code>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {mcpDetails.env && Object.keys(mcpDetails.env).length > 0 && (
-                      <div>
-                        <h3 className="font-semibold text-sm mb-2">Environment Variables</h3>
-                        <div className="bg-muted rounded-lg p-3 space-y-1">
-                          {Object.entries(mcpDetails.env).map(([key, value]) => (
-                            <div key={key} className="flex items-start gap-2 text-xs font-mono">
-                              <span className="text-muted-foreground min-w-[150px]">{key}:</span>
-                              <span className="break-all">{value}</span>
-                            </div>
-                          ))}
+                    <div>
+                      <h3 className="font-semibold text-sm mb-2">Environment Variables</h3>
+                      {isEditingConfig ? (
+                        <div className="space-y-2">
+                          {editedConfig.env && Object.keys(editedConfig.env).length > 0 ? (
+                            Object.entries(editedConfig.env).map(([key, value]) => (
+                              <div key={key} className="flex gap-2">
+                                <Input
+                                  value={key}
+                                  onChange={(e) => {
+                                    const newEnv = { ...editedConfig.env };
+                                    delete newEnv[key];
+                                    newEnv[e.target.value] = value;
+                                    setEditedConfig({ ...editedConfig, env: newEnv });
+                                  }}
+                                  className="flex-1"
+                                  placeholder="Variable name"
+                                />
+                                <Input
+                                  value={value}
+                                  onChange={(e) => {
+                                    setEditedConfig({
+                                      ...editedConfig,
+                                      env: { ...editedConfig.env, [key]: e.target.value },
+                                    });
+                                  }}
+                                  className="flex-1"
+                                  placeholder="Variable value"
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    const newEnv = { ...editedConfig.env };
+                                    delete newEnv[key];
+                                    setEditedConfig({ ...editedConfig, env: newEnv });
+                                  }}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-xs text-muted-foreground">No environment variables</p>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setEditedConfig({
+                                ...editedConfig,
+                                env: { ...editedConfig.env, "": "" },
+                              });
+                            }}
+                          >
+                            Add Environment Variable
+                          </Button>
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        mcpDetails.env && Object.keys(mcpDetails.env).length > 0 ? (
+                          <div className="bg-muted rounded-lg p-3 space-y-1">
+                            {Object.entries(mcpDetails.env).map(([key, value]) => (
+                              <div key={key} className="flex items-start gap-2 text-xs font-mono">
+                                <span className="text-muted-foreground min-w-[150px]">{key}:</span>
+                                <span className="break-all">{value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">No environment variables</p>
+                        )
+                      )}
+                    </div>
 
                     <div>
                       <h3 className="font-semibold text-sm mb-2">Default Policy</h3>
-                      <div className="bg-muted rounded-lg p-3 space-y-2 text-sm">
+                      <div className="bg-muted rounded-lg p-3 space-y-3 text-sm">
                         <div className="flex items-center gap-2">
                           <span className="font-medium">Sensitivity:</span>
-                          <Badge
-                            variant="outline"
-                            className={
-                              mcpDetails.defaultPolicy.sensitivity === "high"
-                                ? "border-red-500/60 text-red-400"
-                                : mcpDetails.defaultPolicy.sensitivity === "medium"
-                                ? "border-amber-400/60 text-amber-300"
-                                : "border-emerald-500/50 text-emerald-300"
-                            }
-                          >
-                            {mcpDetails.defaultPolicy.sensitivity}
-                          </Badge>
+                          {isEditingConfig ? (
+                            <Select
+                              value={editedConfig.defaultPolicy?.sensitivity || mcpDetails.defaultPolicy.sensitivity}
+                              onValueChange={(value) => {
+                                setEditedConfig({
+                                  ...editedConfig,
+                                  defaultPolicy: {
+                                    ...(editedConfig.defaultPolicy || mcpDetails.defaultPolicy),
+                                    sensitivity: value as "low" | "medium" | "high",
+                                  },
+                                });
+                              }}
+                            >
+                              <SelectTrigger className="w-[120px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="low">Low</SelectItem>
+                                <SelectItem value="medium">Medium</SelectItem>
+                                <SelectItem value="high">High</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className={
+                                mcpDetails.defaultPolicy.sensitivity === "high"
+                                  ? "border-red-500/60 text-red-400"
+                                  : mcpDetails.defaultPolicy.sensitivity === "medium"
+                                  ? "border-amber-400/60 text-amber-300"
+                                  : "border-emerald-500/50 text-emerald-300"
+                              }
+                            >
+                              {mcpDetails.defaultPolicy.sensitivity}
+                            </Badge>
+                          )}
                         </div>
                         <div>
                           <span className="font-medium">Allowed Roles:</span>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {mcpDetails.defaultPolicy.allowedRoles.map((role) => (
-                              <Badge key={role} variant="outline" className="text-xs">
-                                {role}
-                              </Badge>
-                            ))}
-                          </div>
+                          {isEditingConfig ? (
+                            <div className="mt-2 space-y-2">
+                              {(editedConfig.defaultPolicy?.allowedRoles || mcpDetails.defaultPolicy.allowedRoles).map((role, index) => (
+                                <div key={index} className="flex gap-2">
+                                  <Input
+                                    value={role}
+                                    onChange={(e) => {
+                                      const roles = [...(editedConfig.defaultPolicy?.allowedRoles || mcpDetails.defaultPolicy.allowedRoles)];
+                                      roles[index] = e.target.value;
+                                      setEditedConfig({
+                                        ...editedConfig,
+                                        defaultPolicy: {
+                                          ...(editedConfig.defaultPolicy || mcpDetails.defaultPolicy),
+                                          allowedRoles: roles,
+                                        },
+                                      });
+                                    }}
+                                    className="flex-1"
+                                    placeholder="Role name"
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      const roles = [...(editedConfig.defaultPolicy?.allowedRoles || mcpDetails.defaultPolicy.allowedRoles)];
+                                      roles.splice(index, 1);
+                                      setEditedConfig({
+                                        ...editedConfig,
+                                        defaultPolicy: {
+                                          ...(editedConfig.defaultPolicy || mcpDetails.defaultPolicy),
+                                          allowedRoles: roles,
+                                        },
+                                      });
+                                    }}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ))}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setEditedConfig({
+                                    ...editedConfig,
+                                    defaultPolicy: {
+                                      ...(editedConfig.defaultPolicy || mcpDetails.defaultPolicy),
+                                      allowedRoles: [
+                                        ...(editedConfig.defaultPolicy?.allowedRoles || mcpDetails.defaultPolicy.allowedRoles),
+                                        "",
+                                      ],
+                                    },
+                                  });
+                                }}
+                              >
+                                Add Role
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {mcpDetails.defaultPolicy.allowedRoles.map((role) => (
+                                <Badge key={role} variant="outline" className="text-xs">
+                                  {role}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    {mcpDetails.disabledTools && mcpDetails.disabledTools.length > 0 && (
+                    {!isEditingConfig && mcpDetails.disabledTools && mcpDetails.disabledTools.length > 0 && (
                       <div>
                         <h3 className="font-semibold text-sm mb-2">Disabled Tools</h3>
                         <div className="bg-muted rounded-lg p-3">
@@ -990,49 +1273,6 @@ export default function ToolsPage() {
                       </div>
                     )}
 
-                    {mcpDetails.toolPolicyOverrides && Object.keys(mcpDetails.toolPolicyOverrides).length > 0 && (
-                      <div>
-                        <h3 className="font-semibold text-sm mb-2">Tool Policy Overrides</h3>
-                        <div className="space-y-2">
-                          {Object.entries(mcpDetails.toolPolicyOverrides).map(([toolName, override]) => (
-                            <div key={toolName} className="border border-border rounded-lg p-3">
-                              <div className="font-medium text-sm mb-2">{toolName}</div>
-                              <div className="space-y-1 text-xs">
-                                {override.sensitivity && (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-muted-foreground">Sensitivity:</span>
-                                    <Badge
-                                      variant="outline"
-                                      className={
-                                        override.sensitivity === "high"
-                                          ? "border-red-500/60 text-red-400"
-                                          : override.sensitivity === "medium"
-                                          ? "border-amber-400/60 text-amber-300"
-                                          : "border-emerald-500/50 text-emerald-300"
-                                      }
-                                    >
-                                      {override.sensitivity}
-                                    </Badge>
-                                  </div>
-                                )}
-                                {override.allowedRoles && (
-                                  <div>
-                                    <span className="text-muted-foreground">Allowed Roles:</span>
-                                    <div className="flex flex-wrap gap-1 mt-1">
-                                      {override.allowedRoles.map((role) => (
-                                        <Badge key={role} variant="outline" className="text-xs">
-                                          {role}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="text-sm text-muted-foreground text-center py-8">

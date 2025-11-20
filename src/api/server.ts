@@ -7,7 +7,7 @@ import { loadConfigFromFile } from "../configLoader.js";
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import type { PolicyRule, PolicyOperation, PolicyRuleCondition } from "../config.js";
+import type { PolicyRule, PolicyOperation, PolicyRuleCondition, Sensitivity } from "../config.js";
 // Types matching dashboard types
 type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "bedrock" | "copilot" | "langchain" | "custom";
 
@@ -35,7 +35,7 @@ interface Policy {
   id: string;
   name: string;
   description?: string;
-  scope: "tool" | "provider" | "agent" | "mcp" | "global";
+  scope: "tool" | "provider" | "agent" | "mcp" | "sensitivity" | "global";
   effect: "allow" | "deny" | "log" | "webhook" | "custom";
   priority: number;
   enabled: boolean;
@@ -395,10 +395,6 @@ async function getMcpServerDetails(mcpId: string): Promise<{
     allowedRoles: string[];
     sensitivity: string;
   };
-  toolPolicyOverrides?: Record<string, {
-    allowedRoles?: string[];
-    sensitivity?: string;
-  }>;
   disabledTools?: string[];
 } | null> {
   const mcpProxies = await getMcpServerProxies();
@@ -422,8 +418,107 @@ async function getMcpServerDetails(mcpId: string): Promise<{
       allowedRoles: proxyConfig.defaultPolicy.allowedRoles,
       sensitivity: proxyConfig.defaultPolicy.sensitivity,
     },
-    toolPolicyOverrides: proxyConfig.toolPolicyOverrides,
     disabledTools: proxyConfig.disabledTools,
+  };
+}
+
+/**
+ * Update MCP server configuration
+ */
+async function updateMcpServerConfig(
+  mcpId: string,
+  updates: Partial<{
+    name: string;
+    description?: string;
+    command: string;
+    args: string[];
+    env?: Record<string, string>;
+    cwd?: string;
+    enabled?: boolean;
+    icon?: string;
+    defaultPolicy: {
+      allowedRoles: string[];
+      sensitivity: Sensitivity;
+    };
+    disabledTools?: string[];
+  }>
+): Promise<{
+  id: string;
+  name: string;
+  description?: string;
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  enabled?: boolean;
+  icon?: string;
+  defaultPolicy: {
+    allowedRoles: string[];
+    sensitivity: Sensitivity;
+  };
+  disabledTools?: string[];
+}> {
+  const { getMcpServerProxiesFromDb, saveMcpServerProxiesToDb } = await import("../db/services/configService.js");
+  const mcpProxies = await getMcpServerProxiesFromDb();
+  
+  if (!mcpProxies[mcpId]) {
+    throw new Error(`MCP server ${mcpId} not found`);
+  }
+  
+  const existingConfig = mcpProxies[mcpId];
+  
+  // Update fields if provided
+  if (updates.name !== undefined) {
+    existingConfig.name = updates.name;
+  }
+  if (updates.description !== undefined) {
+    existingConfig.description = updates.description;
+  }
+  if (updates.command !== undefined) {
+    existingConfig.command = updates.command;
+  }
+  if (updates.args !== undefined) {
+    existingConfig.args = updates.args;
+  }
+  if (updates.env !== undefined) {
+    existingConfig.env = updates.env;
+  }
+  if (updates.cwd !== undefined) {
+    existingConfig.cwd = updates.cwd;
+  }
+  if (updates.enabled !== undefined) {
+    existingConfig.enabled = updates.enabled;
+  }
+  if (updates.icon !== undefined) {
+    existingConfig.icon = updates.icon;
+  }
+  if (updates.defaultPolicy !== undefined) {
+    existingConfig.defaultPolicy = updates.defaultPolicy;
+  }
+  if (updates.disabledTools !== undefined) {
+    existingConfig.disabledTools = updates.disabledTools;
+  }
+  
+  // Save to database
+  await saveMcpServerProxiesToDb(mcpProxies);
+  clearConfigCache();
+  
+  // Return updated details
+  return {
+    id: mcpId,
+    name: existingConfig.name,
+    description: existingConfig.description,
+    command: existingConfig.command,
+    args: existingConfig.args,
+    env: existingConfig.env,
+    cwd: existingConfig.cwd,
+    enabled: existingConfig.enabled,
+    icon: existingConfig.icon,
+    defaultPolicy: {
+      allowedRoles: existingConfig.defaultPolicy.allowedRoles,
+      sensitivity: existingConfig.defaultPolicy.sensitivity,
+    },
+    disabledTools: existingConfig.disabledTools,
   };
 }
 
@@ -491,8 +586,7 @@ async function getTools(
         
         // Add each discovered tool
         for (const tool of discoveredTools) {
-          const toolPolicyOverride = proxyConfig.toolPolicyOverrides?.[tool.name];
-          const sensitivity = toolPolicyOverride?.sensitivity || proxyConfig.defaultPolicy.sensitivity;
+          const sensitivity = proxyConfig.defaultPolicy.sensitivity;
           
           // Check if tool is disabled
           const isToolDisabled = proxyConfig.disabledTools?.includes(tool.name) ?? false;
@@ -562,7 +656,7 @@ async function getTools(
 /**
  * Infer policy scope from condition
  */
-function inferScopeFromCondition(condition: PolicyRuleCondition): "tool" | "provider" | "agent" | "mcp" | "global" {
+function inferScopeFromCondition(condition: PolicyRuleCondition): "tool" | "provider" | "agent" | "mcp" | "sensitivity" | "global" {
   // If toolName is specified, scope is "tool"
   if (condition.toolName !== undefined) {
     return "tool";
@@ -575,6 +669,13 @@ function inferScopeFromCondition(condition: PolicyRuleCondition): "tool" | "prov
   if (condition.providerId !== undefined) {
     return "provider";
   }
+  // If sensitivity is specified (and no other scoping), scope is "sensitivity"
+  if (condition.sensitivity !== undefined && 
+      condition.toolName === undefined && 
+      condition.agentRole === undefined && 
+      condition.providerId === undefined) {
+    return "sensitivity";
+  }
   // If category is specified, it's still tool-level scope
   if (condition.category !== undefined) {
     return "tool";
@@ -586,7 +687,7 @@ function inferScopeFromCondition(condition: PolicyRuleCondition): "tool" | "prov
 /**
  * Extract scope target from condition based on scope type
  */
-function extractScopeTarget(condition: PolicyRuleCondition, scope: "tool" | "provider" | "agent" | "mcp" | "global"): string | undefined {
+function extractScopeTarget(condition: PolicyRuleCondition, scope: "tool" | "provider" | "agent" | "mcp" | "sensitivity" | "global"): string | undefined {
   if (scope === "tool" && condition.toolName) {
     return Array.isArray(condition.toolName) ? condition.toolName[0] : condition.toolName;
   }
@@ -595,6 +696,9 @@ function extractScopeTarget(condition: PolicyRuleCondition, scope: "tool" | "pro
   }
   if (scope === "provider" && condition.providerId) {
     return Array.isArray(condition.providerId) ? condition.providerId[0] : condition.providerId;
+  }
+  if (scope === "sensitivity" && condition.sensitivity) {
+    return Array.isArray(condition.sensitivity) ? condition.sensitivity[0] : condition.sensitivity;
   }
   return undefined;
 }
@@ -748,6 +852,9 @@ async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string } | Pa
       // Note: This is a workaround - ideally we'd add providerId to condition
       // For now, we can't perfectly match MCP tools without backend changes
       // Leaving empty for now - would need to enhance condition matching
+    } else if (scope === "sensitivity" && scopeTarget) {
+      // Sensitivity scope - match tools with specific sensitivity level
+      condition.sensitivity = scopeTarget as "low" | "medium" | "high";
     }
     // For global scope, condition is empty (applies to all)
     
@@ -877,11 +984,21 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<P
         
         // Remove scope-specific fields when changing scope
         if (newScope === "global") {
-          // Remove tool/agent/provider-specific fields for global scope
+          // Remove tool/agent/provider/sensitivity-specific fields for global scope
           delete updatedCondition.toolName;
           delete updatedCondition.category;
           delete updatedCondition.agentRole;
           delete updatedCondition.providerId;
+          delete updatedCondition.sensitivity;
+        } else if (newScope === "sensitivity") {
+          // For sensitivity scope, remove other scoping fields but set sensitivity
+          delete updatedCondition.toolName;
+          delete updatedCondition.category;
+          delete updatedCondition.agentRole;
+          delete updatedCondition.providerId;
+          if (scopeTarget) {
+            updatedCondition.sensitivity = scopeTarget as "low" | "medium" | "high";
+          }
         } else if (newScope === "agent") {
           // For agent scope, remove tool/provider-specific but set agentRole
           delete updatedCondition.toolName;
@@ -1208,6 +1325,42 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           return;
         }
       }
+    }
+    
+    // Update MCP server configuration (must come before GET, after POST enable/disable)
+    if (path.startsWith("/api/mcp/") && method === "PUT") {
+      const pathAfterPrefix = path.replace("/api/mcp/", "");
+      // Make sure it's not an enable/disable endpoint (those are POST)
+      if (pathAfterPrefix && !pathAfterPrefix.endsWith("/enable") && !pathAfterPrefix.endsWith("/disable")) {
+        const mcpId = pathAfterPrefix.replace(/\/+$/, "");
+        if (mcpId && mcpId.length > 0) {
+          try {
+            const body = await parseBody(req) as Partial<{
+              name: string;
+              description?: string;
+              command: string;
+              args: string[];
+              env?: Record<string, string>;
+              cwd?: string;
+              enabled?: boolean;
+              icon?: string;
+              defaultPolicy: {
+                allowedRoles: string[];
+                sensitivity: Sensitivity;
+              };
+              disabledTools?: string[];
+            }>;
+            const updated = await updateMcpServerConfig(mcpId, body);
+            sendJSON(res, 200, updated);
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : "Failed to update MCP server configuration";
+            sendJSON(res, errorMessage.includes("not found") ? 404 : 400, { error: errorMessage });
+          }
+          return;
+        }
+      }
+      sendJSON(res, 404, { error: "MCP server endpoint not found" });
+      return;
     }
     
     // Get MCP server details (must come after enable/disable routes)

@@ -71,16 +71,11 @@ export interface McpServerProxyConfig {
   enabled?: boolean; // Whether this MCP server proxy is enabled (default: false)
   // Optional: icon for the MCP server (can be a Lucide icon name or image URL)
   icon?: string;
-  // Default policy for all tools from this server (can be overridden per-tool)
+  // Default policy for all tools from this server
   defaultPolicy: {
     allowedRoles: string[];
     sensitivity: Sensitivity;
   };
-  // Optional: per-tool policy overrides
-  toolPolicyOverrides?: Record<string, {
-    allowedRoles?: string[];
-    sensitivity?: Sensitivity;
-  }>;
   // Optional: list of tool names to disable (even if MCP server is enabled)
   disabledTools?: string[];
 }

@@ -24,7 +24,7 @@ export interface Policy {
   id: string;
   name: string;
   description?: string;
-  scope: "tool" | "provider" | "agent" | "mcp" | "global";
+  scope: "tool" | "provider" | "agent" | "mcp" | "sensitivity" | "global";
   effect: "allow" | "deny" | "log" | "webhook" | "custom";
   priority: number;
   enabled: boolean;
