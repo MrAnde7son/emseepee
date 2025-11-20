@@ -1,6 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import { URL } from "url";
-import { getStoredEvents, logger } from "../logger.js";
+import { logger } from "../logger.js";
 import { getToolRegistry, getMcpServerProxies, clearConfigCache } from "../config.js";
 import { getPolicyRules } from "../config.js";
 import { loadConfigFromFile } from "../configLoader.js";
@@ -18,6 +18,7 @@ interface Provider {
   status: "connected" | "error" | "pending";
   lastHeartbeat?: string;
   icon?: string;
+  comingSoon?: boolean;
 }
 
 interface Tool {
@@ -142,37 +143,20 @@ function installCursorProvider(): { success: boolean; error?: string } {
 }
 
 /**
- * Helper function to save config file while preserving all existing fields
+ * Helper function to save config to database
  */
-function saveConfigFile(
-  configPath: string,
+async function saveConfigToDb(
   updatedPolicyRules: PolicyRule[]
-): void {
-  let fullConfig: {
-    mcpServerProxies?: Record<string, unknown>;
-    toolsProxies?: Record<string, unknown>;
-    policyRules?: PolicyRule[];
-    [key: string]: unknown; // Allow other fields
-  };
-  
-  // Read existing config to preserve all fields
+): Promise<void> {
   try {
-    fullConfig = JSON.parse(readFileSync(configPath, "utf-8"));
-    // Update only the policyRules array
-    fullConfig.policyRules = updatedPolicyRules;
-  } catch {
-    // If config doesn't exist or is invalid, create new structure
-    const config = loadConfigFromFile(configPath);
-    fullConfig = {
-      mcpServerProxies: config.mcpServerProxies,
-      toolsProxies: {},
-      policyRules: updatedPolicyRules,
-    };
+    const { savePolicyRulesToDb } = await import("../db/services/configService.js");
+    await savePolicyRulesToDb(updatedPolicyRules);
+    // Clear cache so next request loads fresh config
+    clearConfigCache();
+  } catch (error) {
+    logger.error("[API] Failed to save config to database:", error);
+    throw error;
   }
-  
-  writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
-  // Clear cache so next request loads fresh config
-  clearConfigCache();
 }
 
 /**
@@ -188,6 +172,7 @@ async function getProviders(): Promise<Provider[]> {
       status: isCursorInstalled() ? "connected" : "pending",
       lastHeartbeat: isCursorInstalled() ? new Date().toISOString() : undefined,
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/cursor.svg",
+      comingSoon: false,
     },
     {
       id: "n8n",
@@ -195,6 +180,7 @@ async function getProviders(): Promise<Provider[]> {
       type: "n8n",
       status: "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/n8n.svg",
+      comingSoon: true,
     },
     {
       id: "openai",
@@ -202,6 +188,7 @@ async function getProviders(): Promise<Provider[]> {
       type: "openai",
       status: "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/openai.svg",
+      comingSoon: true,
     },
     {
       id: "vertex_ai",
@@ -209,6 +196,7 @@ async function getProviders(): Promise<Provider[]> {
       type: "vertex",
       status: "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/googlecloud.svg",
+      comingSoon: true,
     },
     {
       id: "aws_bedrock",
@@ -216,6 +204,7 @@ async function getProviders(): Promise<Provider[]> {
       type: "bedrock",
       status: "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/amazonaws.svg",
+      comingSoon: true,
     },
     {
       id: "microsoft_copilot",
@@ -223,6 +212,7 @@ async function getProviders(): Promise<Provider[]> {
       type: "copilot",
       status: "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/microsoft.svg",
+      comingSoon: true,
     },
     {
       id: "langchain",
@@ -230,6 +220,7 @@ async function getProviders(): Promise<Provider[]> {
       type: "langchain",
       status: "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/langchain.svg",
+      comingSoon: true,
     },
   ];
   
@@ -237,22 +228,23 @@ async function getProviders(): Promise<Provider[]> {
 }
 
 /**
- * Enable a tool by setting enabled: true in config.json
+ * Enable a tool by setting enabled: true in database
  */
 async function enableTool(toolId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const configPath = getConfigPath();
-    const config = loadConfigFromFile(configPath);
+    const { getMcpServerProxiesFromDb, getToolsProxiesFromDb, saveMcpServerProxiesToDb, saveToolsProxiesToDb } = await import("../db/services/configService.js");
+    const mcpProxies = await getMcpServerProxiesFromDb();
+    const toolsProxies = await getToolsProxiesFromDb();
     
     // Check if it's an MCP tool (format: "mcpName:toolName")
     if (toolId.includes(":")) {
       const [mcpName, toolName] = toolId.split(":", 2);
-      if (!config.mcpServerProxies[mcpName]) {
+      if (!mcpProxies[mcpName]) {
         return { success: false, error: `MCP server ${mcpName} not found` };
       }
       
       // For MCP tools, remove from disabledTools list if present
-      const mcpConfig = config.mcpServerProxies[mcpName];
+      const mcpConfig = mcpProxies[mcpName];
       if (mcpConfig.disabledTools) {
         mcpConfig.disabledTools = mcpConfig.disabledTools.filter(t => t !== toolName);
         // Remove the field if empty
@@ -263,17 +255,17 @@ async function enableTool(toolId: string): Promise<{ success: boolean; error?: s
       
       // Also ensure the MCP server is enabled
       mcpConfig.enabled = true;
+      await saveMcpServerProxiesToDb(mcpProxies);
     } else {
       // Built-in or third-party tool
-      if (config.toolsProxies[toolId]) {
-        config.toolsProxies[toolId].enabled = true;
+      if (toolsProxies[toolId]) {
+        toolsProxies[toolId].enabled = true;
+        await saveToolsProxiesToDb(toolsProxies);
       } else {
         return { success: false, error: `Tool ${toolId} not found` };
       }
     }
     
-    // Write back to config file
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
     clearConfigCache();
     
     return { success: true };
@@ -286,40 +278,41 @@ async function enableTool(toolId: string): Promise<{ success: boolean; error?: s
 }
 
 /**
- * Disable a tool by setting enabled: false in config.json
+ * Disable a tool by setting enabled: false in database
  * For MCP tools, adds the tool to the disabledTools list instead of disabling the entire MCP server
  */
 async function disableTool(toolId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const configPath = getConfigPath();
-    const config = loadConfigFromFile(configPath);
+    const { getMcpServerProxiesFromDb, getToolsProxiesFromDb, saveMcpServerProxiesToDb, saveToolsProxiesToDb } = await import("../db/services/configService.js");
+    const mcpProxies = await getMcpServerProxiesFromDb();
+    const toolsProxies = await getToolsProxiesFromDb();
     
     // Check if it's an MCP tool (format: "mcpName:toolName")
     if (toolId.includes(":")) {
       const [mcpName, toolName] = toolId.split(":", 2);
-      if (!config.mcpServerProxies[mcpName]) {
+      if (!mcpProxies[mcpName]) {
         return { success: false, error: `MCP server ${mcpName} not found` };
       }
       
       // For MCP tools, add to disabledTools list (don't disable the entire MCP server)
-      const mcpConfig = config.mcpServerProxies[mcpName];
+      const mcpConfig = mcpProxies[mcpName];
       if (!mcpConfig.disabledTools) {
         mcpConfig.disabledTools = [];
       }
       if (!mcpConfig.disabledTools.includes(toolName)) {
         mcpConfig.disabledTools.push(toolName);
       }
+      await saveMcpServerProxiesToDb(mcpProxies);
     } else {
       // Built-in or third-party tool
-      if (config.toolsProxies[toolId]) {
-        config.toolsProxies[toolId].enabled = false;
+      if (toolsProxies[toolId]) {
+        toolsProxies[toolId].enabled = false;
+        await saveToolsProxiesToDb(toolsProxies);
       } else {
         return { success: false, error: `Tool ${toolId} not found` };
       }
     }
     
-    // Write back to config file
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
     clearConfigCache();
     
     return { success: true };
@@ -336,17 +329,17 @@ async function disableTool(toolId: string): Promise<{ success: boolean; error?: 
  */
 async function enableMcpServer(mcpId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const configPath = getConfigPath();
-    const config = loadConfigFromFile(configPath);
+    const { getMcpServerProxiesFromDb, saveMcpServerProxiesToDb } = await import("../db/services/configService.js");
+    const mcpProxies = await getMcpServerProxiesFromDb();
     
-    if (!config.mcpServerProxies[mcpId]) {
+    if (!mcpProxies[mcpId]) {
       return { success: false, error: `MCP server ${mcpId} not found` };
     }
     
-    config.mcpServerProxies[mcpId].enabled = true;
+    mcpProxies[mcpId].enabled = true;
     
-    // Write back to config file
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    // Write back to database
+    await saveMcpServerProxiesToDb(mcpProxies);
     clearConfigCache();
     
     return { success: true };
@@ -363,17 +356,17 @@ async function enableMcpServer(mcpId: string): Promise<{ success: boolean; error
  */
 async function disableMcpServer(mcpId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const configPath = getConfigPath();
-    const config = loadConfigFromFile(configPath);
+    const { getMcpServerProxiesFromDb, saveMcpServerProxiesToDb } = await import("../db/services/configService.js");
+    const mcpProxies = await getMcpServerProxiesFromDb();
     
-    if (!config.mcpServerProxies[mcpId]) {
+    if (!mcpProxies[mcpId]) {
       return { success: false, error: `MCP server ${mcpId} not found` };
     }
     
-    config.mcpServerProxies[mcpId].enabled = false;
+    mcpProxies[mcpId].enabled = false;
     
-    // Write back to config file
-    writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    // Write back to database
+    await saveMcpServerProxiesToDb(mcpProxies);
     clearConfigCache();
     
     return { success: true };
@@ -625,8 +618,8 @@ async function getPolicies(includeArchived: boolean = false): Promise<Policy[]> 
  * Accepts either PolicyRule (full) or Policy (simplified) format
  */
 async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string } | Partial<Policy> & { scopeTarget?: string }): Promise<Policy> {
-  const configPath = getConfigPath();
-  const config = loadConfigFromFile(configPath);
+  const { getAllConfigFromDb } = await import("../db/services/configService.js");
+  const config = await getAllConfigFromDb();
   
   // Check if this is a Policy update (simplified) or PolicyRule update (full)
   const isPolicyFormat = "effect" in rule || "scope" in rule || "enabled" in rule;
@@ -703,8 +696,8 @@ async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string } | Pa
   
   config.policyRules.push(newRule);
   
-  // Write back to config file
-  saveConfigFile(configPath, config.policyRules);
+  // Write back to database
+  await saveConfigToDb(config.policyRules);
   
   const scope = inferScopeFromCondition(newRule.condition);
   return {
@@ -724,8 +717,8 @@ async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string } | Pa
  * Accepts either PolicyRule updates or Policy updates (simplified)
  */
 async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<Policy>): Promise<Policy> {
-  const configPath = getConfigPath();
-  const config = loadConfigFromFile(configPath);
+  const { getAllConfigFromDb } = await import("../db/services/configService.js");
+  const config = await getAllConfigFromDb();
   
   const index = parseInt(id.replace("policy-", ""), 10);
   if (isNaN(index) || index < 0 || index >= config.policyRules.length) {
@@ -855,8 +848,8 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<P
   
   config.policyRules[index] = updatedRule;
   
-  // Write back to config file
-  saveConfigFile(configPath, config.policyRules);
+  // Write back to database
+  await saveConfigToDb(config.policyRules);
   
   const scope = inferScopeFromCondition(updatedRule.condition);
   return {
@@ -875,8 +868,8 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<P
  * Archive a policy rule (soft delete - can be restored)
  */
 async function archivePolicy(id: string): Promise<void> {
-  const configPath = getConfigPath();
-  const config = loadConfigFromFile(configPath);
+  const { getAllConfigFromDb } = await import("../db/services/configService.js");
+  const config = await getAllConfigFromDb();
   
   // Find policy by ID (which contains the original index)
   const index = parseInt(id.replace("policy-", ""), 10);
@@ -887,16 +880,16 @@ async function archivePolicy(id: string): Promise<void> {
   // Mark as archived instead of deleting
   config.policyRules[index].archived = true;
   
-  // Write back to config file
-  saveConfigFile(configPath, config.policyRules);
+  // Write back to database
+  await saveConfigToDb(config.policyRules);
 }
 
 /**
  * Restore an archived policy rule
  */
 async function restorePolicy(id: string): Promise<void> {
-  const configPath = getConfigPath();
-  const config = loadConfigFromFile(configPath);
+  const { getAllConfigFromDb } = await import("../db/services/configService.js");
+  const config = await getAllConfigFromDb();
   
   // Find policy by ID (which contains the original index)
   const index = parseInt(id.replace("policy-", ""), 10);
@@ -907,16 +900,16 @@ async function restorePolicy(id: string): Promise<void> {
   // Remove archived flag
   config.policyRules[index].archived = false;
   
-  // Write back to config file
-  saveConfigFile(configPath, config.policyRules);
+  // Write back to database
+  await saveConfigToDb(config.policyRules);
 }
 
 /**
  * Delete a policy rule (permanent deletion - use archivePolicy for soft delete)
  */
 async function deletePolicy(id: string): Promise<void> {
-  const configPath = getConfigPath();
-  const config = loadConfigFromFile(configPath);
+  const { getAllConfigFromDb } = await import("../db/services/configService.js");
+  const config = await getAllConfigFromDb();
   
   const index = parseInt(id.replace("policy-", ""), 10);
   if (isNaN(index) || index < 0 || index >= config.policyRules.length) {
@@ -925,30 +918,30 @@ async function deletePolicy(id: string): Promise<void> {
   
   config.policyRules.splice(index, 1);
   
-  // Write back to config file
-  saveConfigFile(configPath, config.policyRules);
+  // Write back to database
+  await saveConfigToDb(config.policyRules);
 }
 
 /**
  * Get events with optional search
  */
-function getEvents(searchQuery?: string): GatewayEvent[] {
-  const events = getStoredEvents();
-  
-  if (!searchQuery) {
-    return events;
+async function getEvents(searchQuery?: string): Promise<GatewayEvent[]> {
+  try {
+    const { getEvents: getEventsFromDb, searchEvents } = await import("../db/services/eventService.js");
+    if (searchQuery) {
+      return await searchEvents(searchQuery);
+    }
+    return await getEventsFromDb();
+  } catch (error) {
+    // If database is not available, return empty array (fallback to file storage was removed)
+    // In the future, we could add file-based fallback here if needed
+    if (error instanceof Error && error.message.includes("Database not initialized")) {
+      logger.warn("[API] Database not available, returning empty events list");
+      return [];
+    }
+    logger.error("[API] Failed to get events from database:", error);
+    return [];
   }
-  
-  const query = searchQuery.toLowerCase();
-  return events.filter((event) => {
-    return (
-      event.agentId.toLowerCase().includes(query) ||
-      event.provider.toLowerCase().includes(query) ||
-      event.toolName.toLowerCase().includes(query) ||
-      event.intentSummary.toLowerCase().includes(query) ||
-      event.decision.toLowerCase().includes(query)
-    );
-  });
 }
 
 /**
@@ -1219,7 +1212,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     // Events endpoints
     if (path === "/api/events" && method === "GET") {
       const searchQuery = url.searchParams.get("q") || undefined;
-      const events = getEvents(searchQuery);
+      const events = await getEvents(searchQuery);
       sendJSON(res, 200, events);
       return;
     }

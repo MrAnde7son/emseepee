@@ -171,7 +171,8 @@ let _toolsProxies: Record<string, ToolPolicyConfig | ThirdPartyToolConfig> | nul
 let _policyRules: PolicyRule[] | null = null;
 
 /**
- * Load configuration from file (lazy loading, async)
+ * Load configuration from database (lazy loading, async)
+ * Falls back to file if database is not available
  */
 export async function loadConfig(): Promise<{
   mcpServerProxies: McpServerProxyRegistry;
@@ -179,12 +180,42 @@ export async function loadConfig(): Promise<{
   policyRules: PolicyRule[];
 }> {
   if (_mcpServerProxies === null || _toolsProxies === null || _policyRules === null) {
-    // Use dynamic import for ESM compatibility
-    const { loadConfigFromFile } = await import("./configLoader.js");
-    const config = loadConfigFromFile();
-    _mcpServerProxies = config.mcpServerProxies;
-    _toolsProxies = config.toolsProxies;
-    _policyRules = config.policyRules;
+    try {
+      // Try to load from database first
+      const { getAllConfigFromDb } = await import("./db/services/configService.js");
+      const config = await getAllConfigFromDb();
+      
+      // If database is empty, try to load from file and migrate
+      if (Object.keys(config.mcpServerProxies).length === 0 && 
+          Object.keys(config.toolsProxies).length === 0 && 
+          config.policyRules.length === 0) {
+        // Fallback to file
+        const { loadConfigFromFile } = await import("./configLoader.js");
+        const fileConfig = loadConfigFromFile();
+        _mcpServerProxies = fileConfig.mcpServerProxies;
+        _toolsProxies = fileConfig.toolsProxies;
+        _policyRules = fileConfig.policyRules;
+        
+        // Migrate to database
+        const { saveMcpServerProxiesToDb, saveToolsProxiesToDb, savePolicyRulesToDb } = await import("./db/services/configService.js");
+        await saveMcpServerProxiesToDb(_mcpServerProxies);
+        await saveToolsProxiesToDb(_toolsProxies);
+        await savePolicyRulesToDb(_policyRules);
+        logger.info("[CONFIG] Migrated configuration from file to database");
+      } else {
+        _mcpServerProxies = config.mcpServerProxies;
+        _toolsProxies = config.toolsProxies;
+        _policyRules = config.policyRules;
+      }
+    } catch (error) {
+      // If database fails, fallback to file
+      logger.warn("[CONFIG] Database not available, falling back to file:", error);
+      const { loadConfigFromFile } = await import("./configLoader.js");
+      const config = loadConfigFromFile();
+      _mcpServerProxies = config.mcpServerProxies;
+      _toolsProxies = config.toolsProxies;
+      _policyRules = config.policyRules;
+    }
   }
   // At this point, we know they're not null due to the check above
   return {
@@ -205,49 +236,14 @@ export function clearConfigCache(): void {
 }
 
 /**
- * Start watching config.json for changes and automatically reload
- * This enables hot-reloading of configuration without server restart
+ * Start watching config for changes and automatically reload
+ * With database, we don't need file watching, but we keep this for backward compatibility
+ * In the future, we could implement database change notifications
  */
 export function startConfigWatcher(): void {
-  // Use dynamic import to avoid issues if fs is not available
-  import("fs").then((fs) => {
-    import("path").then((path) => {
-      import("url").then((url) => {
-        // Use the same path resolution logic as configLoader
-        const __filename = url.fileURLToPath(import.meta.url);
-        const __dirname = path.dirname(__filename);
-        const defaultConfigPath = path.join(__dirname, "..", "config.json");
-        const configPath = process.env.CONFIG_PATH || defaultConfigPath;
-        
-        // Check if file exists before watching
-        if (!fs.existsSync(configPath)) {
-          logger.warn(`[CONFIG] Config file not found at ${configPath}, skipping file watcher`);
-          return;
-        }
-        
-        try {
-          // Use fs.watch for better performance (non-polling)
-          const watcher = fs.watch(configPath, (eventType) => {
-            if (eventType === "change") {
-              logger.info("[CONFIG] config.json changed, clearing cache for hot-reload");
-              clearConfigCache();
-            }
-          });
-          
-          // Handle watcher errors
-          watcher.on("error", (error) => {
-            logger.warn(`[CONFIG] File watcher error: ${error.message}`);
-          });
-          
-          logger.info(`[CONFIG] Watching ${configPath} for changes (hot-reload enabled)`);
-        } catch (error) {
-          logger.warn(`[CONFIG] Failed to watch config file: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      });
-    });
-  }).catch((error) => {
-    logger.warn(`[CONFIG] Failed to initialize file watcher: ${error instanceof Error ? error.message : String(error)}`);
-  });
+  // With database storage, file watching is not needed
+  // Configuration changes are handled through the API
+  logger.info("[CONFIG] Using database storage - file watching not needed");
 }
 
 /**

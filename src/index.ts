@@ -21,18 +21,7 @@ async function main() {
     process.exit(1);
   });
 
-  // Load environment variables from .env file using dynamic import
-  // This avoids any potential issues with top-level imports
-  try {
-    const dotenv = await import("dotenv");
-    dotenv.config();
-  } catch (error) {
-    // Silently ignore dotenv errors - .env file is optional
-    // Only log if it's a real error (not just missing file)
-    if (error instanceof Error && !error.message.includes("ENOENT")) {
-      logger.warn("Failed to load .env file:", error.message);
-    }
-  }
+  // Environment variables and database are already initialized
   const server = new McpServer(
     {
       name: "hakuna",
@@ -81,10 +70,55 @@ async function main() {
   await server.connect(transport);
 }
 
-// Start API server alongside MCP server
-startApiServer();
+// Initialize database and start API server before main()
+async function initialize() {
+  // Load environment variables first
+  try {
+    const dotenv = await import("dotenv");
+    dotenv.config();
+  } catch (error) {
+    if (error instanceof Error && !error.message.includes("ENOENT")) {
+      logger.warn("Failed to load .env file:", error.message);
+    }
+  }
 
-main().catch((err) => {
-  logger.error("Fatal error in MCP gateway server:", err);
+  // Initialize database
+  try {
+    const { initializeDatabase, isDatabaseInitialized } = await import("./db/connection.js");
+    const { createSchema, schemaExists } = await import("./db/schema.js");
+    
+    await initializeDatabase();
+    const exists = await schemaExists();
+    if (!exists) {
+      await createSchema();
+    }
+    
+    // Verify initialization succeeded
+    if (!isDatabaseInitialized()) {
+      throw new Error("Database initialization completed but isDatabaseInitialized() returns false");
+    }
+    
+    logger.info("[DB] Database initialized and ready");
+  } catch (error) {
+    logger.error("[DB] Database initialization failed:", error);
+    if (error instanceof Error) {
+      logger.error("[DB] Error details:", error.message, error.stack);
+    }
+    // Don't fall back silently - this is critical for events
+    throw error;
+  }
+
+  // Start API server after database is initialized
+  startApiServer();
+}
+
+// Initialize and start API server, then run main
+initialize().then(() => {
+  main().catch((err) => {
+    logger.error("Fatal error in MCP gateway server:", err);
+    process.exit(1);
+  });
+}).catch((err) => {
+  logger.error("Fatal error during initialization:", err);
   process.exit(1);
 });

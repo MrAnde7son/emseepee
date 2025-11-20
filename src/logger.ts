@@ -3,11 +3,10 @@
  * All logging goes to stderr to avoid interfering with stdout (MCP protocol).
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
-import { join } from "path";
+// File operations removed - using database instead
 
 /**
- * File-based event storage (shared across all processes)
+ * Database-based event storage
  */
 interface GatewayEvent {
   id: string;
@@ -20,58 +19,6 @@ interface GatewayEvent {
   riskLevel?: "low" | "medium" | "high";
   latencyMs?: number;
 }
-
-const MAX_EVENTS = 10000; // Keep last 10k events
-
-// Get the events file path
-function getEventsFilePath(): string {
-  // Store in project root, or use a temp directory
-  const projectRoot = process.cwd();
-  const eventsDir = join(projectRoot, ".hakuna");
-  const eventsFile = join(eventsDir, "events.json");
-  
-  // Ensure directory exists
-  if (!existsSync(eventsDir)) {
-    mkdirSync(eventsDir, { recursive: true });
-  }
-  
-  return eventsFile;
-}
-
-// Load events from file
-function loadEventsFromFile(): GatewayEvent[] {
-  const eventsFile = getEventsFilePath();
-  
-  if (!existsSync(eventsFile)) {
-    return [];
-  }
-  
-  try {
-    const content = readFileSync(eventsFile, "utf-8");
-    const events = JSON.parse(content) as GatewayEvent[];
-    // Keep only the last MAX_EVENTS events
-    return events.slice(-MAX_EVENTS);
-  } catch (error) {
-    console.error("[EVENT-STORE] Error loading events from file:", error);
-    return [];
-  }
-}
-
-// Save events to file
-function saveEventsToFile(events: GatewayEvent[]): void {
-  const eventsFile = getEventsFilePath();
-  
-  try {
-    // Keep only the last MAX_EVENTS events
-    const eventsToSave = events.slice(-MAX_EVENTS);
-    writeFileSync(eventsFile, JSON.stringify(eventsToSave, null, 2), "utf-8");
-  } catch (error) {
-    console.error("[EVENT-STORE] Error saving events to file:", error);
-  }
-}
-
-// In-memory cache (synced with file)
-let eventStore: GatewayEvent[] = loadEventsFromFile();
 
 /**
  * Safely serialize arguments for logging
@@ -130,33 +77,31 @@ export const logger = {
   /**
    * Log a gateway event (tool call, policy decision, etc.)
    */
-  logEvent: (event: Omit<GatewayEvent, "id" | "timestamp">) => {
-    const fullEvent: GatewayEvent = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: new Date().toISOString(),
-      ...event,
-    };
-
-    // Reload events from file to get latest state (in case another process added events)
-    eventStore = loadEventsFromFile();
-    
-    // Add new event
-    eventStore.push(fullEvent);
-    
-    // Save to file immediately
-    saveEventsToFile(eventStore);
-    
-    // Debug logging to verify events are being stored
-    console.error(`[EVENT-LOG] Stored event: ${fullEvent.toolName} by ${fullEvent.agentId} - ${fullEvent.decision} (Total events: ${eventStore.length})`);
+  logEvent: async (event: Omit<GatewayEvent, "id" | "timestamp">) => {
+    try {
+      const { saveEvent } = await import("./db/services/eventService.js");
+      await saveEvent(event);
+      console.error(`[EVENT-LOG] Stored event: ${event.toolName} by ${event.agentId} - ${event.decision}`);
+    } catch (error) {
+      // If database fails, log to console as fallback
+      console.error("[EVENT-LOG] Failed to save event to database:", error);
+      if (error instanceof Error) {
+        console.error("[EVENT-LOG] Error details:", error.message);
+      }
+    }
   },
 };
 
 /**
- * Get all stored events (reloads from file to get latest)
+ * Get all stored events from database
  */
-export function getStoredEvents(): GatewayEvent[] {
-  // Reload from file to get events from all processes
-  eventStore = loadEventsFromFile();
-  return [...eventStore];
+export async function getStoredEvents(): Promise<GatewayEvent[]> {
+  try {
+    const { getEvents } = await import("./db/services/eventService.js");
+    return await getEvents();
+  } catch (error) {
+    console.error("[EVENT-STORE] Failed to load events from database:", error);
+    return [];
+  }
 }
 
