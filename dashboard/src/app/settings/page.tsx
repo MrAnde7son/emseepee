@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -13,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Lock, User, Palette } from "lucide-react";
+import { Lock, User, Palette, BarChart3 } from "lucide-react";
 import { Api } from "@/lib/api";
 
 interface User {
@@ -467,6 +468,206 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Telemetry Section */}
+      <TelemetrySettings />
+    </div>
+  );
+}
+
+/**
+ * Telemetry Settings Component
+ */
+function TelemetrySettings() {
+  const [telemetryConfig, setTelemetryConfig] = useState<{
+    enabled: boolean;
+    mode: "self-hosted" | "cloud";
+    apiKey?: string;
+    host?: string;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  useEffect(() => {
+    loadTelemetryConfig();
+  }, []);
+
+  const loadTelemetryConfig = async () => {
+    try {
+      setIsLoading(true);
+      const config = await Api.getTelemetryConfig();
+      setTelemetryConfig({
+        enabled: config.enabled,
+        mode: config.mode,
+        apiKey: config.apiKey === "***" ? undefined : config.apiKey,
+        host: config.host,
+      });
+    } catch (error) {
+      console.error("Failed to load telemetry config:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveTelemetry = async () => {
+    if (!telemetryConfig) return;
+
+    try {
+      setIsSaving(true);
+      await Api.updateTelemetryConfig({
+        enabled: telemetryConfig.enabled,
+        mode: telemetryConfig.mode,
+        apiKey: telemetryConfig.apiKey,
+        host: telemetryConfig.host,
+      });
+      // Reload config to get updated values
+      await loadTelemetryConfig();
+    } catch (error) {
+      console.error("Failed to save telemetry config:", error);
+      alert("Failed to save telemetry settings");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="border border-border rounded-xl p-6 bg-card">
+        <p className="text-muted-foreground">Loading telemetry settings...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="border border-border rounded-xl p-6 bg-card">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-lg font-semibold mb-1 flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Telemetry & Analytics
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Help improve Hakuna by sharing anonymous usage data
+          </p>
+        </div>
+        <Button onClick={handleSaveTelemetry} disabled={isSaving}>
+          {isSaving ? "Saving..." : "Save"}
+        </Button>
+      </div>
+
+      <Separator className="my-6" />
+
+      <div className="space-y-6">
+        {/* Deployment Mode */}
+        <div>
+          <label htmlFor="telemetry-mode" className="text-sm font-medium mb-2 block">
+            Deployment Mode
+          </label>
+          <Select
+            value={telemetryConfig?.mode || "self-hosted"}
+            onValueChange={(value: "self-hosted" | "cloud") => {
+              setTelemetryConfig((prev) => prev ? { ...prev, mode: value } : null);
+            }}
+          >
+            <SelectTrigger id="telemetry-mode" className="w-full md:w-[300px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="self-hosted">Self-Hosted (Opt-in)</SelectItem>
+              <SelectItem value="cloud">Cloud-Managed (Opt-out)</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground mt-1">
+            {telemetryConfig?.mode === "self-hosted"
+              ? "Telemetry is disabled by default. You must explicitly enable it."
+              : "Telemetry is enabled by default. You can disable it if needed."}
+          </p>
+        </div>
+
+        {/* Enable/Disable Telemetry */}
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="telemetry-enabled"
+            checked={telemetryConfig?.enabled || false}
+            onCheckedChange={(checked) => {
+              setTelemetryConfig((prev) =>
+                prev ? { ...prev, enabled: checked === true } : null
+              );
+            }}
+          />
+          <label
+            htmlFor="telemetry-enabled"
+            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+          >
+            Enable telemetry
+          </label>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          When enabled, anonymous usage data is sent to help improve Hakuna. No personal
+          information or sensitive data is collected.
+        </p>
+
+        {/* PostHog Configuration */}
+        {telemetryConfig?.enabled && (
+          <>
+            <Separator />
+            <div className="space-y-4">
+              <h3 className="text-base font-semibold">PostHog Configuration</h3>
+              
+              <div className="space-y-2">
+                <label htmlFor="posthog-api-key" className="text-sm font-medium">
+                  API Key
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    id="posthog-api-key"
+                    type={showApiKey ? "text" : "password"}
+                    value={telemetryConfig.apiKey || ""}
+                    onChange={(e) => {
+                      setTelemetryConfig((prev) =>
+                        prev ? { ...prev, apiKey: e.target.value } : null
+                      );
+                    }}
+                    placeholder="phc_..."
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                  >
+                    {showApiKey ? "Hide" : "Show"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Your PostHog project API key. Leave empty to use environment variable.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="posthog-host" className="text-sm font-medium">
+                  Host URL
+                </label>
+                <Input
+                  id="posthog-host"
+                  type="text"
+                  value={telemetryConfig.host || ""}
+                  onChange={(e) => {
+                    setTelemetryConfig((prev) =>
+                      prev ? { ...prev, host: e.target.value } : null
+                    );
+                  }}
+                  placeholder="https://app.posthog.com or https://your-instance.com"
+                />
+                <p className="text-xs text-muted-foreground">
+                  PostHog instance URL. Defaults to PostHog Cloud if empty.
+                </p>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

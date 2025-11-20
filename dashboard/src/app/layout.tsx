@@ -10,6 +10,7 @@ import { QueryClientProvider } from "@/components/query-client-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Sidebar } from "@/components/sidebar";
+import { TelemetryProvider } from "@/components/telemetry-provider";
 
 export const metadata: Metadata = {
   title: "Hakuna",
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           enableSystem
           disableTransitionOnChange
         >
+          <TelemetryProvider />
           <QueryClientProvider>
             <div className="min-h-screen flex">
               {/* Sidebar */}

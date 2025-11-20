@@ -6,6 +6,7 @@ import { getEnabledCategories, type ToolCategory, startConfigWatcher } from "./c
 import { logger } from "./logger.js";
 import { registerToolsByCategory, registerMcpServerProxies } from "./tools/index.js";
 import { startApiServer } from "./api/server.js";
+import { initializeTelemetry, trackTelemetry } from "./telemetry/index.js";
 
 async function main() {
   // Set up error handlers after logger is initialized
@@ -110,6 +111,11 @@ async function initialize() {
 
   // Start API server after database is initialized
   startApiServer();
+
+  // Initialize telemetry (non-blocking)
+  initializeTelemetry().catch((error) => {
+    logger.warn("[TELEMETRY] Failed to initialize telemetry:", error);
+  });
 }
 
 // Initialize and start API server, then run main

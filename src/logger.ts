@@ -82,6 +82,21 @@ export const logger = {
       const { saveEvent } = await import("./db/services/eventService.js");
       await saveEvent(event);
       console.error(`[EVENT-LOG] Stored event: ${event.toolName} by ${event.agentId} - ${event.decision}`);
+      
+      // Track telemetry event (non-blocking)
+      try {
+        const { trackTelemetry } = await import("./telemetry/index.js");
+        await trackTelemetry("tool_call", {
+          toolName: event.toolName,
+          provider: event.provider,
+          decision: event.decision,
+          riskLevel: event.riskLevel,
+          latencyMs: event.latencyMs,
+        });
+      } catch (telemetryError) {
+        // Don't fail event logging if telemetry fails
+        console.error("[TELEMETRY] Failed to track event:", telemetryError);
+      }
     } catch (error) {
       // If database fails, log to console as fallback
       console.error("[EVENT-LOG] Failed to save event to database:", error);

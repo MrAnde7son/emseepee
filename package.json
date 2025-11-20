@@ -13,10 +13,10 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "npm run build && npm run start",
-    "dev:backend": "npm run build && npm run start",
-    "dev:frontend": "cd dashboard && npm run dev",
-    "dev:all": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" --names \"backend,frontend\" --prefix-colors \"blue,green\"",
+    "dev": "pnpm run build && pnpm run start",
+    "dev:backend": "pnpm run build && pnpm run start",
+    "dev:frontend": "cd dashboard && pnpm dev",
+    "dev:all": "concurrently \"pnpm run dev:backend\" \"pnpm run dev:frontend\" --names \"backend,frontend\" --prefix-colors \"blue,green\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -26,6 +26,7 @@
     "better-sqlite3": "11.10.0",
     "dotenv": "^17.2.3",
     "pg": "^8.13.1",
+    "posthog-node": "^5.11.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {
