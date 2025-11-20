@@ -1,4 +1,4 @@
-
+import { logger } from "./logger.js";
 
 export type Sensitivity = "low" | "medium" | "high";
 export type ToolCategory = "file" | "web" | "terminal" | "third_party";
@@ -201,6 +201,53 @@ export function clearConfigCache(): void {
   _mcpServerProxies = null;
   _toolsProxies = null;
   _policyRules = null;
+  logger.info("[CONFIG] Configuration cache cleared - config will be reloaded on next access");
+}
+
+/**
+ * Start watching config.json for changes and automatically reload
+ * This enables hot-reloading of configuration without server restart
+ */
+export function startConfigWatcher(): void {
+  // Use dynamic import to avoid issues if fs is not available
+  import("fs").then((fs) => {
+    import("path").then((path) => {
+      import("url").then((url) => {
+        // Use the same path resolution logic as configLoader
+        const __filename = url.fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        const defaultConfigPath = path.join(__dirname, "..", "config.json");
+        const configPath = process.env.CONFIG_PATH || defaultConfigPath;
+        
+        // Check if file exists before watching
+        if (!fs.existsSync(configPath)) {
+          logger.warn(`[CONFIG] Config file not found at ${configPath}, skipping file watcher`);
+          return;
+        }
+        
+        try {
+          // Use fs.watch for better performance (non-polling)
+          const watcher = fs.watch(configPath, (eventType) => {
+            if (eventType === "change") {
+              logger.info("[CONFIG] config.json changed, clearing cache for hot-reload");
+              clearConfigCache();
+            }
+          });
+          
+          // Handle watcher errors
+          watcher.on("error", (error) => {
+            logger.warn(`[CONFIG] File watcher error: ${error.message}`);
+          });
+          
+          logger.info(`[CONFIG] Watching ${configPath} for changes (hot-reload enabled)`);
+        } catch (error) {
+          logger.warn(`[CONFIG] Failed to watch config file: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    });
+  }).catch((error) => {
+    logger.warn(`[CONFIG] Failed to initialize file watcher: ${error instanceof Error ? error.message : String(error)}`);
+  });
 }
 
 /**

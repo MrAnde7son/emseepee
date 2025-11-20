@@ -11,7 +11,7 @@
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
       },
-      "enabled": false,
+      "enabled": true,
       "defaultPolicy": {
         "allowedRoles": [
           "coder_bot",
@@ -207,7 +207,7 @@
     "anthropic": {
       "name": "anthropic",
       "description": "Anthropic MCP server for Claude integration",
-      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/anthropic.svg",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/anthropic.svg",
       "command": "npx",
       "args": [
         "@modelcontextprotocol/server-anthropic"
@@ -270,7 +270,7 @@
     "n8n": {
       "name": "n8n",
       "description": "n8n MCP server for triggering workflows, running nodes, and getting executions",
-      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/n8n.svg",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/n8n.svg",
       "command": "npx",
       "args": [
         "@modelcontextprotocol/server-n8n"
@@ -456,7 +456,7 @@
     "pinecone": {
       "name": "pinecone",
       "description": "Pinecone MCP server for vector search",
-      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/pinecone.svg",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/pinecone.svg",
       "command": "npx",
       "args": [
         "@modelcontextprotocol/server-pinecone"
@@ -477,7 +477,7 @@
     "weaviate": {
       "name": "weaviate",
       "description": "Weaviate MCP server for embeddings and hybrid search",
-      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/weaviate.svg",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/weaviate.svg",
       "command": "npx",
       "args": [
         "@modelcontextprotocol/server-weaviate"
@@ -562,7 +562,7 @@
     "sendgrid": {
       "name": "sendgrid",
       "description": "SendGrid MCP server for email sending and templates",
-      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/sendgrid.svg",
+      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/sendgrid.svg",
       "command": "npx",
       "args": [
         "@modelcontextprotocol/server-sendgrid"
@@ -645,7 +645,7 @@
       ],
       "sensitivity": "medium",
       "category": "web",
-      "enabled": false
+      "enabled": true
     },
     "terminal_command": {
       "name": "terminal_command",
@@ -656,41 +656,7 @@
       ],
       "sensitivity": "high",
       "category": "terminal",
-      "enabled": false
-    },
-    "slack_send_message": {
-      "name": "slack_send_message",
-      "description": "Send a message to a Slack channel through the gateway.",
-      "allowedRoles": [
-        "coder_bot",
-        "admin"
-      ],
-      "sensitivity": "medium",
-      "category": "third_party",
-      "enabled": false,
-      "execution": {
-        "type": "http",
-        "method": "POST",
-        "url": "https://slack.com/api/chat.postMessage",
-        "headers": {
-          "Authorization": "Bearer ",
-          "Content-Type": "application/json"
-        },
-        "bodyTemplate": "{\"channel\": \"{channel}\", \"text\": \"{message}\"}",
-        "responsePath": "ok"
-      },
-      "inputSchema": {
-        "channel": {
-          "type": "string",
-          "description": "Slack channel ID or name",
-          "required": true
-        },
-        "message": {
-          "type": "string",
-          "description": "Message to send",
-          "required": true
-        }
-      }
+      "enabled": true
     }
   },
   "policyRules": [

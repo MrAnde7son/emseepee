@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
-import { getEnabledCategories, type ToolCategory } from "./config.js";
+import { getEnabledCategories, type ToolCategory, startConfigWatcher } from "./config.js";
 import { logger } from "./logger.js";
 import { registerToolsByCategory, registerMcpServerProxies } from "./tools/index.js";
 import { startApiServer } from "./api/server.js";
@@ -72,6 +72,9 @@ async function main() {
 
   // Register MCP server proxies (async - connects to upstream servers)
   await registerMcpServerProxies(context);
+
+  // Start watching config.json for changes (hot-reload)
+  startConfigWatcher();
 
   const transport = new StdioServerTransport();
   logger.info("Hakuna MCP Gateway server starting...");

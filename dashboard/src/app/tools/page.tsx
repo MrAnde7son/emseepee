@@ -164,12 +164,20 @@ export default function ToolsPage() {
   const mcpServers = useMemo(() => {
     if (!tools) return [];
     
-    const mcpMap = new Map<string, { tools: Tool[]; installed: boolean }>();
+    const mcpMap = new Map<string, { tools: Tool[]; installed: boolean; hasPlaceholder: boolean }>();
     
     tools.forEach((tool) => {
       if (tool.source === "mcp" && tool.providerId) {
-        const existing = mcpMap.get(tool.providerId) || { tools: [], installed: tool.installed };
-        existing.tools.push(tool);
+        // Check if this is a placeholder tool (id starts with "mcp-")
+        const isPlaceholder = tool.id.startsWith("mcp-");
+        const existing = mcpMap.get(tool.providerId) || { tools: [], installed: tool.installed, hasPlaceholder: false };
+        
+        if (isPlaceholder) {
+          existing.hasPlaceholder = true;
+        } else {
+          existing.tools.push(tool);
+        }
+        
         // If any tool from this MCP is installed, consider the MCP installed
         if (tool.installed) {
           existing.installed = true;
@@ -178,13 +186,22 @@ export default function ToolsPage() {
       }
     });
     
-    return Array.from(mcpMap.entries()).map(([id, data]) => ({
-      id,
-      name: id,
-      description: `MCP server with ${data.tools.length} tool${data.tools.length !== 1 ? "s" : ""}`,
-      toolCount: data.tools.length,
-      installed: data.installed,
-    }));
+    return Array.from(mcpMap.entries()).map(([id, data]) => {
+      // If only placeholder exists, show a message about installing to discover tools
+      const actualToolCount = data.tools.length;
+      const description = data.hasPlaceholder && actualToolCount === 0
+        ? "Install to discover available tools"
+        : `MCP server with ${actualToolCount} tool${actualToolCount !== 1 ? "s" : ""}`;
+      
+      return {
+        id,
+        name: id,
+        description,
+        toolCount: actualToolCount,
+        installed: data.installed,
+        hasPlaceholder: data.hasPlaceholder,
+      };
+    });
   }, [tools]);
 
   const handleToggleTool = async (toolId: string, currentlyInstalled: boolean) => {
@@ -259,13 +276,17 @@ export default function ToolsPage() {
     }
   };
 
-  // Get tools for selected item
+  // Get tools for selected item (filter out placeholder tools)
   const selectedTools = useMemo(() => {
     if (!selectedItem || !tools) return [];
     if (selectedItem.type === "category") {
       return toolsByCategory[selectedItem.id] || [];
     } else {
-      return tools.filter((tool) => tool.source === "mcp" && tool.providerId === selectedItem.id);
+      return tools.filter((tool) => 
+        tool.source === "mcp" && 
+        tool.providerId === selectedItem.id &&
+        !tool.id.startsWith("mcp-") // Exclude placeholder tools
+      );
     }
   }, [selectedItem, toolsByCategory, tools]);
 
@@ -351,19 +372,22 @@ export default function ToolsPage() {
     
     const items: Array<{ type: "category" | "mcp"; id: string; name: string; description: string; icon: React.ComponentType<{ className?: string }> | string; color: string; toolCount: number; installedCount: number }> = [];
     
-    // Add categories
+    // Add categories (only if they have tools)
     categories.forEach((cat) => {
       const categoryTools = toolsByCategory[cat.id] || [];
-      items.push({
-        type: "category",
-        id: cat.id,
-        name: cat.name,
-        description: cat.description,
-        icon: cat.icon,
-        color: cat.color,
-        toolCount: categoryTools.length,
-        installedCount: categoryTools.filter((t) => t.installed).length,
-      });
+      // Only add category if it has at least one tool
+      if (categoryTools.length > 0) {
+        items.push({
+          type: "category",
+          id: cat.id,
+          name: cat.name,
+          description: cat.description,
+          icon: cat.icon,
+          color: cat.color,
+          toolCount: categoryTools.length,
+          installedCount: categoryTools.filter((t) => t.installed).length,
+        });
+      }
     });
     
     // Add MCP servers
@@ -449,9 +473,18 @@ export default function ToolsPage() {
               {filteredItems.map((item) => {
                 const icon = item.icon;
                 const isIconString = typeof icon === "string";
+                // Filter out placeholder tools (id starts with "mcp-")
                 const itemTools = item.type === "category" 
                   ? (toolsByCategory[item.id] || [])
-                  : ((tools || []).filter((t) => t.source === "mcp" && t.providerId === item.id));
+                  : ((tools || []).filter((t) => 
+                      t.source === "mcp" && 
+                      t.providerId === item.id && 
+                      !t.id.startsWith("mcp-")
+                    ));
+                
+                // Check if this is an MCP server with only placeholder (not installed)
+                const mcpServer = mcpServers.find(m => m.id === item.id);
+                const isUninstalledMcp = item.type === "mcp" && mcpServer?.hasPlaceholder && itemTools.length === 0;
 
                 return (
                   <div
@@ -467,9 +500,16 @@ export default function ToolsPage() {
                           React.createElement(icon as React.ComponentType<{ className?: string }>, { className: "h-6 w-6" })
                         )}
                       </div>
-                      <Badge variant="outline" className="text-xs">
-                        {item.installedCount}/{item.toolCount} installed
-                      </Badge>
+                      {!isUninstalledMcp && (
+                        <Badge variant="outline" className="text-xs">
+                          {item.installedCount}/{item.toolCount} installed
+                        </Badge>
+                      )}
+                      {isUninstalledMcp && (
+                        <Badge variant="outline" className="text-xs">
+                          Not installed
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="font-semibold text-sm">{item.name}</h3>
@@ -479,43 +519,49 @@ export default function ToolsPage() {
                       {item.description}
                     </p>
                     <div className="space-y-2">
-                      {itemTools.length > 0 ? (
-                        itemTools.slice(0, 3).map((tool) => (
-                          <div
-                            key={tool.id}
-                            className="flex items-center justify-between text-xs"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <span className="text-muted-foreground truncate flex-1">
-                              {tool.name}
-                            </span>
-                            <Button
-                              size="sm"
-                              variant={tool.installed ? "outline" : "default"}
-                              className="h-6 px-2 text-xs ml-2"
-                              onClick={() =>
-                                handleToggleTool(tool.id, tool.installed)
-                              }
-                              disabled={installing.has(tool.id)}
+                      {isUninstalledMcp ? (
+                        <p className="text-xs text-muted-foreground italic">
+                          Install this MCP server to discover and use its tools
+                        </p>
+                      ) : itemTools.length > 0 ? (
+                        <>
+                          {itemTools.slice(0, 3).map((tool) => (
+                            <div
+                              key={tool.id}
+                              className="flex items-center justify-between text-xs"
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              {installing.has(tool.id) ? (
-                                "..."
-                              ) : tool.installed ? (
-                                <CheckCircle2 className="h-3 w-3" />
-                              ) : (
-                                <Circle className="h-3 w-3" />
-                              )}
-                            </Button>
-                          </div>
-                        ))
+                              <span className="text-muted-foreground truncate flex-1">
+                                {tool.name}
+                              </span>
+                              <Button
+                                size="sm"
+                                variant={tool.installed ? "outline" : "default"}
+                                className="h-6 px-2 text-xs ml-2"
+                                onClick={() =>
+                                  handleToggleTool(tool.id, tool.installed)
+                                }
+                                disabled={installing.has(tool.id)}
+                              >
+                                {installing.has(tool.id) ? (
+                                  "..."
+                                ) : tool.installed ? (
+                                  <CheckCircle2 className="h-3 w-3" />
+                                ) : (
+                                  <Circle className="h-3 w-3" />
+                                )}
+                              </Button>
+                            </div>
+                          ))}
+                          {itemTools.length > 3 && (
+                            <p className="text-xs text-muted-foreground pt-2">
+                              +{itemTools.length - 3} more tools
+                            </p>
+                          )}
+                        </>
                       ) : (
                         <p className="text-xs text-muted-foreground">
                           No tools available
-                        </p>
-                      )}
-                      {itemTools.length > 3 && (
-                        <p className="text-xs text-muted-foreground pt-2">
-                          +{itemTools.length - 3} more tools
                         </p>
                       )}
                     </div>
@@ -641,9 +687,15 @@ export default function ToolsPage() {
                             <Badge variant={mcpDetails?.enabled ? "default" : "outline"}>
                               {mcpDetails?.enabled ? "Enabled" : "Disabled"}
                             </Badge>
-                            <span className="text-sm text-muted-foreground">
-                              {selectedTools.filter((t) => t.installed).length} of {selectedTools.length} tools installed
-                            </span>
+                            {selectedTools.length > 0 ? (
+                              <span className="text-sm text-muted-foreground">
+                                {selectedTools.filter((t) => t.installed).length} of {selectedTools.length} tools installed
+                              </span>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">
+                                Install to discover available tools
+                              </span>
+                            )}
                           </>
                         ) : (
                           <span className="text-sm text-muted-foreground">
@@ -676,9 +728,31 @@ export default function ToolsPage() {
                   <div className="space-y-3">
                     {selectedTools.length === 0 ? (
                       <div className="text-sm text-muted-foreground text-center py-8">
-                        {selectedItem?.type === "mcp" 
-                          ? "No tools available from this MCP server"
-                          : "No tools available in this category"}
+                        {selectedItem?.type === "mcp" ? (
+                          <div className="space-y-4">
+                            <p>This MCP server is not installed yet.</p>
+                            <p className="text-xs">
+                              Install it to discover and use its available tools.
+                            </p>
+                            {mcpDetails && !mcpDetails.enabled && (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                onClick={() => {
+                                  handleToggleMcp(selectedItem.id, false);
+                                }}
+                                disabled={installing.has(selectedItem.id)}
+                                className="mt-2"
+                              >
+                                {installing.has(selectedItem.id)
+                                  ? "Installing..."
+                                  : "Install MCP Server"}
+                              </Button>
+                            )}
+                          </div>
+                        ) : (
+                          "No tools available in this category"
+                        )}
                       </div>
                     ) : (
                       selectedTools.map((tool) => (
