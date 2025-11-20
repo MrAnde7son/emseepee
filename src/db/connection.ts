@@ -100,6 +100,7 @@ export async function initializeDatabase(): Promise<unknown> {
         const db = new Database(filename);
         logger.info(`[DB] SQLite connection established (${filename})`);
         dbConnection = db;
+        logger.info(`[DB] dbConnection variable set, isDatabaseInitialized() will return: ${dbConnection !== null}`);
         return db;
       } catch (sqliteError) {
         logger.warn("[DB] SQLite error:", sqliteError);
@@ -116,7 +117,12 @@ export async function initializeDatabase(): Promise<unknown> {
  * Check if database is initialized
  */
 export function isDatabaseInitialized(): boolean {
-  return dbConnection !== null;
+  const isInit = dbConnection !== null;
+  // Only log if false to reduce noise, but log with more detail
+  if (!isInit) {
+    logger.warn(`[DB] isDatabaseInitialized() called, dbConnection is null. Module path: ${import.meta.url}`);
+  }
+  return isInit;
 }
 
 /**

@@ -84,16 +84,30 @@ async function initialize() {
 
   // Initialize database
   try {
-    const { initializeDatabase } = await import("./db/connection.js");
+    const { initializeDatabase, isDatabaseInitialized } = await import("./db/connection.js");
     const { createSchema, schemaExists } = await import("./db/schema.js");
+    
     await initializeDatabase();
     const exists = await schemaExists();
     if (!exists) {
       await createSchema();
     }
+    
+    // Verify initialization succeeded
+    const isInit = isDatabaseInitialized();
+    if (!isInit) {
+      throw new Error("Database initialization completed but isDatabaseInitialized() returns false");
+    }
+    
     logger.info("[DB] Database initialized and ready");
+    logger.info(`[DB] Verification: isDatabaseInitialized() = ${isInit}`);
   } catch (error) {
-    logger.warn("[DB] Database initialization failed, falling back to file storage:", error);
+    logger.error("[DB] Database initialization failed:", error);
+    if (error instanceof Error) {
+      logger.error("[DB] Error details:", error.message, error.stack);
+    }
+    // Don't fall back silently - this is critical for events
+    throw error;
   }
 
   // Start API server after database is initialized

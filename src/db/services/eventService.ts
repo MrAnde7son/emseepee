@@ -1,4 +1,7 @@
-import { executeQuery, executeUpdate, getDatabaseConfig, isDatabaseInitialized } from "../connection.js";
+// Import connection functions - using static import to ensure same module instance
+import { executeQuery, executeUpdate, getDatabaseConfig, isDatabaseInitialized, initializeDatabase as initDb } from "../connection.js";
+import { createSchema, schemaExists } from "../schema.js";
+import { logger } from "../../logger.js";
 
 export interface GatewayEvent {
   id: string;
@@ -20,9 +23,32 @@ const MAX_EVENTS = 10000; // Keep last 10k events
  */
 export async function saveEvent(event: Omit<GatewayEvent, "id" | "timestamp">): Promise<void> {
   // Check if database is initialized
-  if (!isDatabaseInitialized()) {
-    // Silently fail if database is not available
-    return;
+  let isInitialized = isDatabaseInitialized();
+  
+  if (!isInitialized) {
+    logger.warn("[EVENT-SERVICE] Database not initialized, attempting to initialize...");
+    try {
+      await initDb();
+      const exists = await schemaExists();
+      if (!exists) {
+        await createSchema();
+      }
+      logger.info("[EVENT-SERVICE] Database initialization completed");
+      
+      // Verify it's now initialized
+      isInitialized = isDatabaseInitialized();
+      logger.info(`[EVENT-SERVICE] After initialization, isDatabaseInitialized() returns: ${isInitialized}`);
+      
+      if (!isInitialized) {
+        throw new Error("Database initialization completed but isDatabaseInitialized() still returns false");
+      }
+    } catch (initError) {
+      logger.error("[EVENT-SERVICE] Failed to initialize database:", initError);
+      if (initError instanceof Error) {
+        logger.error("[EVENT-SERVICE] Init error details:", initError.message, initError.stack);
+      }
+      throw new Error("Database not initialized and initialization failed");
+    }
   }
 
   try {
@@ -68,11 +94,17 @@ export async function saveEvent(event: Omit<GatewayEvent, "id" | "timestamp">): 
     );
   }
 
+    logger.info(`[EVENT-SERVICE] Successfully saved event: ${event.toolName} by ${event.agentId}`);
+
     // Clean up old events (keep only last MAX_EVENTS)
     await cleanupOldEvents();
   } catch (error) {
-    // Silently fail if database operations fail
-    // Events are not critical, so we don't want to break the application
+    // Log error and rethrow so caller knows it failed
+    logger.error("[EVENT-SERVICE] Failed to save event to database:", error);
+    if (error instanceof Error) {
+      logger.error("[EVENT-SERVICE] Error details:", error.message, error.stack);
+    }
+    throw error;
   }
 }
 
@@ -82,6 +114,7 @@ export async function saveEvent(event: Omit<GatewayEvent, "id" | "timestamp">): 
 export async function getEvents(limit: number = MAX_EVENTS): Promise<GatewayEvent[]> {
   // Check if database is initialized
   if (!isDatabaseInitialized()) {
+    logger.warn("[EVENT-SERVICE] Database not initialized, returning empty events list");
     return [];
   }
 
@@ -134,6 +167,8 @@ export async function getEvents(limit: number = MAX_EVENTS): Promise<GatewayEven
     metadata: string | null;
   }>(query, [limit]);
 
+  logger.info(`[EVENT-SERVICE] Retrieved ${results.length} events from database`);
+
   return results.map((row) => ({
     id: row.id,
     timestamp: row.timestamp,
@@ -147,7 +182,10 @@ export async function getEvents(limit: number = MAX_EVENTS): Promise<GatewayEven
     metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
   }));
   } catch (error) {
-    // Silently fail if database operations fail
+    logger.error("[EVENT-SERVICE] Failed to get events from database:", error);
+    if (error instanceof Error) {
+      logger.error("[EVENT-SERVICE] Error details:", error.message, error.stack);
+    }
     return [];
   }
 }
@@ -158,6 +196,7 @@ export async function getEvents(limit: number = MAX_EVENTS): Promise<GatewayEven
 export async function searchEvents(searchQuery: string, limit: number = MAX_EVENTS): Promise<GatewayEvent[]> {
   // Check if database is initialized
   if (!isDatabaseInitialized()) {
+    logger.warn("[EVENT-SERVICE] Database not initialized, returning empty events list");
     return [];
   }
 
@@ -228,6 +267,8 @@ export async function searchEvents(searchQuery: string, limit: number = MAX_EVEN
     metadata: string | null;
   }>(sql, params);
 
+  logger.info(`[EVENT-SERVICE] Retrieved ${results.length} events from database (search: "${searchQuery}")`);
+
   return results.map((row) => ({
     id: row.id,
     timestamp: row.timestamp,
@@ -241,7 +282,10 @@ export async function searchEvents(searchQuery: string, limit: number = MAX_EVEN
     metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
   }));
   } catch (error) {
-    // Silently fail if database operations fail
+    logger.error("[EVENT-SERVICE] Failed to search events from database:", error);
+    if (error instanceof Error) {
+      logger.error("[EVENT-SERVICE] Error details:", error.message, error.stack);
+    }
     return [];
   }
 }
@@ -250,29 +294,50 @@ export async function searchEvents(searchQuery: string, limit: number = MAX_EVEN
  * Clean up old events (keep only last MAX_EVENTS)
  */
 async function cleanupOldEvents(): Promise<void> {
-  const config = getDatabaseConfig();
-  
-  if (config.type === "postgres") {
-    await executeUpdate(
-      `DELETE FROM events
-       WHERE id NOT IN (
-         SELECT id FROM events
-         ORDER BY timestamp DESC
-         LIMIT $1
-       )`,
-      [MAX_EVENTS]
+  try {
+    const config = getDatabaseConfig();
+    
+    // First, check how many events we have
+    const countResult = await executeQuery<{ count: number }>(
+      config.type === "postgres"
+        ? `SELECT COUNT(*) as count FROM events`
+        : `SELECT COUNT(*) as count FROM events`
     );
-  } else {
-    // SQLite
-    await executeUpdate(
-      `DELETE FROM events
-       WHERE id NOT IN (
-         SELECT id FROM events
-         ORDER BY timestamp DESC
-         LIMIT ?
-       )`,
-      [MAX_EVENTS]
-    );
+    
+    const eventCount = countResult[0]?.count || 0;
+    
+    // Only cleanup if we have more than MAX_EVENTS
+    if (eventCount <= MAX_EVENTS) {
+      return;
+    }
+    
+    if (config.type === "postgres") {
+      await executeUpdate(
+        `DELETE FROM events
+         WHERE id NOT IN (
+           SELECT id FROM events
+           ORDER BY timestamp DESC
+           LIMIT $1
+         )`,
+        [MAX_EVENTS]
+      );
+    } else {
+      // SQLite
+      await executeUpdate(
+        `DELETE FROM events
+         WHERE id NOT IN (
+           SELECT id FROM events
+           ORDER BY timestamp DESC
+           LIMIT ?
+         )`,
+        [MAX_EVENTS]
+      );
+    }
+    
+    logger.info(`[EVENT-SERVICE] Cleaned up old events, kept last ${MAX_EVENTS} events`);
+  } catch (error) {
+    logger.error("[EVENT-SERVICE] Failed to cleanup old events:", error);
+    // Don't throw - cleanup failures shouldn't break event saving
   }
 }
 

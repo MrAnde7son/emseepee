@@ -78,14 +78,20 @@ export const logger = {
    * Log a gateway event (tool call, policy decision, etc.)
    */
   logEvent: async (event: Omit<GatewayEvent, "id" | "timestamp">) => {
+    console.error(`[EVENT-LOG] Attempting to save event: ${event.toolName} by ${event.agentId} - ${event.decision}`);
     try {
       const { saveEvent } = await import("./db/services/eventService.js");
+      console.error(`[EVENT-LOG] saveEvent imported, calling saveEvent...`);
       await saveEvent(event);
       console.error(`[EVENT-LOG] Stored event: ${event.toolName} by ${event.agentId} - ${event.decision}`);
     } catch (error) {
       // If database fails, log to console as fallback
       console.error("[EVENT-LOG] Failed to save event to database:", error);
-      console.error("[EVENT-LOG] Event data:", event);
+      if (error instanceof Error) {
+        console.error("[EVENT-LOG] Error message:", error.message);
+        console.error("[EVENT-LOG] Error stack:", error.stack);
+      }
+      console.error("[EVENT-LOG] Event data:", JSON.stringify(event, null, 2));
     }
   },
 };
