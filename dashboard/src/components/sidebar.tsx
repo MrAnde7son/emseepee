@@ -31,11 +31,11 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "hidden md:flex flex-col border-r border-border bg-card/50 transition-all duration-300",
+        "hidden md:flex flex-col border-r border-border bg-card/50 transition-all duration-300 h-screen",
         isExpanded ? "w-64" : "w-16"
       )}
     >
-      <div className="px-4 py-4 border-b border-border relative">
+      <div className="px-4 py-4 border-b border-border relative flex-shrink-0">
         {isExpanded ? (
           <div className="flex items-center gap-2">
             <Image
@@ -74,7 +74,7 @@ export function Sidebar() {
           )}
         </Button>
       </div>
-      <nav className="flex-1 px-2 py-4 space-y-1">
+      <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto min-h-0">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           return (
@@ -96,7 +96,7 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="border-t border-border px-4 py-3">
+      <div className="border-t border-border px-4 py-3 flex-shrink-0">
         {/* Profile Section */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
