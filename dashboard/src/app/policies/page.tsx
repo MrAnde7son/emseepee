@@ -177,37 +177,46 @@ export default function PoliciesPage() {
       setEditingPolicyData({ ...policy });
       setEditingPolicy(id);
       
-      // Fetch full policy details to get condition
-      try {
-        const fullPolicy = await Api.getPolicy(id);
-        if (fullPolicy.condition) {
-          // Extract scope target from condition
-          if (fullPolicy.condition.toolName) {
-            const toolName = Array.isArray(fullPolicy.condition.toolName) 
-              ? fullPolicy.condition.toolName[0] 
-              : fullPolicy.condition.toolName;
-            setScopeTarget(toolName);
-          } else if (fullPolicy.condition.agentRole) {
-            const agentRole = Array.isArray(fullPolicy.condition.agentRole)
-              ? fullPolicy.condition.agentRole[0]
-              : fullPolicy.condition.agentRole;
-            setScopeTarget(agentRole);
-          } else {
-            setScopeTarget("");
-          }
-        } else {
-          setScopeTarget("");
-        }
-        // Extract custom code if effect is custom
-        if (fullPolicy.effect === "custom") {
-          setCustomCode(fullPolicy.customCode || "");
-        } else {
-          setCustomCode("");
-        }
-      } catch (error) {
-        console.error("Failed to fetch policy details:", error);
-        setScopeTarget("");
+      // Set scopeTarget from policy (backend now includes this)
+      setScopeTarget(policy.scopeTarget || "");
+      
+      // Extract custom code if effect is custom
+      if (policy.effect === "custom") {
+        setCustomCode(policy.customCode || "");
+      } else {
         setCustomCode("");
+      }
+      
+      // Fallback: If scopeTarget is not available, fetch full policy details
+      if (!policy.scopeTarget && policy.scope !== "global") {
+        try {
+          const fullPolicy = await Api.getPolicy(id);
+          if (fullPolicy.condition) {
+            // Extract scope target from condition
+            if (fullPolicy.condition.toolName) {
+              const toolName = Array.isArray(fullPolicy.condition.toolName) 
+                ? fullPolicy.condition.toolName[0] 
+                : fullPolicy.condition.toolName;
+              setScopeTarget(toolName);
+            } else if (fullPolicy.condition.agentRole) {
+              const agentRole = Array.isArray(fullPolicy.condition.agentRole)
+                ? fullPolicy.condition.agentRole[0]
+                : fullPolicy.condition.agentRole;
+              setScopeTarget(agentRole);
+            } else if (fullPolicy.condition.providerId) {
+              const providerId = Array.isArray(fullPolicy.condition.providerId)
+                ? fullPolicy.condition.providerId[0]
+                : fullPolicy.condition.providerId;
+              setScopeTarget(providerId);
+            }
+          }
+          // Update custom code from full policy if needed
+          if (fullPolicy.effect === "custom" && fullPolicy.customCode) {
+            setCustomCode(fullPolicy.customCode);
+          }
+        } catch (error) {
+          console.error("Failed to fetch policy details:", error);
+        }
       }
     }
   };

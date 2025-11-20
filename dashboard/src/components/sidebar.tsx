@@ -3,11 +3,17 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
-import { ChevronLeft, ChevronRight, Gauge, Plug, Shield, ListFilter, Settings, Bot } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight, Gauge, Plug, Shield, ListFilter, Settings, Bot, LogOut } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const navItems = [
   { href: "/providers", label: "Providers", icon: Plug },
@@ -15,12 +21,12 @@ const navItems = [
   { href: "/policies", label: "Policies", icon: Shield },
   { href: "/events", label: "Events", icon: ListFilter },
   { href: "/agents", label: "Agents", icon: Bot },
-  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar() {
   const [isExpanded, setIsExpanded] = useState(true);
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <aside
@@ -90,13 +96,55 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div
-        className={cn(
-          "px-4 py-3 border-t border-border text-xs text-muted-foreground",
-          !isExpanded && "text-center"
-        )}
-      >
-        {isExpanded ? "hakuna" : "HK"}
+      <div className="border-t border-border px-4 py-3">
+        {/* Profile Section */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className={cn(
+                "flex items-center gap-3 w-full rounded-lg px-2 py-2 transition-colors hover:bg-accent text-left",
+                !isExpanded && "justify-center"
+              )}
+            >
+              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-pink-500 via-orange-500 to-purple-500 flex items-center justify-center text-white text-xs font-semibold flex-shrink-0">
+                IM
+              </div>
+              {isExpanded && (
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    Itamar Mizrahi
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">Owner</p>
+                </div>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem
+              onClick={() => router.push("/settings")}
+              className="cursor-pointer"
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => {
+                // In real implementation, this would handle logout
+                if (confirm("Are you sure you want to sign out?")) {
+                  // Handle logout logic here (clear tokens, session, etc.)
+                  console.log("Logging out...");
+                  // router.push("/login");
+                  alert("Logout functionality - backend integration pending");
+                }
+              }}
+              className="cursor-pointer"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </aside>
   );

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef, startTransition } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 
 import { useEvents } from "@/hooks/useGatewayData";
 
@@ -43,20 +44,135 @@ interface EventFilters {
   decisions: string[];
   providers: string[];
   agents: string[];
+  tools: string[];
   riskLevels: string[];
 }
 
 export default function EventsPage() {
-  const [search, setSearch] = useState("");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
+  // Initialize from URL params
+  const initialSearch = searchParams.get("q") || "";
+  const initialDecisions = searchParams.get("decision")?.split(",").filter(Boolean) || [];
+  const initialProvider = searchParams.get("provider") || "";
+  const initialAgent = searchParams.get("agent") || "";
+  const initialTool = searchParams.get("tool") || "";
+  const initialRiskLevels = searchParams.get("risk")?.split(",").filter(Boolean) || [];
+
+  const [search, setSearch] = useState(initialSearch);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState<EventFilters>({
-    decisions: [],
-    providers: [],
-    agents: [],
-    riskLevels: [],
+    decisions: initialDecisions,
+    providers: initialProvider ? [initialProvider] : [],
+    agents: initialAgent ? [initialAgent] : [],
+    tools: initialTool ? [initialTool] : [],
+    riskLevels: initialRiskLevels,
   });
 
   const { data, isLoading } = useEvents(search);
+  const isUpdatingFromUrl = useRef(false);
+  const prevSearchParamsRef = useRef<string>("");
+
+  // Sync state from URL params when they change externally (e.g., browser back/forward)
+  useEffect(() => {
+    const currentParamsString = searchParams.toString();
+    
+    // Only update if searchParams actually changed
+    if (currentParamsString === prevSearchParamsRef.current) {
+      return;
+    }
+    
+    prevSearchParamsRef.current = currentParamsString;
+
+    const urlSearch = searchParams.get("q") || "";
+    const urlDecisions = searchParams.get("decision")?.split(",").filter(Boolean) || [];
+    const urlProvider = searchParams.get("provider") || "";
+    const urlAgent = searchParams.get("agent") || "";
+    const urlTool = searchParams.get("tool") || "";
+    const urlRiskLevels = searchParams.get("risk")?.split(",").filter(Boolean) || [];
+
+    const urlProviderArray = urlProvider ? [urlProvider] : [];
+    const urlAgentArray = urlAgent ? [urlAgent] : [];
+    const urlToolArray = urlTool ? [urlTool] : [];
+
+    // Check if URL params differ from current state
+    const searchChanged = urlSearch !== search;
+    const decisionsChanged = JSON.stringify(urlDecisions) !== JSON.stringify(filters.decisions);
+    const providersChanged = JSON.stringify(urlProviderArray) !== JSON.stringify(filters.providers);
+    const agentsChanged = JSON.stringify(urlAgentArray) !== JSON.stringify(filters.agents);
+    const toolsChanged = JSON.stringify(urlToolArray) !== JSON.stringify(filters.tools);
+    const riskLevelsChanged = JSON.stringify(urlRiskLevels) !== JSON.stringify(filters.riskLevels);
+
+    if (searchChanged || decisionsChanged || providersChanged || agentsChanged || toolsChanged || riskLevelsChanged) {
+      isUpdatingFromUrl.current = true;
+      
+      startTransition(() => {
+        if (searchChanged) {
+          setSearch(urlSearch);
+        }
+
+        if (decisionsChanged || providersChanged || agentsChanged || toolsChanged || riskLevelsChanged) {
+          setFilters({
+            decisions: urlDecisions,
+            providers: urlProviderArray,
+            agents: urlAgentArray,
+            tools: urlToolArray,
+            riskLevels: urlRiskLevels,
+          });
+        }
+      });
+      
+      // Reset flag after state updates
+      setTimeout(() => {
+        isUpdatingFromUrl.current = false;
+      }, 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]); // Only depend on searchParams
+
+  // Update URL when filters or search change (but not when updating from URL)
+  useEffect(() => {
+    if (isUpdatingFromUrl.current) {
+      return;
+    }
+
+    const params = new URLSearchParams();
+    
+    if (search) {
+      params.set("q", search);
+    }
+    
+    if (filters.decisions.length > 0) {
+      params.set("decision", filters.decisions.join(","));
+    }
+    
+    if (filters.providers.length > 0) {
+      params.set("provider", filters.providers[0]);
+    }
+    
+    if (filters.agents.length > 0) {
+      params.set("agent", filters.agents[0]);
+    }
+    
+    if (filters.tools.length > 0) {
+      params.set("tool", filters.tools[0]);
+    }
+    
+    if (filters.riskLevels.length > 0) {
+      params.set("risk", filters.riskLevels.join(","));
+    }
+    
+    const currentParams = new URLSearchParams(window.location.search);
+    const newParamsString = params.toString();
+    const currentParamsString = currentParams.toString();
+    
+    // Only update URL if it's different to avoid unnecessary updates
+    if (newParamsString !== currentParamsString) {
+      const newUrl = newParamsString ? `?${newParamsString}` : window.location.pathname;
+      router.replace(newUrl, { scroll: false });
+    }
+  }, [search, filters, router]);
 
   const onSearchChange = (value: string) => {
     setSearch(value);
@@ -64,11 +180,12 @@ export default function EventsPage() {
 
   // Extract unique values for filter options
   const filterOptions = useMemo(() => {
-    if (!data) return { providers: [], decisions: [], agents: [], riskLevels: [] };
+    if (!data) return { providers: [], decisions: [], agents: [], tools: [], riskLevels: [] };
     
     const providers = Array.from(new Set(data.map((e) => e.provider))).sort();
     const decisions = Array.from(new Set(data.map((e) => e.decision))).sort();
     const agents = Array.from(new Set(data.map((e) => e.agentId))).sort();
+    const tools = Array.from(new Set(data.map((e) => e.toolName))).sort();
     const riskLevels = Array.from(
       new Set(
         data
@@ -79,7 +196,7 @@ export default function EventsPage() {
       )
     ).sort();
     
-    return { providers, decisions, agents, riskLevels };
+    return { providers, decisions, agents, tools, riskLevels };
   }, [data]);
 
   // Apply filters to data
@@ -102,6 +219,11 @@ export default function EventsPage() {
         return false;
       }
       
+      // Filter by tool
+      if (filters.tools.length > 0 && !filters.tools.includes(event.toolName)) {
+        return false;
+      }
+      
       // Filter by risk level
       if (filters.riskLevels.length > 0) {
         if (!event.riskLevel || !filters.riskLevels.includes(event.riskLevel)) {
@@ -115,7 +237,7 @@ export default function EventsPage() {
 
   // Count active filters
   const activeFilterCount = useMemo(() => {
-    return filters.decisions.length + filters.providers.length + filters.agents.length + filters.riskLevels.length;
+    return filters.decisions.length + filters.providers.length + filters.agents.length + filters.tools.length + filters.riskLevels.length;
   }, [filters]);
 
   const toggleDecision = (decision: string) => {
@@ -150,11 +272,19 @@ export default function EventsPage() {
     }));
   };
 
+  const setTool = (tool: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      tools: tool === "all" ? [] : [tool],
+    }));
+  };
+
   const clearFilters = () => {
     setFilters({
       decisions: [],
       providers: [],
       agents: [],
+      tools: [],
       riskLevels: [],
     });
   };
@@ -268,7 +398,7 @@ export default function EventsPage() {
           <SheetHeader>
             <SheetTitle>Filter Events</SheetTitle>
             <SheetDescription>
-              Filter events by decision, provider, agent, or risk level
+              Filter events by decision, provider, agent, tool, or risk level
             </SheetDescription>
           </SheetHeader>
           
@@ -342,6 +472,27 @@ export default function EventsPage() {
                   {filterOptions.agents.map((agent) => (
                     <SelectItem key={agent} value={agent}>
                       <span className="font-mono text-xs">{agent}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Tool Filter */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold">Tool</h3>
+              <Select
+                value={filters.tools.length > 0 ? filters.tools[0] : "all"}
+                onValueChange={setTool}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="All tools" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All tools</SelectItem>
+                  {filterOptions.tools.map((tool) => (
+                    <SelectItem key={tool} value={tool}>
+                      <span className="font-mono text-xs">{tool}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
