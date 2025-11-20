@@ -16,7 +16,7 @@ const CONFIG_KEYS = {
 /**
  * Get config value from database
  */
-async function getConfigValue<T>(key: string): Promise<T | null> {
+export async function getConfigValue<T>(key: string): Promise<T | null> {
   // Check if database is initialized before trying to use it
   if (!isDatabaseInitialized()) {
     return null;
@@ -53,7 +53,7 @@ async function getConfigValue<T>(key: string): Promise<T | null> {
 /**
  * Set config value in database
  */
-async function setConfigValue<T>(key: string, value: T): Promise<void> {
+export async function setConfigValue<T>(key: string, value: T): Promise<void> {
   // Check if database is initialized before trying to use it
   if (!isDatabaseInitialized()) {
     // Silently fail if database is not available - fall back to file storage

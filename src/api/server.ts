@@ -1717,6 +1717,65 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       return;
     }
     
+    // Telemetry endpoints
+    if (path === "/api/telemetry/status" && method === "GET") {
+      const { getTelemetryStatus } = await import("../telemetry/index.js");
+      const status = getTelemetryStatus();
+      sendJSON(res, 200, status);
+      return;
+    }
+    
+    if (path === "/api/telemetry/config" && method === "GET") {
+      const { getTelemetryConfig } = await import("../telemetry/config.js");
+      const config = await getTelemetryConfig();
+      // Don't expose API key in response
+      const safeConfig = {
+        ...config,
+        apiKey: config.apiKey ? "***" : undefined,
+      };
+      sendJSON(res, 200, safeConfig);
+      return;
+    }
+    
+    if (path === "/api/telemetry/config" && method === "POST") {
+      try {
+        const body = await parseBody(req) as {
+          enabled?: boolean;
+          mode?: "self-hosted" | "cloud";
+          apiKey?: string;
+          host?: string;
+        };
+        
+        const {
+          updateTelemetryEnabled,
+          updateTelemetryMode,
+          updatePostHogConfig,
+        } = await import("../telemetry/config.js");
+        
+        if (body.enabled !== undefined) {
+          await updateTelemetryEnabled(body.enabled);
+        }
+        if (body.mode !== undefined) {
+          await updateTelemetryMode(body.mode);
+        }
+        if (body.apiKey !== undefined || body.host !== undefined) {
+          await updatePostHogConfig(body.apiKey, body.host);
+        }
+        
+        // Reinitialize telemetry with new config
+        const { initializeTelemetry } = await import("../telemetry/index.js");
+        await initializeTelemetry();
+        
+        sendJSON(res, 200, { success: true });
+        return;
+      } catch (error) {
+        logger.error("[API] Update telemetry config error:", error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to update telemetry config";
+        sendJSON(res, 500, { error: errorMessage });
+        return;
+      }
+    }
+    
     // 404
     sendJSON(res, 404, { error: "Not found" });
   } catch (error) {

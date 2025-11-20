@@ -198,5 +198,8 @@ export const Api = {
     }
     return res.json() as Promise<{ id: number; email: string; name: string | null; role: string; createdAt: string; updatedAt: string }>;
   },
+  getTelemetryStatus: () => fetchJSON<{ enabled: boolean; mode: "self-hosted" | "cloud"; config: { mode: string; enabled: boolean; apiKey?: string; host?: string; instanceId?: string } | null }>("/api/telemetry/status"),
+  getTelemetryConfig: () => fetchJSON<{ mode: "self-hosted" | "cloud"; enabled: boolean; apiKey?: string; host?: string; instanceId?: string }>("/api/telemetry/config"),
+  updateTelemetryConfig: (config: { enabled?: boolean; mode?: "self-hosted" | "cloud"; apiKey?: string; host?: string }) => postJSON<{ success: boolean }>("/api/telemetry/config", config),
 };
 
