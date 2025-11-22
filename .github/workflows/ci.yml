@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
+        node-version: [20.x]
 
     steps:
     - uses: actions/checkout@v4
@@ -21,18 +21,20 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
-        cache: 'npm'
+        cache: 'pnpm'
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9
+        run_install: false
 
     - name: Install dependencies
-      run: npm ci
+      run: pnpm install --frozen-lockfile
 
     - name: Build
-      run: npm run build
+      run: pnpm run build
 
-    - name: Check for build artifacts
-      run: |
-        if [ ! -f "dist/index.js" ]; then
-          echo "Build failed - dist/index.js not found"
-          exit 1
-        fi
+    - name: Test
+      run: pnpm test
 

@@ -9,9 +9,9 @@
         "@modelcontextprotocol/server-github"
       ],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
       },
-      "enabled": true,
+      "enabled": false,
       "defaultPolicy": {
         "allowedRoles": [
           "coder_bot",
@@ -603,7 +603,7 @@
       ],
       "sensitivity": "medium",
       "category": "file",
-      "enabled": false
+      "enabled": true
     },
     "file_search_gateway": {
       "name": "file_search_gateway",
@@ -614,7 +614,7 @@
       ],
       "sensitivity": "medium",
       "category": "file",
-      "enabled": false
+      "enabled": true
     },
     "file_write_gateway": {
       "name": "file_write_gateway",
@@ -625,7 +625,7 @@
       ],
       "sensitivity": "high",
       "category": "file",
-      "enabled": false
+      "enabled": true
     },
     "web_search_gateway": {
       "name": "web_search_gateway",
@@ -637,7 +637,7 @@
       ],
       "sensitivity": "medium",
       "category": "web",
-      "enabled": false
+      "enabled": true
     },
     "terminal_command": {
       "name": "terminal_command",
@@ -648,7 +648,7 @@
       ],
       "sensitivity": "high",
       "category": "terminal",
-      "enabled": false
+      "enabled": true
     }
   },
   "policyRules": [
