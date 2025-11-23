@@ -86,6 +86,22 @@ export async function createSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_agents_role ON agents(role);
       CREATE INDEX IF NOT EXISTS idx_agents_tenant_id ON agents(tenant_id);
     `);
+
+    await executeUpdate(`
+      CREATE TABLE IF NOT EXISTS provider_configs (
+        id SERIAL PRIMARY KEY,
+        provider_id VARCHAR(255) UNIQUE NOT NULL,
+        config JSONB NOT NULL,
+        enabled BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await executeUpdate(`
+      CREATE INDEX IF NOT EXISTS idx_provider_configs_provider_id ON provider_configs(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_provider_configs_enabled ON provider_configs(enabled);
+    `);
   } else {
     // SQLite schema
     await executeUpdate(`
@@ -161,6 +177,20 @@ export async function createSchema(): Promise<void> {
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_provider_id ON agents(provider_id)`);
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_role ON agents(role)`);
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_tenant_id ON agents(tenant_id)`);
+
+    await executeUpdate(`
+      CREATE TABLE IF NOT EXISTS provider_configs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider_id TEXT UNIQUE NOT NULL,
+        config TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_provider_configs_provider_id ON provider_configs(provider_id)`);
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_provider_configs_enabled ON provider_configs(enabled)`);
   }
 
   logger.info("[DB] Database schema created successfully");

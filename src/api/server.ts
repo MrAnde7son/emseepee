@@ -162,15 +162,34 @@ async function saveConfigToDb(
 /**
  * Get all providers
  * Providers are enterprise agent frameworks/platforms, not MCP servers
+ * Status reflects adapter availability
  */
 async function getProviders(): Promise<Provider[]> {
+  // Check which adapters are registered
+  const { getAgentRegistry } = await import("../agents/registry.js");
+  const { AdapterFactory } = await import("../agents/factory.js");
+  const registry = getAgentRegistry();
+  const registeredProviders = registry.getRegisteredProviders();
+
+  // Check provider configs
+  let providerConfigs: Map<string, { config: Record<string, unknown>; enabled: boolean }> = new Map();
+  try {
+    const { getAllProviderConfigs } = await import("../db/services/providerService.js");
+    const configs = await getAllProviderConfigs();
+    configs.forEach((cfg) => {
+      providerConfigs.set(cfg.providerId, { config: cfg.config, enabled: cfg.enabled });
+    });
+  } catch (error) {
+    logger.info("[API] Failed to load provider configs:", error);
+  }
+
   const providers: Provider[] = [
     {
       id: "cursor",
       name: "Cursor",
       type: "cursor",
-      status: isCursorInstalled() ? "connected" : "pending",
-      lastHeartbeat: isCursorInstalled() ? new Date().toISOString() : undefined,
+      status: isCursorInstalled() && registeredProviders.includes("cursor") ? "connected" : "pending",
+      lastHeartbeat: isCursorInstalled() && registeredProviders.includes("cursor") ? new Date().toISOString() : undefined,
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/cursor.svg",
       comingSoon: false,
     },
@@ -178,49 +197,49 @@ async function getProviders(): Promise<Provider[]> {
       id: "n8n",
       name: "n8n",
       type: "n8n",
-      status: "pending",
+      status: registeredProviders.includes("n8n") ? "connected" : "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/n8n.svg",
-      comingSoon: true,
+      comingSoon: !AdapterFactory.isAdapterAvailable("n8n"),
     },
     {
       id: "openai",
       name: "OpenAI ChatGPT Enterprise",
       type: "openai",
-      status: "pending",
+      status: registeredProviders.includes("openai") ? "connected" : "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/openai.svg",
-      comingSoon: true,
+      comingSoon: !AdapterFactory.isAdapterAvailable("openai"),
     },
     {
       id: "vertex_ai",
       name: "Google Vertex AI",
       type: "vertex",
-      status: "pending",
+      status: registeredProviders.includes("vertex_ai") ? "connected" : "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/googlecloud.svg",
-      comingSoon: true,
+      comingSoon: !AdapterFactory.isAdapterAvailable("vertex_ai"),
     },
     {
       id: "aws_bedrock",
       name: "AWS Bedrock",
       type: "bedrock",
-      status: "pending",
+      status: registeredProviders.includes("aws_bedrock") ? "connected" : "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/amazonaws.svg",
-      comingSoon: true,
+      comingSoon: !AdapterFactory.isAdapterAvailable("aws_bedrock"),
     },
     {
       id: "microsoft_copilot",
       name: "Microsoft Copilot",
       type: "copilot",
-      status: "pending",
+      status: registeredProviders.includes("microsoft_copilot") ? "connected" : "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/microsoft.svg",
-      comingSoon: true,
+      comingSoon: !AdapterFactory.isAdapterAvailable("microsoft_copilot"),
     },
     {
       id: "langchain",
       name: "LangChain",
       type: "langchain",
-      status: "pending",
+      status: registeredProviders.includes("langchain") ? "connected" : "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/langchain.svg",
-      comingSoon: true,
+      comingSoon: !AdapterFactory.isAdapterAvailable("langchain"),
     },
   ];
   
@@ -1545,18 +1564,58 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     }
     
     if (path.startsWith("/api/providers/") && path.endsWith("/install") && method === "POST") {
-      const providerId = path.replace("/api/providers/", "").replace("/install", "");
-      if (providerId === "cursor") {
-        const result = installCursorProvider();
-        if (result.success) {
-          sendJSON(res, 200, { success: true });
-        } else {
-          sendJSON(res, 500, { error: result.error });
+      try {
+        const authHeader = req.headers.authorization;
+        const token = extractTokenFromHeader(authHeader);
+        
+        if (!token) {
+          sendJSON(res, 401, { error: "No token provided" });
+          return;
         }
-      } else {
-        sendJSON(res, 404, { error: `Provider ${providerId} not found` });
+
+        const payload = verifyToken(token);
+        if (!payload) {
+          sendJSON(res, 401, { error: "Invalid or expired token" });
+          return;
+        }
+
+        const providerId = path.replace("/api/providers/", "").replace("/install", "");
+        const body = await parseBody(req) as Record<string, unknown> | undefined;
+        const config = body || {};
+
+        // Provider-specific installation logic
+        if (providerId === "cursor") {
+          const result = installCursorProvider();
+          if (!result.success) {
+            sendJSON(res, 500, { error: result.error });
+            return;
+          }
+          // Cursor doesn't need config stored, but we'll save empty config for consistency
+          const { saveProviderConfig } = await import("../db/services/providerService.js");
+          await saveProviderConfig(providerId, {});
+        } else {
+          // Generic provider installation - requires config
+          if (!config || Object.keys(config).length === 0) {
+            sendJSON(res, 400, { error: `Provider ${providerId} requires configuration` });
+            return;
+          }
+
+          // Save provider configuration
+          const { saveProviderConfig } = await import("../db/services/providerService.js");
+          await saveProviderConfig(providerId, config);
+        }
+
+        // Register adapter dynamically
+        const { registerProviderAdapter } = await import("../agents/index.js");
+        await registerProviderAdapter(providerId, config);
+
+        sendJSON(res, 200, { success: true });
+        return;
+      } catch (error) {
+        logger.error("[API] Install provider error:", error);
+        sendJSON(res, 500, { error: error instanceof Error ? error.message : "Failed to install provider" });
+        return;
       }
-      return;
     }
     
     // Agents endpoints
