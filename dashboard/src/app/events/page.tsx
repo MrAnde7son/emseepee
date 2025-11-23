@@ -328,29 +328,29 @@ export default function EventsPage() {
         <div className="border border-border rounded-xl overflow-hidden">
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted">
-                <TableHead className="text-xs text-muted-foreground">Timestamp</TableHead>
-                <TableHead className="text-xs text-muted-foreground">Agent</TableHead>
-                <TableHead className="text-xs text-muted-foreground">Provider</TableHead>
-                <TableHead className="text-xs text-muted-foreground">Tool / intent</TableHead>
-                <TableHead className="text-xs text-muted-foreground">Decision</TableHead>
-                <TableHead className="text-xs text-muted-foreground">Latency</TableHead>
+              <TableRow>
+                <TableHead>Timestamp</TableHead>
+                <TableHead>Agent</TableHead>
+                <TableHead>Provider</TableHead>
+                <TableHead>Tool / intent</TableHead>
+                <TableHead>Decision</TableHead>
+                <TableHead>Latency</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredData.map((e) => (
                 <TableRow key={e.id}>
-                  <TableCell className="text-[11px] text-foreground">
+                  <TableCell className="text-sm text-foreground">
                     {new Date(e.timestamp).toLocaleString()}
                   </TableCell>
-                  <TableCell className="text-[11px] font-mono text-foreground">
+                  <TableCell className="text-sm font-mono text-foreground">
                     {e.agentId}
                   </TableCell>
-                  <TableCell className="text-[11px] text-muted-foreground">
+                  <TableCell className="text-sm text-muted-foreground">
                     {e.provider}
                   </TableCell>
-                  <TableCell className="text-[11px] text-foreground">
-                    <span className="font-mono text-[11px]">{e.toolName}</span>
+                  <TableCell className="text-sm text-foreground">
+                    <span className="font-mono text-sm">{e.toolName}</span>
                     {e.intentSummary && (
                       <span className="text-muted-foreground"> – {e.intentSummary}</span>
                     )}
@@ -368,7 +368,7 @@ export default function EventsPage() {
                       {e.decision}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-[11px] text-muted-foreground">
+                  <TableCell className="text-sm text-muted-foreground">
                     {e.latencyMs != null ? `${e.latencyMs} ms` : "-"}
                   </TableCell>
                 </TableRow>

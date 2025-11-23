@@ -32,7 +32,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Users,
   Search,
   RefreshCcw,
   Plus,
@@ -41,9 +40,7 @@ import {
   Info,
   CheckCircle2,
   XCircle,
-  Filter,
   X,
-  Server,
   Calendar,
   Tag,
 } from "lucide-react";
@@ -242,6 +239,7 @@ export default function AgentsPage() {
                 role: "",
                 env: "",
                 tenantId: "",
+                owner: "",
                 enabled: true,
               });
               setIsCreateDialogOpen(true);
@@ -313,6 +311,7 @@ export default function AgentsPage() {
               <TableHead>Name</TableHead>
               <TableHead>Provider</TableHead>
               <TableHead>Role</TableHead>
+              <TableHead>Owner</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Environment</TableHead>
               <TableHead>Last Seen</TableHead>
@@ -322,13 +321,13 @@ export default function AgentsPage() {
           <TableBody>
             {isLoadingAgents ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   Loading agents...
                 </TableCell>
               </TableRow>
             ) : filteredAgents.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   {searchQuery || selectedProvider !== "all" || selectedRole !== "all"
                     ? "No agents match your filters"
                     : "No agents found. Create one to get started."}
@@ -358,6 +357,13 @@ export default function AgentsPage() {
                         <Tag className="h-3 w-3 mr-1" />
                         {agent.role}
                       </Badge>
+                    ) : (
+                      <span className="text-muted-foreground text-sm">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {agent.owner ? (
+                      <span className="text-sm">{agent.owner}</span>
                     ) : (
                       <span className="text-muted-foreground text-sm">—</span>
                     )}
@@ -571,6 +577,14 @@ export default function AgentsPage() {
                 placeholder="Tenant identifier"
               />
             </div>
+            <div>
+              <label className="text-sm font-medium">Owner</label>
+              <Input
+                value={formData.owner}
+                onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+                placeholder="Owner/user identifier"
+              />
+            </div>
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -681,7 +695,7 @@ export default function AgentsPage() {
           <DialogHeader>
             <DialogTitle>Delete Agent</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete "{selectedAgent?.name}"? This action cannot be undone.
+              Are you sure you want to delete &quot;{selectedAgent?.name}&quot;? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
