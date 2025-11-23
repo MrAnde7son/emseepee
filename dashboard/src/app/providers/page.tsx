@@ -30,7 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { RefreshCcw, Info, Clock } from "lucide-react";
+import { RefreshCcw, Info, Clock, Trash2 } from "lucide-react";
 
 interface PolicyCondition {
   providerId?: string | string[];
@@ -44,12 +44,15 @@ export default function ProvidersPage() {
   const { data, isLoading, refetch } = useProviders();
   const { data: policiesData } = usePolicies();
   const [installing, setInstalling] = useState<string | null>(null);
+  const [uninstalling, setUninstalling] = useState<string | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
   const [viewMode, setViewMode] = useState<"details" | "policies">("details");
   const [policyDetails, setPolicyDetails] = useState<Map<string, Policy & { condition?: PolicyCondition }>>(new Map());
   const [loadingPolicyDetails, setLoadingPolicyDetails] = useState(false);
   const [showInstallDialog, setShowInstallDialog] = useState(false);
+  const [showUninstallDialog, setShowUninstallDialog] = useState(false);
   const [providerToInstall, setProviderToInstall] = useState<Provider | null>(null);
+  const [providerToUninstall, setProviderToUninstall] = useState<Provider | null>(null);
   const [openaiConfig, setOpenaiConfig] = useState({
     apiKey: "",
     baseUrl: "https://api.openai.com/v1",
@@ -100,6 +103,26 @@ export default function ProvidersPage() {
         baseUrl: openaiConfig.baseUrl || "https://api.openai.com/v1",
         organizationId: openaiConfig.organizationId || undefined,
       });
+    }
+  };
+
+  const handleUninstallClick = (provider: Provider) => {
+    setProviderToUninstall(provider);
+    setShowUninstallDialog(true);
+  };
+
+  const handleUninstall = async (providerId: string) => {
+    setUninstalling(providerId);
+    try {
+      await Api.uninstallProvider(providerId);
+      await refetch();
+      setShowUninstallDialog(false);
+      setProviderToUninstall(null);
+    } catch (error) {
+      console.error("Failed to uninstall provider:", error);
+      alert(`Failed to uninstall provider: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setUninstalling(null);
     }
   };
 
@@ -297,6 +320,16 @@ export default function ProvidersPage() {
                             }}
                           >
                             Policies
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="text-xs text-destructive hover:text-destructive"
+                            onClick={() => handleUninstallClick(p)}
+                            disabled={uninstalling === p.id}
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            {uninstalling === p.id ? "Uninstalling..." : "Uninstall"}
                           </Button>
                         </>
                       )}
@@ -583,6 +616,40 @@ export default function ProvidersPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Uninstall Provider Confirmation Dialog */}
+      <Dialog open={showUninstallDialog} onOpenChange={setShowUninstallDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Uninstall {providerToUninstall?.name || "Provider"}?
+            </DialogTitle>
+            <DialogDescription>
+              This will remove the provider configuration and unregister the adapter. 
+              This action cannot be undone. You will need to reinstall and reconfigure the provider to use it again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowUninstallDialog(false);
+                setProviderToUninstall(null);
+              }}
+              disabled={uninstalling === providerToUninstall?.id}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => providerToUninstall && handleUninstall(providerToUninstall.id)}
+              disabled={uninstalling === providerToUninstall?.id || !providerToUninstall}
+            >
+              {uninstalling === providerToUninstall?.id ? "Uninstalling..." : "Uninstall"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

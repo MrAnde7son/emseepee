@@ -82,6 +82,22 @@ export async function registerProviderAdapter(
   if (adapter) {
     registry.registerAdapter(adapter);
     logger.info(`[AGENTS] Dynamically registered adapter for provider: ${providerId}`);
+    
+    // Sync agents from the provider during installation
+    // This ensures agents are pulled when the provider is installed, not when listing providers
+    try {
+      const isAvailable = await adapter.isAvailable();
+      if (isAvailable) {
+        logger.info(`[AGENTS] Syncing agents from provider ${providerId} during installation...`);
+        await registry.getAgentsByProvider(providerId);
+        logger.info(`[AGENTS] Successfully synced agents from provider ${providerId}`);
+      } else {
+        logger.warn(`[AGENTS] Provider ${providerId} is not available, skipping agent sync during installation`);
+      }
+    } catch (error) {
+      // Don't fail installation if agent sync fails - agents can be synced later
+      logger.warn(`[AGENTS] Failed to sync agents from provider ${providerId} during installation (non-blocking):`, error);
+    }
   } else {
     throw new Error(`Failed to create adapter for provider: ${providerId}`);
   }

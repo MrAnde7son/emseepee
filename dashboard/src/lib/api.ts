@@ -57,6 +57,7 @@ async function deleteJSON(path: string): Promise<void> {
 export const Api = {
   getProviders: () => fetchJSON<Provider[]>("/api/providers"),
   installProvider: (providerId: string, config?: Record<string, unknown>) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/install`, config || {}, true),
+  uninstallProvider: (providerId: string) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/uninstall`, {}, true),
   getTools: (page?: number, limit?: number, search?: string) => {
     const params = new URLSearchParams();
     if (page) params.set("page", page.toString());

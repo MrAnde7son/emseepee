@@ -90,7 +90,8 @@ export class OpenAIAdapter extends BaseProviderAdapter {
           params.append("after", after);
         }
         
-        const response = await fetch(`${this.baseUrl}/assistants?${params.toString()}`, {
+        const url = `${this.baseUrl}/assistants?${params.toString()}`;
+        const response = await fetch(url, {
           method: "GET",
           headers: this.getHeaders(),
         });
@@ -121,7 +122,17 @@ export class OpenAIAdapter extends BaseProviderAdapter {
       logger.info(`[OPENAI-ADAPTER] Fetched ${allAssistants.length} assistants from OpenAI`);
       return allAssistants.map((assistant: any) => this.assistantToAgent(assistant));
     } catch (error) {
-      logger.error("[OPENAI-ADAPTER] Failed to list agents:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Provide more helpful error messages for common network issues
+      if (errorMessage.includes("fetch failed") || errorMessage.includes("ECONNREFUSED") || errorMessage.includes("ENOTFOUND")) {
+        logger.error(`[OPENAI-ADAPTER] Network error when connecting to ${this.baseUrl}. Check your internet connection and baseUrl configuration. Error: ${errorMessage}`);
+      } else if (errorMessage.includes("certificate") || errorMessage.includes("SSL") || errorMessage.includes("TLS")) {
+        logger.error(`[OPENAI-ADAPTER] SSL/TLS error when connecting to ${this.baseUrl}. Check your certificate configuration. Error: ${errorMessage}`);
+      } else {
+        logger.error(`[OPENAI-ADAPTER] Failed to list agents: ${errorMessage}`);
+      }
+      
       // Return empty array instead of throwing to allow other providers to work
       return [];
     }
@@ -367,7 +378,8 @@ export class OpenAIAdapter extends BaseProviderAdapter {
 
     try {
       // Try to list assistants as a health check
-      const response = await fetch(`${this.baseUrl}/assistants?limit=1`, {
+      const url = `${this.baseUrl}/assistants?limit=1`;
+      const response = await fetch(url, {
         method: "GET",
         headers: this.getHeaders(),
       });
@@ -384,18 +396,27 @@ export class OpenAIAdapter extends BaseProviderAdapter {
         return false; // Return false for 401 so we can show proper error message
       }
 
-      // For other errors, consider it available (adapter is configured, just might have temporary issues)
+      // For other HTTP errors, consider it available (adapter is configured, just might have temporary issues)
       logger.info(`[OPENAI-ADAPTER] API check returned status ${response.status}, considering available`);
       return true;
     } catch (error) {
-      // Network errors or other exceptions - log but don't fail
+      // Network errors or other exceptions
       const errorMessage = error instanceof Error ? error.message : String(error);
+      
       if (errorMessage.includes("401") || errorMessage.includes("Unauthorized")) {
         logger.warn(`[OPENAI-ADAPTER] API key appears invalid: ${errorMessage}`);
         return false;
       }
-      logger.info(`[OPENAI-ADAPTER] Provider availability check error (non-critical):`, errorMessage);
-      // Return true for network errors - adapter is configured, just might be temporarily unavailable
+      
+      // For network errors (fetch failed, connection refused, etc.), return false
+      // This prevents listAgents() from being called when we know it will fail
+      if (errorMessage.includes("fetch failed") || errorMessage.includes("ECONNREFUSED") || errorMessage.includes("ENOTFOUND")) {
+        logger.warn(`[OPENAI-ADAPTER] Network error during availability check (${this.baseUrl}): ${errorMessage}. Provider will be skipped.`);
+        return false;
+      }
+      
+      // For other errors, log but consider available (might be temporary)
+      logger.info(`[OPENAI-ADAPTER] Provider availability check error (non-critical): ${errorMessage}`);
       return true;
     }
   }

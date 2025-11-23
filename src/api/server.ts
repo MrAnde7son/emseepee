@@ -165,55 +165,69 @@ async function saveConfigToDb(
  * Status reflects adapter availability
  */
 async function getProviders(): Promise<Provider[]> {
-  // Check which adapters are registered
-  const { getAgentRegistry } = await import("../agents/registry.js");
+  // Check which providers are installed (from database configs, not registry)
   const { AdapterFactory } = await import("../agents/factory.js");
-  const registry = getAgentRegistry();
-  const registeredProviders = registry.getRegisteredProviders();
-
-  // Check provider configs
+  
+  // Get installed providers from database (doesn't trigger adapter initialization)
+  let installedProviders: Set<string> = new Set();
   let providerConfigs: Map<string, { config: Record<string, unknown>; enabled: boolean }> = new Map();
   try {
     const { getAllProviderConfigs } = await import("../db/services/providerService.js");
     const configs = await getAllProviderConfigs();
     configs.forEach((cfg) => {
+      installedProviders.add(cfg.providerId);
       providerConfigs.set(cfg.providerId, { config: cfg.config, enabled: cfg.enabled });
     });
   } catch (error) {
     logger.info("[API] Failed to load provider configs:", error);
   }
+  
+  // Also check registry for adapters that might be registered from env vars
+  // But only if registry is already initialized (don't force initialization)
+  let registeredProviders: string[] = [];
+  try {
+    const { getAgentRegistry } = await import("../agents/registry.js");
+    const registry = getAgentRegistry();
+    // Only get registered providers if registry is already initialized
+    registeredProviders = registry.getRegisteredProviders();
+  } catch (error) {
+  }
+  
+  // Combine installed providers from DB and registered providers from registry
+  const allInstalledProviders = new Set([...installedProviders, ...registeredProviders]);
 
   const providers: Provider[] = [
     {
       id: "cursor",
       name: "Cursor",
       type: "cursor",
-      status: isCursorInstalled() && registeredProviders.includes("cursor") ? "connected" : "pending",
-      lastHeartbeat: isCursorInstalled() && registeredProviders.includes("cursor") ? new Date().toISOString() : undefined,
+      status: isCursorInstalled() && allInstalledProviders.has("cursor") ? "connected" : "pending",
+      lastHeartbeat: isCursorInstalled() && allInstalledProviders.has("cursor") ? new Date().toISOString() : undefined,
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/cursor.svg",
       comingSoon: false,
-    },
-    {
-      id: "n8n",
-      name: "n8n",
-      type: "n8n",
-      status: registeredProviders.includes("n8n") ? "connected" : "pending",
-      icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/n8n.svg",
-      comingSoon: !AdapterFactory.isAdapterAvailable("n8n"),
     },
     {
       id: "openai",
       name: "OpenAI ChatGPT",
       type: "openai",
-      status: registeredProviders.includes("openai") ? "connected" : "pending",
+      status: allInstalledProviders.has("openai") ? "connected" : "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/openai.svg",
       comingSoon: !AdapterFactory.isAdapterAvailable("openai"),
     },
     {
+      id: "n8n",
+      name: "n8n",
+      type: "n8n",
+      status: allInstalledProviders.has("n8n") ? "connected" : "pending",
+      icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/n8n.svg",
+      comingSoon: !AdapterFactory.isAdapterAvailable("n8n"),
+    },
+
+    {
       id: "vertex_ai",
       name: "Google Vertex AI",
       type: "vertex",
-      status: registeredProviders.includes("vertex_ai") ? "connected" : "pending",
+      status: allInstalledProviders.has("vertex_ai") ? "connected" : "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/googlecloud.svg",
       comingSoon: !AdapterFactory.isAdapterAvailable("vertex_ai"),
     },
@@ -221,7 +235,7 @@ async function getProviders(): Promise<Provider[]> {
       id: "aws_bedrock",
       name: "AWS Bedrock",
       type: "bedrock",
-      status: registeredProviders.includes("aws_bedrock") ? "connected" : "pending",
+      status: allInstalledProviders.has("aws_bedrock") ? "connected" : "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/amazonaws.svg",
       comingSoon: !AdapterFactory.isAdapterAvailable("aws_bedrock"),
     },
@@ -229,7 +243,7 @@ async function getProviders(): Promise<Provider[]> {
       id: "microsoft_copilot",
       name: "Microsoft Copilot",
       type: "copilot",
-      status: registeredProviders.includes("microsoft_copilot") ? "connected" : "pending",
+      status: allInstalledProviders.has("microsoft_copilot") ? "connected" : "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/microsoft.svg",
       comingSoon: !AdapterFactory.isAdapterAvailable("microsoft_copilot"),
     },
@@ -237,7 +251,7 @@ async function getProviders(): Promise<Provider[]> {
       id: "langchain",
       name: "LangChain",
       type: "langchain",
-      status: registeredProviders.includes("langchain") ? "connected" : "pending",
+      status: allInstalledProviders.has("langchain") ? "connected" : "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/langchain.svg",
       comingSoon: !AdapterFactory.isAdapterAvailable("langchain"),
     },
@@ -1671,6 +1685,65 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         } else {
           sendJSON(res, 500, { error: errorMessage });
         }
+        return;
+      }
+    }
+    
+    if (path.startsWith("/api/providers/") && path.endsWith("/uninstall") && method === "POST") {
+      try {
+        logger.info(`[API] Uninstall provider request: ${path}, method: ${method}`);
+        const authHeader = req.headers.authorization;
+        const token = extractTokenFromHeader(authHeader);
+        
+        if (!token) {
+          sendJSON(res, 401, { error: "No token provided" });
+          return;
+        }
+
+        const payload = verifyToken(token);
+        if (!payload) {
+          sendJSON(res, 401, { error: "Invalid or expired token" });
+          return;
+        }
+
+        const providerId = path.replace("/api/providers/", "").replace("/uninstall", "");
+        logger.info(`[API] Extracted providerId: ${providerId}`);
+        
+        // Check if provider is installed
+        const { getProviderConfig } = await import("../db/services/providerService.js");
+        const providerConfig = await getProviderConfig(providerId);
+        
+        if (!providerConfig) {
+          sendJSON(res, 404, { error: `Provider ${providerId} is not installed` });
+          return;
+        }
+
+        // Provider-specific uninstallation logic
+        if (providerId === "cursor") {
+          // Cursor doesn't have special uninstall logic
+        }
+
+        // Delete provider configuration from database
+        const { deleteProviderConfig } = await import("../db/services/providerService.js");
+        await deleteProviderConfig(providerId);
+        logger.info(`[API] Deleted provider configuration for: ${providerId}`);
+
+        // Unregister adapter from registry
+        try {
+          const { unregisterProviderAdapter } = await import("../agents/index.js");
+          unregisterProviderAdapter(providerId);
+          logger.info(`[API] Unregistered adapter for provider: ${providerId}`);
+        } catch (adapterError) {
+          // Log but don't fail - config is deleted, adapter unregistration is best effort
+          logger.warn(`[API] Failed to unregister adapter for ${providerId}, but config deleted:`, adapterError);
+        }
+
+        sendJSON(res, 200, { success: true });
+        return;
+      } catch (error) {
+        logger.error("[API] Uninstall provider error:", error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to uninstall provider";
+        sendJSON(res, 500, { error: errorMessage });
         return;
       }
     }
