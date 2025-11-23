@@ -1052,12 +1052,14 @@ async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<P
     }
   } else {
     // Full PolicyRule update
+    const policyRuleUpdates = updates as Partial<PolicyRule>;
     updatedRule = {
       ...existingRule,
       ...updates,
-      name: (updates as Partial<PolicyRule>).name ?? existingRule.name,
-      condition: (updates as Partial<PolicyRule>).condition ?? existingRule.condition,
-      action: (updates as Partial<PolicyRule>).action ?? existingRule.action,
+      name: policyRuleUpdates.name ?? existingRule.name,
+      condition: policyRuleUpdates.condition ?? existingRule.condition,
+      action: policyRuleUpdates.action ? { ...existingRule.action, ...policyRuleUpdates.action } : existingRule.action,
+      stopOnMatch: policyRuleUpdates.stopOnMatch !== undefined ? policyRuleUpdates.stopOnMatch : existingRule.stopOnMatch,
     };
   }
   
@@ -1620,6 +1622,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           enabled: !(rule.archived ?? false),
           archived: rule.archived ?? false,
           condition: rule.condition, // Include full condition
+          stopOnMatch: rule.stopOnMatch,
+          actionMessage: rule.action.message,
+          webhookUrl: rule.action.webhookUrl,
+          webhookMethod: rule.action.webhookMethod,
         };
         sendJSON(res, 200, policy);
         return;

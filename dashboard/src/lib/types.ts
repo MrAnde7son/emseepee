@@ -20,6 +20,16 @@ export interface Tool {
   installed: boolean;
 }
 
+export interface PolicyCondition {
+  toolName?: string | string[];
+  category?: string | string[];
+  agentRole?: string | string[];
+  env?: string | string[];
+  sensitivity?: "low" | "medium" | "high" | Array<"low" | "medium" | "high">;
+  args?: Record<string, unknown>;
+  providerId?: string | string[];
+}
+
 export interface Policy {
   id: string;
   name: string;
@@ -31,6 +41,13 @@ export interface Policy {
   archived?: boolean;
   customCode?: string;
   scopeTarget?: string;
+  // Full condition data (when fetched from API)
+  condition?: PolicyCondition;
+  // Additional PolicyRule fields
+  stopOnMatch?: boolean;
+  actionMessage?: string;
+  webhookUrl?: string;
+  webhookMethod?: "GET" | "POST" | "PUT";
 }
 
 export interface GatewayEvent {

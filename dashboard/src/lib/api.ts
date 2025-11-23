@@ -120,9 +120,9 @@ export const Api = {
     const search = params.toString() ? `?${params.toString()}` : "";
     return fetchJSON<{ data: Policy[]; total: number; page: number; limit: number; totalPages: number }>(`/api/policies${search}`);
   },
-  getPolicy: (id: string) => fetchJSON<Policy & { condition?: Record<string, unknown> }>(`/api/policies/${id}`),
-  createPolicy: (policy: Partial<Policy> & { scopeTarget?: string }) => postJSON<Policy>("/api/policies", policy),
-  updatePolicy: (id: string, policy: Partial<Policy> & { scopeTarget?: string }) => putJSON<Policy>(`/api/policies/${id}`, policy),
+  getPolicy: (id: string) => fetchJSON<Policy & { condition?: Record<string, unknown>; stopOnMatch?: boolean; actionMessage?: string; webhookUrl?: string; webhookMethod?: "GET" | "POST" | "PUT" }>(`/api/policies/${id}`),
+  createPolicy: (policy: Partial<Policy> & { scopeTarget?: string } | Record<string, unknown>) => postJSON<Policy>("/api/policies", policy),
+  updatePolicy: (id: string, policy: Partial<Policy> & { scopeTarget?: string } | Record<string, unknown>) => putJSON<Policy>(`/api/policies/${id}`, policy),
   deletePolicy: (id: string) => deleteJSON(`/api/policies/${id}`),
   archivePolicy: (id: string) => postJSON<{ success: boolean }>(`/api/policies/${id}/archive`, {}),
   restorePolicy: (id: string) => postJSON<{ success: boolean }>(`/api/policies/${id}/restore`, {}),

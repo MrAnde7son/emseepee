@@ -74,6 +74,11 @@ export default function PoliciesPage() {
   const [editingPolicyData, setEditingPolicyData] = useState<Policy | null>(null);
   const [scopeTarget, setScopeTarget] = useState<string>("");
   const [customCode, setCustomCode] = useState<string>("");
+  const [stopOnMatch, setStopOnMatch] = useState<boolean>(false);
+  const [actionMessage, setActionMessage] = useState<string>("");
+  const [webhookUrl, setWebhookUrl] = useState<string>("");
+  const [webhookMethod, setWebhookMethod] = useState<"GET" | "POST" | "PUT">("POST");
+  const [conditionArgs, setConditionArgs] = useState<Record<string, string>>({});
   const [updatingPolicy, setUpdatingPolicy] = useState(false);
   const [creatingPolicy, setCreatingPolicy] = useState(false);
   const [newPolicyData, setNewPolicyData] = useState<Partial<Policy>>({
@@ -86,6 +91,11 @@ export default function PoliciesPage() {
   });
   const [newPolicyScopeTarget, setNewPolicyScopeTarget] = useState<string>("");
   const [newPolicyCustomCode, setNewPolicyCustomCode] = useState<string>("");
+  const [newPolicyStopOnMatch, setNewPolicyStopOnMatch] = useState<boolean>(false);
+  const [newPolicyActionMessage, setNewPolicyActionMessage] = useState<string>("");
+  const [newPolicyWebhookUrl, setNewPolicyWebhookUrl] = useState<string>("");
+  const [newPolicyWebhookMethod, setNewPolicyWebhookMethod] = useState<"GET" | "POST" | "PUT">("POST");
+  const [newPolicyConditionArgs, setNewPolicyConditionArgs] = useState<Record<string, string>>({});
   
   const isUpdatingFromUrl = useRef(false);
   const prevSearchParamsRef = useRef<string>("");
@@ -278,77 +288,164 @@ export default function PoliciesPage() {
   };
 
   const handleEditClick = async (id: string) => {
-    const policy = data?.data?.find((p: Policy) => p.id === id);
-    if (policy) {
-      setEditingPolicyData({ ...policy });
+    try {
+      // Always fetch full policy details to get condition, stopOnMatch, etc.
+      const fullPolicy = await Api.getPolicy(id);
+      setEditingPolicyData({ ...fullPolicy });
       setEditingPolicy(id);
       
-      // Set scopeTarget from policy (backend now includes this)
-      setScopeTarget(policy.scopeTarget || "");
+      // Set scopeTarget from policy
+      setScopeTarget(fullPolicy.scopeTarget || "");
       
       // Extract custom code if effect is custom
-      if (policy.effect === "custom") {
-        setCustomCode(policy.customCode || "");
+      if (fullPolicy.effect === "custom") {
+        setCustomCode(fullPolicy.customCode || "");
       } else {
         setCustomCode("");
       }
       
-      // Fallback: If scopeTarget is not available, fetch full policy details
-      if (!policy.scopeTarget && policy.scope !== "global") {
-        try {
-          const fullPolicy = await Api.getPolicy(id);
-          if (fullPolicy.condition) {
-            // Extract scope target from condition
-            if (fullPolicy.condition.toolName) {
-              const toolName = Array.isArray(fullPolicy.condition.toolName) 
-                ? fullPolicy.condition.toolName[0] 
-                : fullPolicy.condition.toolName;
-              setScopeTarget(toolName);
-            } else if (fullPolicy.condition.agentRole) {
-              const agentRole = Array.isArray(fullPolicy.condition.agentRole)
-                ? fullPolicy.condition.agentRole[0]
-                : fullPolicy.condition.agentRole;
-              setScopeTarget(agentRole);
-            } else if (fullPolicy.condition.providerId) {
-              const providerId = Array.isArray(fullPolicy.condition.providerId)
-                ? fullPolicy.condition.providerId[0]
-                : fullPolicy.condition.providerId;
-              setScopeTarget(providerId);
-            }
-          }
-          // Update custom code from full policy if needed
-          if (fullPolicy.effect === "custom" && fullPolicy.customCode) {
-            setCustomCode(fullPolicy.customCode);
-          }
-        } catch (error) {
-          console.error("Failed to fetch policy details:", error);
+      // Extract stopOnMatch
+      setStopOnMatch(fullPolicy.stopOnMatch ?? false);
+      
+      // Extract action message
+      setActionMessage(fullPolicy.actionMessage || "");
+      
+      // Extract webhook settings
+      setWebhookUrl(fullPolicy.webhookUrl || "");
+      setWebhookMethod(fullPolicy.webhookMethod || "POST");
+      
+      // Extract condition args
+      if (fullPolicy.condition?.args) {
+        const args: Record<string, string> = {};
+        for (const [key, value] of Object.entries(fullPolicy.condition.args)) {
+          args[key] = typeof value === "string" ? value : JSON.stringify(value);
+        }
+        setConditionArgs(args);
+      } else {
+        setConditionArgs({});
+      }
+      
+      // Extract scope target from condition if not already set
+      if (!fullPolicy.scopeTarget && fullPolicy.condition) {
+        if (fullPolicy.condition.toolName) {
+          const toolName = Array.isArray(fullPolicy.condition.toolName) 
+            ? fullPolicy.condition.toolName[0] 
+            : fullPolicy.condition.toolName;
+          setScopeTarget(toolName);
+        } else if (fullPolicy.condition.agentRole) {
+          const agentRole = Array.isArray(fullPolicy.condition.agentRole)
+            ? fullPolicy.condition.agentRole[0]
+            : fullPolicy.condition.agentRole;
+          setScopeTarget(agentRole);
+        } else if (fullPolicy.condition.providerId) {
+          const providerId = Array.isArray(fullPolicy.condition.providerId)
+            ? fullPolicy.condition.providerId[0]
+            : fullPolicy.condition.providerId;
+          setScopeTarget(providerId);
         }
       }
+    } catch (error) {
+      console.error("Failed to fetch policy details:", error);
+      alert(`Failed to load policy: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   };
 
   const handleUpdatePolicy = async () => {
     if (!editingPolicy || !editingPolicyData) return;
     
-    // Build update payload with scope target
-    const updatePayload: Partial<Policy> & { scopeTarget?: string } = {
+    // Start with existing condition or build new one based on scope
+    const existingCondition = editingPolicyData.condition || {};
+    const condition: Record<string, unknown> = { ...existingCondition };
+    
+    // Update scope-specific fields
+    if (editingPolicyData.scope === "tool" && scopeTarget) {
+      condition.toolName = scopeTarget;
+      // Remove other scope fields when switching to tool scope
+      delete condition.agentRole;
+      delete condition.providerId;
+      delete condition.sensitivity;
+    } else if (editingPolicyData.scope === "agent" && scopeTarget) {
+      condition.agentRole = scopeTarget;
+      delete condition.toolName;
+      delete condition.providerId;
+      delete condition.sensitivity;
+    } else if (editingPolicyData.scope === "provider" && scopeTarget) {
+      condition.providerId = scopeTarget;
+      delete condition.toolName;
+      delete condition.agentRole;
+      delete condition.sensitivity;
+    } else if (editingPolicyData.scope === "sensitivity" && scopeTarget) {
+      condition.sensitivity = scopeTarget;
+      delete condition.toolName;
+      delete condition.agentRole;
+      delete condition.providerId;
+    } else if (editingPolicyData.scope === "global") {
+      // Clear all scope-specific fields for global scope
+      delete condition.toolName;
+      delete condition.agentRole;
+      delete condition.providerId;
+      delete condition.sensitivity;
+      delete condition.category;
+    }
+    
+    // Update condition args
+    if (Object.keys(conditionArgs).length > 0) {
+      const parsedArgs: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(conditionArgs)) {
+        if (key.trim() && value.trim()) {
+          // Try to parse as JSON, otherwise use as string
+          try {
+            parsedArgs[key] = JSON.parse(value);
+          } catch {
+            parsedArgs[key] = value;
+          }
+        }
+      }
+      if (Object.keys(parsedArgs).length > 0) {
+        condition.args = parsedArgs;
+      } else {
+        delete condition.args;
+      }
+    } else {
+      delete condition.args;
+    }
+    
+    // Build action
+    const action: Record<string, unknown> = {
+      operation: editingPolicyData.effect === "deny" ? "block" : editingPolicyData.effect === "allow" ? "allow" : editingPolicyData.effect,
+    };
+    
+    if (actionMessage.trim()) {
+      action.message = actionMessage;
+    }
+    
+    if (editingPolicyData.effect === "custom" && customCode.trim()) {
+      action.customCode = customCode;
+    }
+    
+    if (editingPolicyData.effect === "webhook") {
+      if (webhookUrl.trim()) {
+        action.webhookUrl = webhookUrl;
+      }
+      action.webhookMethod = webhookMethod;
+    }
+    
+    // Build full PolicyRule update payload
+    const updatePayload: {
+      name?: string;
+      description?: string;
+      priority?: number;
+      condition?: Record<string, unknown>;
+      action?: Record<string, unknown>;
+      stopOnMatch?: boolean;
+    } = {
       name: editingPolicyData.name,
       description: editingPolicyData.description,
       priority: editingPolicyData.priority,
-      effect: editingPolicyData.effect,
-      scope: editingPolicyData.scope,
-      enabled: editingPolicyData.enabled,
+      condition,
+      action,
+      stopOnMatch,
     };
-    
-    // Add scope target if scope is not global
-    if (editingPolicyData.scope !== "global" && scopeTarget) {
-      updatePayload.scopeTarget = scopeTarget;
-    }
-    
-    // Add custom code if effect is custom
-    if (editingPolicyData.effect === "custom") {
-      updatePayload.customCode = customCode;
-    }
     
     setUpdatingPolicy(true);
     try {
@@ -358,6 +455,11 @@ export default function PoliciesPage() {
       setEditingPolicyData(null);
       setScopeTarget("");
       setCustomCode("");
+      setStopOnMatch(false);
+      setActionMessage("");
+      setWebhookUrl("");
+      setWebhookMethod("POST");
+      setConditionArgs({});
     } catch (error) {
       console.error("Failed to update policy:", error);
       alert(`Failed to update policy: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -383,29 +485,78 @@ export default function PoliciesPage() {
       return;
     }
     
-    // Build create payload with scope target
-    const createPayload: Partial<Policy> & { scopeTarget?: string } = {
-      name: newPolicyData.name,
-      description: newPolicyData.description,
-      priority: newPolicyData.priority ?? 0,
-      effect: newPolicyData.effect ?? "allow",
-      scope: newPolicyData.scope ?? "global",
-      enabled: newPolicyData.enabled ?? true,
-    };
+    // Build condition based on scope and scopeTarget
+    const condition: Record<string, unknown> = {};
     
-    // Add scope target if scope is not global
-    if (newPolicyData.scope !== "global" && newPolicyScopeTarget) {
-      createPayload.scopeTarget = newPolicyScopeTarget;
+    if (newPolicyData.scope === "tool" && newPolicyScopeTarget) {
+      condition.toolName = newPolicyScopeTarget;
+    } else if (newPolicyData.scope === "agent" && newPolicyScopeTarget) {
+      condition.agentRole = newPolicyScopeTarget;
+    } else if (newPolicyData.scope === "provider" && newPolicyScopeTarget) {
+      condition.providerId = newPolicyScopeTarget;
+    } else if (newPolicyData.scope === "sensitivity" && newPolicyScopeTarget) {
+      condition.sensitivity = newPolicyScopeTarget;
     }
     
-    // Add custom code if effect is custom
-    if (newPolicyData.effect === "custom") {
-      if (!newPolicyCustomCode) {
+    // Add condition args if any
+    if (Object.keys(newPolicyConditionArgs).length > 0) {
+      const parsedArgs: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(newPolicyConditionArgs)) {
+        if (value.trim()) {
+          // Try to parse as JSON, otherwise use as string
+          try {
+            parsedArgs[key] = JSON.parse(value);
+          } catch {
+            parsedArgs[key] = value;
+          }
+        }
+      }
+      if (Object.keys(parsedArgs).length > 0) {
+        condition.args = parsedArgs;
+      }
+    }
+    
+    // Build action
+    const effect = newPolicyData.effect ?? "allow";
+    const action: Record<string, unknown> = {
+      operation: effect === "deny" ? "block" : effect === "allow" ? "allow" : effect,
+    };
+    
+    if (newPolicyActionMessage.trim()) {
+      action.message = newPolicyActionMessage;
+    }
+    
+    if (effect === "custom") {
+      if (!newPolicyCustomCode.trim()) {
         alert("Custom code is required when effect is 'custom'");
         return;
       }
-      createPayload.customCode = newPolicyCustomCode;
+      action.customCode = newPolicyCustomCode;
     }
+    
+    if (effect === "webhook") {
+      if (newPolicyWebhookUrl.trim()) {
+        action.webhookUrl = newPolicyWebhookUrl;
+      }
+      action.webhookMethod = newPolicyWebhookMethod;
+    }
+    
+    // Build full PolicyRule create payload
+    const createPayload: {
+      name: string;
+      description?: string;
+      priority: number;
+      condition: Record<string, unknown>;
+      action: Record<string, unknown>;
+      stopOnMatch?: boolean;
+    } = {
+      name: newPolicyData.name,
+      description: newPolicyData.description,
+      priority: newPolicyData.priority ?? 0,
+      condition,
+      action,
+      stopOnMatch: newPolicyStopOnMatch,
+    };
     
     setCreatingPolicy(true);
     try {
@@ -423,6 +574,11 @@ export default function PoliciesPage() {
       });
       setNewPolicyScopeTarget("");
       setNewPolicyCustomCode("");
+      setNewPolicyStopOnMatch(false);
+      setNewPolicyActionMessage("");
+      setNewPolicyWebhookUrl("");
+      setNewPolicyWebhookMethod("POST");
+      setNewPolicyConditionArgs({});
     } catch (error) {
       console.error("Failed to create policy:", error);
       alert(`Failed to create policy: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -675,13 +831,18 @@ export default function PoliciesPage() {
           });
           setNewPolicyScopeTarget("");
           setNewPolicyCustomCode("");
+          setNewPolicyStopOnMatch(false);
+          setNewPolicyActionMessage("");
+          setNewPolicyWebhookUrl("");
+          setNewPolicyWebhookMethod("POST");
+          setNewPolicyConditionArgs({});
         }
       }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Create Policy</DialogTitle>
             <DialogDescription>
-              Create a new policy rule. Scope determines what the policy applies to: Tool (specific tools), Agent (specific agent roles), Provider (specific providers like Cursor, Gemini), MCP Server (specific MCP servers like GitHub), or Global (all operations). Note: Advanced condition editing requires direct config.json editing.
+              Create a new policy rule. Scope determines what the policy applies to: Tool (specific tools), Agent (specific agent roles), Provider (specific providers like Cursor, Gemini), MCP Server (specific MCP servers like GitHub), or Global (all operations).
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -783,6 +944,103 @@ export default function PoliciesPage() {
                 </p>
               </div>
             )}
+            {newPolicyData.effect === "webhook" && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="create-webhook-url" className="text-sm font-medium">
+                    Webhook URL
+                  </label>
+                  <Input
+                    id="create-webhook-url"
+                    value={newPolicyWebhookUrl}
+                    onChange={(e) => setNewPolicyWebhookUrl(e.target.value)}
+                    placeholder="https://example.com/webhook"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="create-webhook-method" className="text-sm font-medium">
+                    Webhook Method
+                  </label>
+                  <Select value={newPolicyWebhookMethod} onValueChange={(value) => setNewPolicyWebhookMethod(value as "GET" | "POST" | "PUT")}>
+                    <SelectTrigger id="create-webhook-method">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GET">GET</SelectItem>
+                      <SelectItem value="POST">POST</SelectItem>
+                      <SelectItem value="PUT">PUT</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <label htmlFor="create-action-message" className="text-sm font-medium">
+                Action Message
+              </label>
+              <Input
+                id="create-action-message"
+                value={newPolicyActionMessage}
+                onChange={(e) => setNewPolicyActionMessage(e.target.value)}
+                placeholder="Optional message to log or display when policy matches"
+              />
+              <p className="text-xs text-muted-foreground">
+                This message will be logged or displayed when the policy is triggered
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Condition Arguments</label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Define conditions on tool arguments (e.g., path: "secret" to match paths containing "secret")
+              </p>
+              <div className="space-y-2">
+                {Object.entries(newPolicyConditionArgs).map(([key, value], idx) => (
+                  <div key={idx} className="flex gap-2">
+                    <Input
+                      placeholder="Argument name (e.g., path)"
+                      value={key}
+                      onChange={(e) => {
+                        const newArgs = { ...newPolicyConditionArgs };
+                        delete newArgs[key];
+                        newArgs[e.target.value] = value;
+                        setNewPolicyConditionArgs(newArgs);
+                      }}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="Value (string or JSON)"
+                      value={value}
+                      onChange={(e) => {
+                        setNewPolicyConditionArgs({ ...newPolicyConditionArgs, [key]: e.target.value });
+                      }}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const newArgs = { ...newPolicyConditionArgs };
+                        delete newArgs[key];
+                        setNewPolicyConditionArgs(newArgs);
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setNewPolicyConditionArgs({ ...newPolicyConditionArgs, "": "" });
+                  }}
+                >
+                  Add Argument Condition
+                </Button>
+              </div>
+            </div>
             {newPolicyData.scope !== "global" && (
               <div className="space-y-2">
                 <label htmlFor="create-scope-target" className="text-sm font-medium">
@@ -880,6 +1138,19 @@ export default function PoliciesPage() {
               </div>
             )}
             <div className="space-y-2">
+              <label className="text-sm font-medium">Policy Behavior</label>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="create-stop-on-match"
+                  checked={newPolicyStopOnMatch}
+                  onCheckedChange={(checked) => setNewPolicyStopOnMatch(checked === true)}
+                />
+                <label htmlFor="create-stop-on-match" className="text-sm cursor-pointer">
+                  Stop on Match (stop evaluating other policies after this one matches)
+                </label>
+              </div>
+            </div>
+            <div className="space-y-2">
               <label className="text-sm font-medium">Status</label>
               <div className="flex items-center space-x-2">
                 <Checkbox
@@ -908,6 +1179,11 @@ export default function PoliciesPage() {
                 });
                 setNewPolicyScopeTarget("");
                 setNewPolicyCustomCode("");
+                setNewPolicyStopOnMatch(false);
+                setNewPolicyActionMessage("");
+                setNewPolicyWebhookUrl("");
+                setNewPolicyWebhookMethod("POST");
+                setNewPolicyConditionArgs({});
               }}
               disabled={creatingPolicy}
             >
@@ -930,13 +1206,18 @@ export default function PoliciesPage() {
             setEditingPolicyData(null);
             setScopeTarget("");
             setCustomCode("");
+            setStopOnMatch(false);
+            setActionMessage("");
+            setWebhookUrl("");
+            setWebhookMethod("POST");
+            setConditionArgs({});
           }
         }}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Edit Policy</DialogTitle>
               <DialogDescription>
-                Update the policy settings. Scope determines what the policy applies to: Tool (specific tools), Agent (specific agent roles), Provider (specific providers like Cursor, Gemini), MCP Server (specific MCP servers like GitHub), or Global (all operations). Note: Advanced condition editing requires direct config.json editing.
+                Update the policy settings. Scope determines what the policy applies to: Tool (specific tools), Agent (specific agent roles), Provider (specific providers like Cursor, Gemini), MCP Server (specific MCP servers like GitHub), or Global (all operations).
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -1039,6 +1320,103 @@ export default function PoliciesPage() {
                   </p>
                 </div>
               )}
+              {editingPolicyData.effect === "webhook" && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label htmlFor="edit-webhook-url" className="text-sm font-medium">
+                      Webhook URL
+                    </label>
+                    <Input
+                      id="edit-webhook-url"
+                      value={webhookUrl}
+                      onChange={(e) => setWebhookUrl(e.target.value)}
+                      placeholder="https://example.com/webhook"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="edit-webhook-method" className="text-sm font-medium">
+                      Webhook Method
+                    </label>
+                    <Select value={webhookMethod} onValueChange={(value) => setWebhookMethod(value as "GET" | "POST" | "PUT")}>
+                      <SelectTrigger id="edit-webhook-method">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="GET">GET</SelectItem>
+                        <SelectItem value="POST">POST</SelectItem>
+                        <SelectItem value="PUT">PUT</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+              <div className="space-y-2">
+                <label htmlFor="edit-action-message" className="text-sm font-medium">
+                  Action Message
+                </label>
+                <Input
+                  id="edit-action-message"
+                  value={actionMessage}
+                  onChange={(e) => setActionMessage(e.target.value)}
+                  placeholder="Optional message to log or display when policy matches"
+                />
+                <p className="text-xs text-muted-foreground">
+                  This message will be logged or displayed when the policy is triggered
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Condition Arguments</label>
+                <p className="text-xs text-muted-foreground mb-2">
+                  Define conditions on tool arguments (e.g., path: "secret" to match paths containing "secret")
+                </p>
+                <div className="space-y-2">
+                  {Object.entries(conditionArgs).map(([key, value], idx) => (
+                    <div key={idx} className="flex gap-2">
+                      <Input
+                        placeholder="Argument name (e.g., path)"
+                        value={key}
+                        onChange={(e) => {
+                          const newArgs = { ...conditionArgs };
+                          delete newArgs[key];
+                          newArgs[e.target.value] = value;
+                          setConditionArgs(newArgs);
+                        }}
+                        className="flex-1"
+                      />
+                      <Input
+                        placeholder="Value (string or JSON)"
+                        value={value}
+                        onChange={(e) => {
+                          setConditionArgs({ ...conditionArgs, [key]: e.target.value });
+                        }}
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const newArgs = { ...conditionArgs };
+                          delete newArgs[key];
+                          setConditionArgs(newArgs);
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setConditionArgs({ ...conditionArgs, "": "" });
+                    }}
+                  >
+                    Add Argument Condition
+                  </Button>
+                </div>
+              </div>
               {editingPolicyData.scope !== "global" && (
                 <div className="space-y-2">
                   <label htmlFor="edit-scope-target" className="text-sm font-medium">
@@ -1134,6 +1512,19 @@ export default function PoliciesPage() {
                   )}
                 </div>
               )}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Policy Behavior</label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="edit-stop-on-match"
+                    checked={stopOnMatch}
+                    onCheckedChange={(checked) => setStopOnMatch(checked === true)}
+                  />
+                  <label htmlFor="edit-stop-on-match" className="text-sm cursor-pointer">
+                    Stop on Match (stop evaluating other policies after this one matches)
+                  </label>
+                </div>
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Status</label>
                 <div className="flex items-center space-x-2">
