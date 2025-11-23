@@ -1,5 +1,6 @@
 import type { Agent, ProviderAgentAdapter, ProviderType } from "../config.js";
 import { logger } from "../logger.js";
+import { getAgentFromDb, saveAgentToDb } from "../db/services/agentService.js";
 
 /**
  * Agent Registry - unified management of agents across all providers
@@ -40,6 +41,38 @@ export class AgentRegistry {
   }
 
   /**
+   * Merge database data with adapter data
+   * Database data takes precedence for fields like owner, tenantId, etc.
+   */
+  private async mergeWithDatabaseData(agent: Agent): Promise<Agent> {
+    try {
+      const dbAgent = await getAgentFromDb(agent.id);
+      if (dbAgent) {
+        // Merge database fields (owner, tenantId, etc.) with adapter data
+        return {
+          ...agent,
+          owner: dbAgent.owner || agent.owner,
+          tenantId: dbAgent.tenantId || agent.tenantId,
+          role: dbAgent.role || agent.role,
+          env: dbAgent.env || agent.env,
+          enabled: dbAgent.enabled !== undefined ? dbAgent.enabled : agent.enabled,
+          lastSeenAt: dbAgent.lastSeenAt || agent.lastSeenAt,
+        };
+      }
+    } catch (error) {
+      // Silently handle "table doesn't exist" errors - this is expected if the database
+      // hasn't been fully initialized or migrated yet
+      if (error instanceof Error && error.message.includes("no such table")) {
+        // Table doesn't exist yet - return agent as-is without database merge
+        return agent;
+      }
+      // Log other errors as warnings
+      logger.warn(`[AGENT-REGISTRY] Failed to merge database data for agent ${agent.id}:`, error);
+    }
+    return agent;
+  }
+
+  /**
    * Get all agents across all providers
    */
   async listAgents(): Promise<Agent[]> {
@@ -54,7 +87,11 @@ export class AgentRegistry {
         }
         
         const providerAgents = await adapter.listAgents();
-        agents.push(...providerAgents);
+        // Merge each agent with database data
+        for (const agent of providerAgents) {
+          const mergedAgent = await this.mergeWithDatabaseData(agent);
+          agents.push(mergedAgent);
+        }
       } catch (error) {
         logger.error(`[AGENT-REGISTRY] Failed to list agents from provider ${adapter.getProviderId()}`, error);
       }
@@ -71,7 +108,8 @@ export class AgentRegistry {
     const cached = this.agentCache.get(agentId);
     const expiry = this.cacheExpiry.get(agentId);
     if (cached && expiry && Date.now() < expiry) {
-      return cached;
+      // Still merge with database data in case it was updated
+      return await this.mergeWithDatabaseData(cached);
     }
 
     // Find agent across all providers
@@ -86,10 +124,12 @@ export class AgentRegistry {
         const agent = agents.find(a => a.id === agentId);
         
         if (agent) {
-          // Cache the agent
-          this.agentCache.set(agentId, agent);
+          // Merge with database data
+          const mergedAgent = await this.mergeWithDatabaseData(agent);
+          // Cache the merged agent
+          this.agentCache.set(agentId, mergedAgent);
           this.cacheExpiry.set(agentId, Date.now() + this.CACHE_TTL_MS);
-          return agent;
+          return mergedAgent;
         }
       } catch (error) {
         logger.error(`[AGENT-REGISTRY] Failed to get agent ${agentId} from provider ${adapter.getProviderId()}`, error);
@@ -115,7 +155,12 @@ export class AgentRegistry {
         return [];
       }
       
-      return await adapter.listAgents();
+      const agents = await adapter.listAgents();
+      // Merge each agent with database data
+      const mergedAgents = await Promise.all(
+        agents.map(agent => this.mergeWithDatabaseData(agent))
+      );
+      return mergedAgents;
     } catch (error) {
       logger.error(`[AGENT-REGISTRY] Failed to get agents from provider ${providerId}`, error);
       return [];
@@ -157,12 +202,32 @@ export class AgentRegistry {
 
     const agent = await adapter.createAgent(agentData);
     
-    // Cache the new agent
-    this.agentCache.set(agent.id, agent);
-    this.cacheExpiry.set(agent.id, Date.now() + this.CACHE_TTL_MS);
+    // Merge agentData fields (like owner) that might not be in adapter response
+    const mergedAgent: Agent = {
+      ...agent,
+      owner: agentData.owner || agent.owner,
+      tenantId: agentData.tenantId || agent.tenantId,
+    };
     
-    logger.info(`[AGENT-REGISTRY] Created agent ${agent.id} in provider ${providerId}`);
-    return agent;
+    // Save to database (including owner field)
+    try {
+      await saveAgentToDb(mergedAgent);
+    } catch (error) {
+      // Silently handle "table doesn't exist" errors
+      if (error instanceof Error && error.message.includes("no such table")) {
+        // Table doesn't exist yet - skip database save silently
+      } else {
+        logger.warn(`[AGENT-REGISTRY] Failed to save agent ${mergedAgent.id} to database:`, error);
+      }
+      // Continue even if database save fails
+    }
+    
+    // Cache the merged agent
+    this.agentCache.set(mergedAgent.id, mergedAgent);
+    this.cacheExpiry.set(mergedAgent.id, Date.now() + this.CACHE_TTL_MS);
+    
+    logger.info(`[AGENT-REGISTRY] Created agent ${mergedAgent.id} in provider ${providerId}`);
+    return mergedAgent;
   }
 
   /**
@@ -185,12 +250,32 @@ export class AgentRegistry {
 
     const updated = await adapter.updateAgent(agent.providerNativeId, updates);
     
+    // Merge updates with existing agent data (especially for owner field)
+    const mergedAgent: Agent = {
+      ...updated,
+      owner: updates.owner !== undefined ? updates.owner : agent.owner,
+      tenantId: updates.tenantId !== undefined ? updates.tenantId : agent.tenantId,
+    };
+    
+    // Save to database (including owner field)
+    try {
+      await saveAgentToDb(mergedAgent);
+    } catch (error) {
+      // Silently handle "table doesn't exist" errors
+      if (error instanceof Error && error.message.includes("no such table")) {
+        // Table doesn't exist yet - skip database save silently
+      } else {
+        logger.warn(`[AGENT-REGISTRY] Failed to save updated agent ${agentId} to database:`, error);
+      }
+      // Continue even if database save fails
+    }
+    
     // Update cache
-    this.agentCache.set(agentId, updated);
+    this.agentCache.set(agentId, mergedAgent);
     this.cacheExpiry.set(agentId, Date.now() + this.CACHE_TTL_MS);
     
     logger.info(`[AGENT-REGISTRY] Updated agent ${agentId}`);
-    return updated;
+    return mergedAgent;
   }
 
   /**
