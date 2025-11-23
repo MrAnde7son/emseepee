@@ -269,7 +269,6 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
       allowedRoles: ["coder_bot", "admin"],
       sensitivity: "medium",
       category: "file",
-      enabled: true,
     },
     file_search_gateway: {
       name: "file_search_gateway",
@@ -277,7 +276,6 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
       allowedRoles: ["coder_bot", "admin"],
       sensitivity: "medium",
       category: "file",
-      enabled: true,
     },
     file_write_gateway: {
       name: "file_write_gateway",
@@ -285,7 +283,6 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
       allowedRoles: ["coder_bot", "admin"],
       sensitivity: "high",
       category: "file",
-      enabled: true,
     },
   },
   web: {
@@ -295,7 +292,6 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
       allowedRoles: ["coder_bot", "research_bot", "admin"],
       sensitivity: "medium",
       category: "web",
-      enabled: true,
     },
   },
   terminal: {
@@ -305,7 +301,6 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
       allowedRoles: ["coder_bot", "admin"],
       sensitivity: "high",
       category: "terminal",
-      enabled: true,
     },
   },
   third_party: {}, // Third-party tools are loaded from config.json
