@@ -92,8 +92,10 @@ interface McpServerDetails {
   id: string;
   name: string;
   description?: string;
-  command: string;
-  args: string[];
+  command?: string;
+  args?: string[];
+  serverUrl?: string;
+  headers?: Record<string, string>;
   env?: Record<string, string>;
   cwd?: string;
   enabled?: boolean;
@@ -857,20 +859,45 @@ export default function ToolsPage() {
                     </div>
 
                     {selectedItem?.type === "mcp" && mcpDetails && (
-                      <div>
-                        <h3 className="font-semibold text-sm mb-2">Command</h3>
-                        <div className="bg-muted rounded-lg p-3 font-mono text-xs">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-muted-foreground">$</span>
-                            <span>{mcpDetails.command}</span>
-                          </div>
-                          {mcpDetails.args.length > 0 && (
-                            <div className="ml-4 text-muted-foreground">
-                              {mcpDetails.args.join(" ")}
+                      <>
+                        {mcpDetails.serverUrl ? (
+                          <div>
+                            <h3 className="font-semibold text-sm mb-2">Remote Endpoint</h3>
+                            <div className="bg-muted rounded-lg p-3 font-mono text-xs space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground">URL:</span>
+                                <span>{mcpDetails.serverUrl}</span>
+                              </div>
+                              {mcpDetails.headers && Object.keys(mcpDetails.headers).length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-border">
+                                  <div className="text-muted-foreground mb-1">Headers:</div>
+                                  {Object.entries(mcpDetails.headers).map(([key, value]) => (
+                                    <div key={key} className="ml-2 text-xs">
+                                      <span className="text-muted-foreground">{key}:</span>{" "}
+                                      <span>{value}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      </div>
+                          </div>
+                        ) : mcpDetails.command ? (
+                          <div>
+                            <h3 className="font-semibold text-sm mb-2">Command</h3>
+                            <div className="bg-muted rounded-lg p-3 font-mono text-xs">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-muted-foreground">$</span>
+                                <span>{mcpDetails.command}</span>
+                              </div>
+                              {mcpDetails.args && mcpDetails.args.length > 0 && (
+                                <div className="ml-4 text-muted-foreground">
+                                  {mcpDetails.args.join(" ")}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
                     )}
                   </div>
                 </TabsContent>
@@ -1017,37 +1044,81 @@ export default function ToolsPage() {
                     <div>
                       <h3 className="font-semibold text-sm mb-2">Execution Configuration</h3>
                       <div className="space-y-3 text-sm">
-                        <div className="flex items-start gap-2">
-                          <span className="font-medium min-w-[100px] pt-2">Command:</span>
-                          {isEditingConfig ? (
-                            <Input
-                              value={editedConfig.command || ""}
-                              onChange={(e) => setEditedConfig({ ...editedConfig, command: e.target.value })}
-                              className="flex-1"
-                              placeholder="e.g., npx, node"
-                            />
-                          ) : (
-                            <code className="bg-muted px-2 py-1 rounded text-xs">{mcpDetails.command}</code>
-                          )}
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="font-medium min-w-[100px] pt-2">Arguments:</span>
-                          {isEditingConfig ? (
-                            <Input
-                              value={editedConfig.args?.join(" ") || ""}
-                              onChange={(e) => setEditedConfig({ 
-                                ...editedConfig, 
-                                args: e.target.value.split(" ").filter(Boolean) 
-                              })}
-                              className="flex-1"
-                              placeholder="Space-separated arguments"
-                            />
-                          ) : (
-                            <code className="bg-muted px-2 py-1 rounded text-xs">
-                              {mcpDetails.args.length > 0 ? mcpDetails.args.join(" ") : "None"}
-                            </code>
-                          )}
-                        </div>
+                        {mcpDetails.serverUrl ? (
+                          <>
+                            <div className="flex items-start gap-2">
+                              <span className="font-medium min-w-[100px] pt-2">Server URL:</span>
+                              {isEditingConfig ? (
+                                <Input
+                                  value={editedConfig.serverUrl || ""}
+                                  onChange={(e) => setEditedConfig({ ...editedConfig, serverUrl: e.target.value })}
+                                  className="flex-1"
+                                  placeholder="https://api.example.com/mcp/"
+                                />
+                              ) : (
+                                <code className="bg-muted px-2 py-1 rounded text-xs">{mcpDetails.serverUrl}</code>
+                              )}
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="font-medium min-w-[100px] pt-2">Headers:</span>
+                              {isEditingConfig ? (
+                                <textarea
+                                  value={editedConfig.headers ? JSON.stringify(editedConfig.headers, null, 2) : ""}
+                                  onChange={(e) => {
+                                    try {
+                                      const headers = e.target.value ? JSON.parse(e.target.value) : {};
+                                      setEditedConfig({ ...editedConfig, headers });
+                                    } catch {
+                                      // Invalid JSON, ignore
+                                    }
+                                  }}
+                                  className="flex-1 font-mono text-xs min-h-[80px]"
+                                  placeholder='{"Authorization": "Bearer ${TOKEN}"}'
+                                />
+                              ) : (
+                                <code className="bg-muted px-2 py-1 rounded text-xs">
+                                  {mcpDetails.headers ? JSON.stringify(mcpDetails.headers, null, 2) : "None"}
+                                </code>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-start gap-2">
+                              <span className="font-medium min-w-[100px] pt-2">Command:</span>
+                              {isEditingConfig ? (
+                                <Input
+                                  value={editedConfig.command || ""}
+                                  onChange={(e) => setEditedConfig({ ...editedConfig, command: e.target.value })}
+                                  className="flex-1"
+                                  placeholder="e.g., docker, npx, node"
+                                />
+                              ) : (
+                                <code className="bg-muted px-2 py-1 rounded text-xs">
+                                  {mcpDetails.command || "Not set"}
+                                </code>
+                              )}
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="font-medium min-w-[100px] pt-2">Arguments:</span>
+                              {isEditingConfig ? (
+                                <Input
+                                  value={editedConfig.args?.join(" ") || ""}
+                                  onChange={(e) => setEditedConfig({ 
+                                    ...editedConfig, 
+                                    args: e.target.value.split(" ").filter(Boolean) 
+                                  })}
+                                  className="flex-1"
+                                  placeholder="Space-separated arguments"
+                                />
+                              ) : (
+                                <code className="bg-muted px-2 py-1 rounded text-xs">
+                                  {mcpDetails.args && mcpDetails.args.length > 0 ? mcpDetails.args.join(" ") : "None"}
+                                </code>
+                              )}
+                            </div>
+                          </>
+                        )}
                         <div className="flex items-start gap-2">
                           <span className="font-medium min-w-[100px] pt-2">Working Dir:</span>
                           {isEditingConfig ? (

@@ -94,8 +94,10 @@ export class McpRouteHandler extends BaseRouteHandler {
       const body = await RequestParser.parseBody(req) as Partial<{
         name: string;
         description?: string;
-        command: string;
-        args: string[];
+        command?: string;
+        args?: string[];
+        serverUrl?: string;
+        headers?: Record<string, string>;
         env?: Record<string, string>;
         cwd?: string;
         enabled?: boolean;
@@ -166,8 +168,10 @@ export class McpRouteHandler extends BaseRouteHandler {
     id: string;
     name: string;
     description?: string;
-    command: string;
-    args: string[];
+    command?: string;
+    args?: string[];
+    serverUrl?: string;
+    headers?: Record<string, string>;
     env?: Record<string, string>;
     cwd?: string;
     enabled?: boolean;
@@ -191,6 +195,8 @@ export class McpRouteHandler extends BaseRouteHandler {
       description: proxyConfig.description,
       command: proxyConfig.command,
       args: proxyConfig.args,
+      serverUrl: proxyConfig.serverUrl,
+      headers: proxyConfig.headers,
       env: proxyConfig.env,
       cwd: proxyConfig.cwd,
       enabled: proxyConfig.enabled,
@@ -208,8 +214,10 @@ export class McpRouteHandler extends BaseRouteHandler {
     updates: Partial<{
       name: string;
       description?: string;
-      command: string;
-      args: string[];
+      command?: string;
+      args?: string[];
+      serverUrl?: string;
+      headers?: Record<string, string>;
       env?: Record<string, string>;
       cwd?: string;
       enabled?: boolean;
@@ -224,8 +232,10 @@ export class McpRouteHandler extends BaseRouteHandler {
     id: string;
     name: string;
     description?: string;
-    command: string;
-    args: string[];
+    command?: string;
+    args?: string[];
+    serverUrl?: string;
+    headers?: Record<string, string>;
     env?: Record<string, string>;
     cwd?: string;
     enabled?: boolean;
@@ -249,6 +259,8 @@ export class McpRouteHandler extends BaseRouteHandler {
     if (updates.description !== undefined) existingConfig.description = updates.description;
     if (updates.command !== undefined) existingConfig.command = updates.command;
     if (updates.args !== undefined) existingConfig.args = updates.args;
+    if (updates.serverUrl !== undefined) existingConfig.serverUrl = updates.serverUrl;
+    if (updates.headers !== undefined) existingConfig.headers = updates.headers;
     if (updates.env !== undefined) existingConfig.env = updates.env;
     if (updates.cwd !== undefined) existingConfig.cwd = updates.cwd;
     if (updates.enabled !== undefined) existingConfig.enabled = updates.enabled;
@@ -265,6 +277,8 @@ export class McpRouteHandler extends BaseRouteHandler {
       description: existingConfig.description,
       command: existingConfig.command,
       args: existingConfig.args,
+      serverUrl: existingConfig.serverUrl,
+      headers: existingConfig.headers,
       env: existingConfig.env,
       cwd: existingConfig.cwd,
       enabled: existingConfig.enabled,

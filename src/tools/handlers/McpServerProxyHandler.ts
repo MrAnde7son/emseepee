@@ -92,11 +92,36 @@ export class McpServerProxyHandler extends BaseGatewayHandler {
 /**
  * Manager for MCP server proxies
  * Handles connection, tool discovery, and registration
+ * Supports three connection types:
+ * 1. Command-based (npx, node, etc.) - uses StdioClientTransport
+ * 2. Docker-based - uses StdioClientTransport with docker command
+ * 3. Remote endpoint - uses StreamableHTTPClientTransport (HTTP/SSE)
  */
 export class McpServerProxyManager {
   private clients: Map<string, Client> = new Map();
-  private transports: Map<string, StdioClientTransport> = new Map();
+  private transports: Map<string, StdioClientTransport | unknown> = new Map();
   private processes: Map<string, ChildProcess> = new Map();
+
+  /**
+   * Substitute environment variables in string values
+   */
+  private substituteEnvVars(value: string): string {
+    return value.replace(/\$\{([^}]+)\}/g, (match, varName) => {
+      return process.env[varName] || match;
+    });
+  }
+
+  /**
+   * Process headers with environment variable substitution
+   */
+  private processHeaders(headers?: Record<string, string>): Record<string, string> {
+    if (!headers) return {};
+    const processed: Record<string, string> = {};
+    for (const [key, value] of Object.entries(headers)) {
+      processed[key] = this.substituteEnvVars(value);
+    }
+    return processed;
+  }
 
   /**
    * Connect to an MCP server and discover its tools
@@ -106,25 +131,131 @@ export class McpServerProxyManager {
   ): Promise<Array<{ name: string; description: string; inputSchema: unknown }>> {
     logger.info(`[MCP-GATEWAY] Connecting to MCP server proxy: ${proxyConfig.name}`);
 
-    // Create transport
-    const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(process.env)) {
-      if (value !== undefined) {
-        env[key] = value;
-      }
-    }
-    if (proxyConfig.env) {
-      for (const [key, value] of Object.entries(proxyConfig.env)) {
-        env[key] = value;
-      }
-    }
+    // Determine connection type
+    const isRemoteEndpoint = !!proxyConfig.serverUrl;
+    const isDocker = proxyConfig.command === "docker";
 
-    const transport = new StdioClientTransport({
-      command: proxyConfig.command,
-      args: proxyConfig.args,
-      env,
-      cwd: proxyConfig.cwd,
-    });
+    let transport: StdioClientTransport | unknown;
+
+    if (isRemoteEndpoint) {
+      // Remote endpoint connection
+      if (!proxyConfig.serverUrl) {
+        throw new Error(`serverUrl is required for remote endpoint connection: ${proxyConfig.name}`);
+      }
+
+      const headers = this.processHeaders(proxyConfig.headers);
+
+      // Try to use StreamableHTTP transport (replaces deprecated SSE transport)
+      try {
+        const httpModule = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
+        const StreamableHTTPClientTransport = httpModule.StreamableHTTPClientTransport;
+        logger.info(`[MCP-GATEWAY] Using StreamableHTTP transport for remote endpoint: ${proxyConfig.serverUrl}`);
+        
+        // Validate and create URL
+        let serverUrl: URL;
+        try {
+          serverUrl = new URL(proxyConfig.serverUrl);
+        } catch (urlError) {
+          throw new Error(`Invalid serverUrl format: ${proxyConfig.serverUrl}. Error: ${urlError}`);
+        }
+        
+        // Log headers (mask sensitive values)
+        const maskedHeaders = Object.fromEntries(
+          Object.entries(headers).map(([key, value]) => [
+            key,
+            key.toLowerCase().includes("auth") || key.toLowerCase().includes("token") || key.toLowerCase().includes("key")
+              ? `${value.substring(0, 10)}...` 
+              : value
+          ])
+        );
+        logger.info(`[MCP-GATEWAY] Request headers: ${JSON.stringify(maskedHeaders)}`);
+        
+        transport = new StreamableHTTPClientTransport(serverUrl, {
+          fetch: async (url, init) => {
+            try {
+              logger.info(`[MCP-GATEWAY] Fetching ${url} with method ${init?.method || "GET"}`);
+              const response = await fetch(url, {
+                ...init,
+                headers: {
+                  ...(init?.headers as Record<string, string>),
+                  ...headers,
+                },
+              });
+              logger.info(`[MCP-GATEWAY] Response status: ${response.status} ${response.statusText}`);
+              return response;
+            } catch (fetchError) {
+              logger.error(`[MCP-GATEWAY] Fetch error for ${url}:`, fetchError);
+              if (fetchError instanceof Error) {
+                // Provide more helpful error messages
+                if (fetchError.message.includes("ENOTFOUND") || fetchError.message.includes("getaddrinfo")) {
+                  throw new Error(
+                    `DNS resolution failed for ${serverUrl.hostname}. ` +
+                    `Please verify the serverUrl is correct and the hostname is reachable.`
+                  );
+                }
+                if (fetchError.message.includes("ECONNREFUSED")) {
+                  throw new Error(
+                    `Connection refused to ${serverUrl.hostname}:${serverUrl.port || 443}. ` +
+                    `The server may be down or not accepting connections.`
+                  );
+                }
+                if (fetchError.message.includes("CERT") || fetchError.message.includes("SSL")) {
+                  throw new Error(
+                    `SSL/TLS certificate error for ${serverUrl.hostname}. ` +
+                    `Please verify the server has a valid certificate.`
+                  );
+                }
+              }
+              throw fetchError;
+            }
+          },
+        });
+      } catch (error) {
+        // StreamableHTTP transport not available, throw error with helpful message
+        logger.error(`[MCP-GATEWAY] StreamableHTTP transport error: ${error}`);
+        if (error instanceof Error && error.message.includes("Invalid serverUrl")) {
+          throw error;
+        }
+        throw new Error(
+          `Failed to connect to remote MCP endpoint ${proxyConfig.serverUrl}. ` +
+          `Error: ${error instanceof Error ? error.message : String(error)}. ` +
+          `Please verify the serverUrl is correct and the endpoint is accessible.`
+        );
+      }
+    } else {
+      // Command-based or Docker-based connection (both use stdio)
+      if (!proxyConfig.command) {
+        throw new Error(`command is required for command/docker-based connection: ${proxyConfig.name}`);
+      }
+      if (!proxyConfig.args) {
+        throw new Error(`args is required for command/docker-based connection: ${proxyConfig.name}`);
+      }
+
+      // Create transport
+      const env: Record<string, string> = {};
+      for (const [key, value] of Object.entries(process.env)) {
+        if (value !== undefined) {
+          env[key] = value;
+        }
+      }
+      if (proxyConfig.env) {
+        for (const [key, value] of Object.entries(proxyConfig.env)) {
+          // Substitute environment variables in env values
+          env[key] = this.substituteEnvVars(value);
+        }
+      }
+
+      logger.info(
+        `[MCP-GATEWAY] Using ${isDocker ? "Docker" : "command"}-based transport: ${proxyConfig.command} ${proxyConfig.args.join(" ")}`
+      );
+
+      transport = new StdioClientTransport({
+        command: proxyConfig.command,
+        args: proxyConfig.args,
+        env,
+        cwd: proxyConfig.cwd,
+      });
+    }
 
     // Create client
     const client = new Client(
@@ -138,7 +269,8 @@ export class McpServerProxyManager {
     );
 
     // Connect - transport handles the connection automatically
-    await client.connect(transport);
+    // Type assertion needed because transport can be StdioClientTransport or SSE transport
+    await client.connect(transport as StdioClientTransport);
 
     // Store references
     this.transports.set(proxyConfig.name, transport);
@@ -180,7 +312,9 @@ export class McpServerProxyManager {
 
     for (const [name, transport] of this.transports.entries()) {
       try {
-        await transport.close();
+        if (transport && typeof transport === "object" && "close" in transport && typeof transport.close === "function") {
+          await transport.close();
+        }
       } catch (err) {
         logger.warn(`[MCP-GATEWAY] Error closing transport ${name}:`, err);
       }

@@ -63,14 +63,22 @@ export interface PolicyRule {
 /**
  * MCP Server proxy configuration
  * Allows proxying entire MCP servers through the gateway
+ * Supports three connection types:
+ * 1. Command-based (npx, node, etc.) - legacy @modelcontextprotocol/* packages
+ * 2. Docker-based - docker run with MCP server images
+ * 3. Remote endpoint - HTTP/SSE connection to remote MCP server
  */
 export interface McpServerProxyConfig {
   name: string; // Unique identifier for this proxy
   description?: string;
-  command: string; // Command to start the MCP server (e.g., "npx", "node")
-  args: string[]; // Arguments for the command
+  // For command-based or docker-based connections
+  command?: string; // Command to start the MCP server (e.g., "npx", "node", "docker")
+  args?: string[]; // Arguments for the command
   env?: Record<string, string>; // Environment variables
   cwd?: string; // Working directory
+  // For remote endpoint connections
+  serverUrl?: string; // URL of the remote MCP server endpoint (e.g., "https://api.githubcopilot.com/mcp/")
+  headers?: Record<string, string>; // HTTP headers for remote endpoint (supports ${VAR} env var substitution)
   enabled?: boolean; // Whether this MCP server proxy is enabled (default: false)
   // Optional: icon for the MCP server (can be a Lucide icon name or image URL)
   icon?: string;

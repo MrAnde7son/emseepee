@@ -2,6 +2,10 @@
 /**
  * Migration script to migrate existing config.json to database
  * Run this once to migrate your existing configuration
+ * 
+ * Usage:
+ *   node dist/db/migrate.js           # Migrate only if database is empty
+ *   node dist/db/migrate.js --force   # Force overwrite existing config
  */
 
 import { initializeDatabase, closeDatabase } from "./connection.js";
@@ -15,7 +19,7 @@ import {
 import { loadConfigFromFile } from "../configLoader.js";
 import { logger } from "../logger.js";
 
-async function migrate() {
+async function migrate(force = false) {
   try {
     logger.info("[MIGRATE] Starting migration from config.json to database...");
 
@@ -33,10 +37,14 @@ async function migrate() {
                     Object.keys(existingConfig.toolsProxies).length > 0 ||
                     existingConfig.policyRules.length > 0;
 
-    if (hasData) {
+    if (hasData && !force) {
       logger.warn("[MIGRATE] Database already contains configuration. Skipping migration.");
-      logger.info("[MIGRATE] If you want to overwrite, clear the database first.");
+      logger.info("[MIGRATE] If you want to overwrite, run with --force flag: node dist/db/migrate.js --force");
       return;
+    }
+
+    if (hasData && force) {
+      logger.warn("[MIGRATE] Database contains existing configuration. Overwriting with config.json...");
     }
 
     // Load from file
@@ -80,7 +88,8 @@ async function migrate() {
 
 // Run migration if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {
-  migrate();
+  const force = process.argv.includes("--force") || process.argv.includes("-f");
+  migrate(force);
 }
 
 export { migrate };

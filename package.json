@@ -17,6 +17,8 @@
     "dev:backend": "pnpm run build && pnpm run start",
     "dev:frontend": "cd dashboard && pnpm dev",
     "dev:all": "concurrently \"pnpm run dev:backend\" \"pnpm run dev:frontend\" --names \"backend,frontend\" --prefix-colors \"blue,green\"",
+    "migrate": "node dist/db/migrate.js",
+    "migrate:force": "node dist/db/migrate.js --force",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

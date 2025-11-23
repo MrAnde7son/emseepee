@@ -75,8 +75,10 @@ export const Api = {
     id: string;
     name: string;
     description?: string;
-    command: string;
-    args: string[];
+    command?: string;
+    args?: string[];
+    serverUrl?: string;
+    headers?: Record<string, string>;
     env?: Record<string, string>;
     cwd?: string;
     enabled?: boolean;
@@ -90,8 +92,10 @@ export const Api = {
   updateMcpServerConfig: (mcpId: string, updates: Partial<{
     name: string;
     description?: string;
-    command: string;
-    args: string[];
+    command?: string;
+    args?: string[];
+    serverUrl?: string;
+    headers?: Record<string, string>;
     env?: Record<string, string>;
     cwd?: string;
     enabled?: boolean;
@@ -105,8 +109,10 @@ export const Api = {
     id: string;
     name: string;
     description?: string;
-    command: string;
-    args: string[];
+    command?: string;
+    args?: string[];
+    serverUrl?: string;
+    headers?: Record<string, string>;
     env?: Record<string, string>;
     cwd?: string;
     enabled?: boolean;

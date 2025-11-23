@@ -119,7 +119,8 @@ export class ProviderService {
       const cursorDir = join(projectRoot, ".cursor");
       const cursorConfigPath = join(cursorDir, "mcp.json");
       
-      const gatewayPath = join(__dirname, "..", "..", "dist", "index.js");
+      // Use absolute path from project root to avoid path calculation issues
+      const gatewayPath = join(projectRoot, "dist", "index.js");
       
       let config: { mcpServers?: Record<string, unknown> } = {};
       if (existsSync(cursorConfigPath)) {
@@ -137,7 +138,7 @@ export class ProviderService {
       config.mcpServers["hakuna"] = {
         command: "node",
         args: [gatewayPath],
-        cwd: join(__dirname, "..", ".."),
+        cwd: projectRoot,
       };
       
       if (!existsSync(cursorDir)) {
@@ -209,7 +210,88 @@ export class ProviderService {
     }
   }
 
+  async uninstallCursorProvider(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { unlinkSync, readFileSync, writeFileSync } = await import("fs");
+      const projectRoot = process.cwd();
+      const cursorConfigPath = join(projectRoot, ".cursor", "mcp.json");
+      
+      if (!existsSync(cursorConfigPath)) {
+        return {
+          success: false,
+          error: "Provider cursor is not installed",
+        };
+      }
+      
+      let config: { mcpServers?: Record<string, unknown> } = {};
+      try {
+        config = JSON.parse(readFileSync(cursorConfigPath, "utf-8"));
+      } catch {
+        // If file exists but is invalid, we'll delete it
+        unlinkSync(cursorConfigPath);
+        return { success: true };
+      }
+      
+      if (config.mcpServers && config.mcpServers["hakuna"]) {
+        delete config.mcpServers["hakuna"];
+        
+        // If no other MCP servers remain, delete the entire mcp.json file
+        if (Object.keys(config.mcpServers).length === 0) {
+          unlinkSync(cursorConfigPath);
+          logger.info(`[ProviderService] Deleted mcp.json file (no other MCP servers configured)`);
+        } else {
+          // Update the file with hakuna removed, keeping other MCP servers
+          writeFileSync(cursorConfigPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+          logger.info(`[ProviderService] Removed hakuna from mcp.json (other MCP servers remain)`);
+        }
+      } else {
+        return {
+          success: false,
+          error: "Provider cursor is not installed",
+        };
+      }
+      
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   async uninstallProvider(providerId: string): Promise<void> {
+    // Handle Cursor provider specially since it uses file-based installation
+    if (providerId === "cursor") {
+      const result = await this.uninstallCursorProvider();
+      if (!result.success) {
+        throw new Error(result.error || "Failed to uninstall cursor provider");
+      }
+      
+      // Try to delete DB config if it exists (optional cleanup)
+      try {
+        const { getProviderConfig, deleteProviderConfig } = await import("../../db/services/providerService.js");
+        const providerConfig = await getProviderConfig(providerId);
+        if (providerConfig) {
+          await deleteProviderConfig(providerId);
+          logger.info(`[ProviderService] Deleted provider configuration for: ${providerId}`);
+        }
+      } catch (error) {
+        logger.warn(`[ProviderService] Failed to delete DB config for ${providerId}:`, error);
+      }
+
+      try {
+        const { unregisterProviderAdapter } = await import("../../agents/index.js");
+        unregisterProviderAdapter(providerId);
+        logger.info(`[ProviderService] Unregistered adapter for provider: ${providerId}`);
+      } catch (adapterError) {
+        logger.warn(`[ProviderService] Failed to unregister adapter for ${providerId}:`, adapterError);
+      }
+      
+      return;
+    }
+
+    // For other providers, check database config
     const { getProviderConfig, deleteProviderConfig } = await import("../../db/services/providerService.js");
     const providerConfig = await getProviderConfig(providerId);
     
