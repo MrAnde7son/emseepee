@@ -9,9 +9,9 @@
         "@modelcontextprotocol/server-github"
       ],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
       },
-      "enabled": true,
+      "enabled": false,
       "defaultPolicy": {
         "allowedRoles": [
           "coder_bot",
