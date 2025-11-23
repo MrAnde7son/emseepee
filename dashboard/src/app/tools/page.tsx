@@ -100,6 +100,12 @@ interface McpServerDetails {
   cwd?: string;
   enabled?: boolean;
   icon?: string;
+  oauth?: {
+    provider: string;
+    authorizationUrl: string;
+    tokenUrl: string;
+    scopes?: string[];
+  };
   defaultPolicy: {
     allowedRoles: string[];
     sensitivity: string;
@@ -228,6 +234,8 @@ export default function ToolsPage() {
   const [isEditingConfig, setIsEditingConfig] = useState(false);
   const [editedConfig, setEditedConfig] = useState<Partial<McpServerDetails>>({});
   const [updatingConfig, setUpdatingConfig] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState<Record<string, { configured: boolean; authenticated: boolean; expiresAt?: number; hasRefreshToken: boolean }>>({});
+  const [initiatingOAuth, setInitiatingOAuth] = useState<string | null>(null);
 
   // Group tools by category (exclude MCP tools as they're shown separately)
   const toolsByCategory = useMemo(() => {
@@ -442,6 +450,19 @@ export default function ToolsPage() {
           if (details.icon) {
             setMcpIcons((prev) => new Map(prev).set(selectedItem.id, details.icon!));
           }
+          // Load OAuth status if OAuth is configured
+          if (details.oauth) {
+            Api.getOAuthStatus(selectedItem.id)
+              .then((status) => {
+                setOauthStatus((prev) => ({
+                  ...prev,
+                  [selectedItem.id]: status,
+                }));
+              })
+              .catch((error) => {
+                console.error("Failed to load OAuth status:", error);
+              });
+          }
         })
         .catch((error) => {
           console.error("Failed to load MCP server details:", error);
@@ -457,6 +478,42 @@ export default function ToolsPage() {
       setEditedConfig({});
     }
   }, [selectedItem]);
+
+  // Handle OAuth callback from URL
+  useEffect(() => {
+    const oauthSuccess = searchParams.get("oauth_success");
+    const oauthError = searchParams.get("oauth_error");
+    const mcpId = searchParams.get("mcp");
+    
+    if (oauthSuccess && mcpId) {
+      // Reload OAuth status
+      Api.getOAuthStatus(mcpId)
+        .then((status) => {
+          setOauthStatus((prev) => ({
+            ...prev,
+            [mcpId]: status,
+          }));
+          // Reload MCP details to get updated headers
+          if (selectedItem?.type === "mcp" && selectedItem.id === mcpId) {
+            Api.getMcpServerDetails(mcpId).then(setMcpDetails);
+          }
+        })
+        .catch(console.error);
+      
+      // Clean up URL params
+      const params = new URLSearchParams(window.location.search);
+      params.delete("oauth_success");
+      params.delete("mcp");
+      router.replace(`?${params.toString()}`, { scroll: false });
+    }
+    
+    if (oauthError) {
+      alert(`OAuth error: ${oauthError}`);
+      const params = new URLSearchParams(window.location.search);
+      params.delete("oauth_error");
+      router.replace(`?${params.toString()}`, { scroll: false });
+    }
+  }, [searchParams, router, selectedItem]);
 
   const handleStartEdit = () => {
     if (mcpDetails) {
@@ -1081,6 +1138,98 @@ export default function ToolsPage() {
                                 </code>
                               )}
                             </div>
+                            
+                            {/* OAuth Authentication Section */}
+                            {mcpDetails.oauth && (
+                              <div className="flex items-start gap-2 pt-2 border-t">
+                                <span className="font-medium min-w-[100px] pt-2">Authentication:</span>
+                                <div className="flex-1 space-y-2">
+                                  {(() => {
+                                    const status = oauthStatus[mcpDetails.id];
+                                    const isAuthenticated = status?.authenticated;
+                                    const isConfigured = status?.configured;
+                                    
+                                    return (
+                                      <>
+                                        <div className="flex items-center gap-2">
+                                          {isAuthenticated ? (
+                                            <>
+                                              <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                              <span className="text-sm text-green-600">Authenticated via OAuth</span>
+                                              {status.expiresAt && status.expiresAt > Date.now() && (
+                                                <span className="text-xs text-muted-foreground">
+                                                  (expires {new Date(status.expiresAt).toLocaleDateString()})
+                                                </span>
+                                              )}
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Circle className="h-4 w-4 text-gray-400" />
+                                              <span className="text-sm text-muted-foreground">Not authenticated</span>
+                                            </>
+                                          )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                          {!isAuthenticated ? (
+                                            <Button
+                                              size="sm"
+                                              onClick={async () => {
+                                                if (!mcpDetails.id) return;
+                                                setInitiatingOAuth(mcpDetails.id);
+                                                try {
+                                                  const { authorizationUrl } = await Api.initiateOAuth(mcpDetails.id);
+                                                  // Open OAuth flow in new window
+                                                  window.location.href = authorizationUrl;
+                                                } catch (error) {
+                                                  console.error("Failed to initiate OAuth:", error);
+                                                  alert(`Failed to start OAuth flow: ${error instanceof Error ? error.message : "Unknown error"}`);
+                                                } finally {
+                                                  setInitiatingOAuth(null);
+                                                }
+                                              }}
+                                              disabled={initiatingOAuth === mcpDetails.id}
+                                              className="gap-2"
+                                            >
+                                              {initiatingOAuth === mcpDetails.id ? "Connecting..." : "Connect with OAuth"}
+                                            </Button>
+                                          ) : (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={async () => {
+                                                if (!mcpDetails.id) return;
+                                                if (confirm("Are you sure you want to revoke OAuth access?")) {
+                                                  try {
+                                                    await Api.revokeOAuth(mcpDetails.id);
+                                                    setOauthStatus((prev) => ({
+                                                      ...prev,
+                                                      [mcpDetails.id]: { ...prev[mcpDetails.id], authenticated: false },
+                                                    }));
+                                                    // Reload details to clear headers
+                                                    Api.getMcpServerDetails(mcpDetails.id).then(setMcpDetails);
+                                                  } catch (error) {
+                                                    console.error("Failed to revoke OAuth:", error);
+                                                    alert(`Failed to revoke OAuth: ${error instanceof Error ? error.message : "Unknown error"}`);
+                                                  }
+                                                }
+                                              }}
+                                              className="gap-2"
+                                            >
+                                              Revoke Access
+                                            </Button>
+                                          )}
+                                        </div>
+                                        {mcpDetails.oauth.scopes && mcpDetails.oauth.scopes.length > 0 && (
+                                          <div className="text-xs text-muted-foreground">
+                                            Required scopes: {mcpDetails.oauth.scopes.join(", ")}
+                                          </div>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            )}
                           </>
                         ) : (
                           <>

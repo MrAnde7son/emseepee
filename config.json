@@ -105,8 +105,11 @@
       "description": "Notion MCP server for reading/writing pages and databases",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/notion.svg",
       "serverUrl": "https://mcp.notion.com/mcp",
-      "headers": {
-        "Authorization": "Bearer ${NOTION_ACCESS_TOKEN}"
+      "oauth": {
+        "provider": "notion",
+        "authorizationUrl": "https://api.notion.com/v1/oauth/authorize",
+        "tokenUrl": "https://api.notion.com/v1/oauth/token",
+        "scopes": ["read", "update", "insert"]
       },
       "enabled": false,
       "defaultPolicy": {

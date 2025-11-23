@@ -433,8 +433,6 @@ export class McpServerProxyManager {
                     `Error code: ${errorCode || "SELF_SIGNED_CERT_IN_CHAIN"}`
                   );
                 } else if (isSelfSigned && allowInsecure) {
-                  // If SSL verification is disabled but we still get the error,
-                  // it means the environment variable wasn't set before Node.js started
                   throw new Error(
                     `SSL verification is configured to be disabled, but Node.js is still rejecting the certificate. ` +
                     `The NODE_TLS_REJECT_UNAUTHORIZED=0 or MCP_ALLOW_INSECURE=true environment variable ` +

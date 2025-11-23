@@ -4,6 +4,12 @@ import { useState, useMemo, useEffect } from "react";
 import { useProviders, usePolicies } from "@/hooks/useGatewayData";
 import { Api } from "@/lib/api";
 import { Provider, Policy } from "@/lib/types";
+import {
+  getProviderConfigSchema,
+  providerRequiresConfig,
+  validateProviderConfig,
+  type ConfigField,
+} from "@/lib/providerConfigs";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,24 +59,24 @@ export default function ProvidersPage() {
   const [showUninstallDialog, setShowUninstallDialog] = useState(false);
   const [providerToInstall, setProviderToInstall] = useState<Provider | null>(null);
   const [providerToUninstall, setProviderToUninstall] = useState<Provider | null>(null);
-  const [openaiConfig, setOpenaiConfig] = useState({
-    apiKey: "",
-    baseUrl: "https://api.openai.com/v1",
-    organizationId: "",
-  });
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [providerConfig, setProviderConfig] = useState<Record<string, string>>({});
+  const [showPasswordFields, setShowPasswordFields] = useState<Set<string>>(new Set());
   
   const handleInstallClick = (provider: Provider) => {
     // Check if provider needs configuration
-    if (provider.id === "openai") {
+    if (providerRequiresConfig(provider.id)) {
       setProviderToInstall(provider);
       setShowInstallDialog(true);
-      // Reset config
-      setOpenaiConfig({
-        apiKey: "",
-        baseUrl: "https://api.openai.com/v1",
-        organizationId: "",
-      });
+      // Initialize config with default values from schema
+      const schema = getProviderConfigSchema(provider.id);
+      const initialConfig: Record<string, string> = {};
+      if (schema) {
+        for (const field of schema.fields) {
+          initialConfig[field.key] = field.defaultValue || "";
+        }
+      }
+      setProviderConfig(initialConfig);
+      setShowPasswordFields(new Set());
     } else {
       // For providers that don't need config (like Cursor), install directly
       handleInstall(provider.id);
@@ -84,6 +90,7 @@ export default function ProvidersPage() {
       await refetch();
       setShowInstallDialog(false);
       setProviderToInstall(null);
+      setProviderConfig({});
     } catch (error) {
       console.error("Failed to install provider:", error);
       alert(`Failed to install provider: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -93,17 +100,58 @@ export default function ProvidersPage() {
   };
 
   const handleInstallSubmit = () => {
-    if (providerToInstall?.id === "openai") {
-      if (!openaiConfig.apiKey || !openaiConfig.apiKey.startsWith("sk-")) {
-        alert("Please enter a valid OpenAI API key (must start with 'sk-')");
-        return;
+    if (!providerToInstall) return;
+
+    // Validate configuration
+    const validation = validateProviderConfig(providerToInstall.id, providerConfig);
+    if (!validation.valid) {
+      alert(validation.errors.join("\n"));
+      return;
+    }
+
+    // Build config object, removing empty optional fields
+    const schema = getProviderConfigSchema(providerToInstall.id);
+    const configToSubmit: Record<string, unknown> = {};
+    
+    if (schema) {
+      for (const field of schema.fields) {
+        const value = providerConfig[field.key];
+        // Include field if it has a value or is required
+        if (value && value.trim() !== "") {
+          configToSubmit[field.key] = value.trim();
+        } else if (field.required) {
+          configToSubmit[field.key] = "";
+        }
       }
-      handleInstall("openai", {
-        apiKey: openaiConfig.apiKey,
-        baseUrl: openaiConfig.baseUrl || "https://api.openai.com/v1",
-        organizationId: openaiConfig.organizationId || undefined,
+    } else {
+      // Fallback: include all non-empty values
+      Object.entries(providerConfig).forEach(([key, value]) => {
+        if (value && value.trim() !== "") {
+          configToSubmit[key] = value.trim();
+        }
       });
     }
+
+    handleInstall(providerToInstall.id, configToSubmit);
+  };
+
+  const togglePasswordVisibility = (fieldKey: string) => {
+    setShowPasswordFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(fieldKey)) {
+        next.delete(fieldKey);
+      } else {
+        next.add(fieldKey);
+      }
+      return next;
+    });
+  };
+
+  const updateConfigField = (fieldKey: string, value: string) => {
+    setProviderConfig((prev) => ({
+      ...prev,
+      [fieldKey]: value,
+    }));
   };
 
   const handleUninstallClick = (provider: Provider) => {
@@ -510,112 +558,120 @@ export default function ProvidersPage() {
 
       {/* Install Provider Configuration Dialog */}
       <Dialog open={showInstallDialog} onOpenChange={setShowInstallDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               Install {providerToInstall?.name || "Provider"}
             </DialogTitle>
             <DialogDescription>
-              {providerToInstall?.id === "openai" 
-                ? "Enter your OpenAI API credentials to connect to ChatGPT"
+              {providerToInstall
+                ? getProviderConfigSchema(providerToInstall.id)?.description ||
+                  "Configure this provider"
                 : "Configure this provider"}
             </DialogDescription>
           </DialogHeader>
-          {providerToInstall?.id === "openai" && (
-            <div className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <label htmlFor="openai-api-key" className="text-sm font-medium">
-                  API Key <span className="text-destructive">*</span>
-                </label>
-                <div className="flex gap-2">
-                  <Input
-                    id="openai-api-key"
-                    type={showApiKey ? "text" : "password"}
-                    value={openaiConfig.apiKey}
-                    onChange={(e) =>
-                      setOpenaiConfig((prev) => ({ ...prev, apiKey: e.target.value }))
-                    }
-                    placeholder="sk-..."
-                    className="flex-1"
-                  />
+          {providerToInstall && (() => {
+            const schema = getProviderConfigSchema(providerToInstall.id);
+            if (!schema) {
+              return (
+                <div className="text-sm text-muted-foreground py-4">
+                  No configuration required for this provider.
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-4 mt-4">
+                {schema.fields.map((field: ConfigField) => {
+                  const isPassword = field.type === "password";
+                  const showPassword = showPasswordFields.has(field.key);
+                  const inputType = isPassword && !showPassword ? "password" : "text";
+
+                  return (
+                    <div key={field.key} className="space-y-2">
+                      <label
+                        htmlFor={`provider-config-${field.key}`}
+                        className="text-sm font-medium"
+                      >
+                        {field.label}
+                        {field.required && (
+                          <span className="text-destructive ml-1">*</span>
+                        )}
+                      </label>
+                      <div className="flex gap-2">
+                        <Input
+                          id={`provider-config-${field.key}`}
+                          type={inputType}
+                          value={providerConfig[field.key] || ""}
+                          onChange={(e) =>
+                            updateConfigField(field.key, e.target.value)
+                          }
+                          placeholder={field.placeholder}
+                          className="flex-1"
+                          required={field.required}
+                        />
+                        {isPassword && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => togglePasswordVisibility(field.key)}
+                          >
+                            {showPassword ? "Hide" : "Show"}
+                          </Button>
+                        )}
+                      </div>
+                      {field.description && (
+                        <p className="text-xs text-muted-foreground">
+                          {field.description}
+                          {field.helpUrl && (
+                            <>
+                              {" "}
+                              <a
+                                href={field.helpUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline"
+                              >
+                                Learn more
+                              </a>
+                            </>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <div className="flex justify-end gap-2 pt-4">
                   <Button
-                    type="button"
                     variant="outline"
-                    size="sm"
-                    onClick={() => setShowApiKey(!showApiKey)}
+                    onClick={() => {
+                      setShowInstallDialog(false);
+                      setProviderToInstall(null);
+                      setProviderConfig({});
+                    }}
+                    disabled={installing === providerToInstall.id}
                   >
-                    {showApiKey ? "Hide" : "Show"}
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleInstallSubmit}
+                    disabled={
+                      installing === providerToInstall.id ||
+                      !schema.fields
+                        .filter((f) => f.required)
+                        .every((f) => providerConfig[f.key]?.trim())
+                    }
+                  >
+                    {installing === providerToInstall.id
+                      ? "Installing..."
+                      : "Install"}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Your OpenAI API key. Get it from{" "}
-                  <a
-                    href="https://platform.openai.com/api-keys"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline"
-                  >
-                    platform.openai.com
-                  </a>
-                </p>
               </div>
-
-              <div className="space-y-2">
-                <label htmlFor="openai-base-url" className="text-sm font-medium">
-                  Base URL (Optional)
-                </label>
-                <Input
-                  id="openai-base-url"
-                  type="text"
-                  value={openaiConfig.baseUrl}
-                  onChange={(e) =>
-                    setOpenaiConfig((prev) => ({ ...prev, baseUrl: e.target.value }))
-                  }
-                  placeholder="https://api.openai.com/v1"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Custom API endpoint. Leave default for OpenAI.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="openai-org-id" className="text-sm font-medium">
-                  Organization ID (Optional)
-                </label>
-                <Input
-                  id="openai-org-id"
-                  type="text"
-                  value={openaiConfig.organizationId}
-                  onChange={(e) =>
-                    setOpenaiConfig((prev) => ({ ...prev, organizationId: e.target.value }))
-                  }
-                  placeholder="org-..."
-                />
-                <p className="text-xs text-muted-foreground">
-                  Your OpenAI organization ID if you belong to multiple organizations.
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowInstallDialog(false);
-                    setProviderToInstall(null);
-                  }}
-                  disabled={installing === "openai"}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleInstallSubmit}
-                  disabled={installing === "openai" || !openaiConfig.apiKey}
-                >
-                  {installing === "openai" ? "Installing..." : "Install"}
-                </Button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

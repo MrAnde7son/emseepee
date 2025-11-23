@@ -8,11 +8,11 @@ import { PoliciesRouteHandler } from "./routes/policiesRouteHandler.js";
 import { EventsRouteHandler } from "./routes/eventsRouteHandler.js";
 import { AgentsRouteHandler } from "./routes/agentsRouteHandler.js";
 import { McpRouteHandler } from "./routes/mcpRouteHandler.js";
+import { OAuthRouteHandler } from "./routes/oauthRouteHandler.js";
 import { TelemetryRouteHandler } from "./routes/telemetryRouteHandler.js";
 import { UsersRouteHandler } from "./routes/usersRouteHandler.js";
 import { CorsMiddleware } from "./middleware/cors.js";
 import { ErrorHandler } from "./middleware/errorHandler.js";
-import { logger } from "../logger.js";
 
 export class Router {
   private handlers: BaseRouteHandler[] = [];
@@ -26,6 +26,7 @@ export class Router {
       new EventsRouteHandler(),
       new AgentsRouteHandler(),
       new McpRouteHandler(),
+      new OAuthRouteHandler(),
       new TelemetryRouteHandler(),
       new UsersRouteHandler(),
     ];

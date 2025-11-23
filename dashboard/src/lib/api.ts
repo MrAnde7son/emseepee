@@ -83,12 +83,21 @@ export const Api = {
     cwd?: string;
     enabled?: boolean;
     icon?: string;
+    oauth?: {
+      provider: string;
+      authorizationUrl: string;
+      tokenUrl: string;
+      scopes?: string[];
+    };
     defaultPolicy: {
       allowedRoles: string[];
       sensitivity: string;
     };
     disabledTools?: string[];
   }>(`/api/mcp/${mcpId}`),
+  initiateOAuth: (mcpId: string) => fetchJSON<{ authorizationUrl: string; state: string }>(`/api/oauth/authorize/${mcpId}`),
+  getOAuthStatus: (mcpId: string) => fetchJSON<{ configured: boolean; authenticated: boolean; expiresAt?: number; hasRefreshToken: boolean }>(`/api/oauth/status/${mcpId}`),
+  revokeOAuth: (mcpId: string) => postJSON<{ success: boolean }>(`/api/oauth/revoke/${mcpId}`, {}),
   updateMcpServerConfig: (mcpId: string, updates: Partial<{
     name: string;
     description?: string;

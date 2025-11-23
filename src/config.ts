@@ -68,6 +68,16 @@ export interface PolicyRule {
  * 2. Docker-based - docker run with MCP server images
  * 3. Remote endpoint - HTTP/SSE connection to remote MCP server
  */
+export interface OAuthConfig {
+  provider: string; // OAuth provider type (e.g., "notion", "slack", "linear", "github", or any custom provider)
+  clientId?: string; // OAuth client ID (can be stored in env vars)
+  clientSecret?: string; // OAuth client secret (should be in env vars, not config)
+  authorizationUrl: string; // OAuth authorization endpoint
+  tokenUrl: string; // OAuth token endpoint
+  scopes?: string[]; // Required OAuth scopes
+  redirectUri?: string; // OAuth redirect URI (defaults to gateway callback URL)
+}
+
 export interface McpServerProxyConfig {
   name: string; // Unique identifier for this proxy
   description?: string;
@@ -82,6 +92,8 @@ export interface McpServerProxyConfig {
   enabled?: boolean; // Whether this MCP server proxy is enabled (default: false)
   // Optional: icon for the MCP server (can be a Lucide icon name or image URL)
   icon?: string;
+  // OAuth configuration (for OAuth-based authentication)
+  oauth?: OAuthConfig;
   // Default policy for all tools from this server
   defaultPolicy: {
     allowedRoles: string[];

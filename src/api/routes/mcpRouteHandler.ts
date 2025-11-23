@@ -3,7 +3,7 @@ import { BaseRouteHandler } from "./baseRouteHandler.js";
 import { RequestParser } from "../middleware/requestParser.js";
 import { getMcpServerProxies } from "../../config.js";
 import { clearConfigCache } from "../../config.js";
-import type { Sensitivity } from "../../config.js";
+import type { Sensitivity, OAuthConfig } from "../../config.js";
 import { ErrorHandler } from "../middleware/errorHandler.js";
 
 export class McpRouteHandler extends BaseRouteHandler {
@@ -102,6 +102,7 @@ export class McpRouteHandler extends BaseRouteHandler {
         cwd?: string;
         enabled?: boolean;
         icon?: string;
+        oauth?: OAuthConfig;
         defaultPolicy: {
           allowedRoles: string[];
           sensitivity: Sensitivity;
@@ -176,6 +177,12 @@ export class McpRouteHandler extends BaseRouteHandler {
     cwd?: string;
     enabled?: boolean;
     icon?: string;
+    oauth?: {
+      provider: string;
+      authorizationUrl: string;
+      tokenUrl: string;
+      scopes?: string[];
+    };
     defaultPolicy: {
       allowedRoles: string[];
       sensitivity: string;
@@ -201,6 +208,12 @@ export class McpRouteHandler extends BaseRouteHandler {
       cwd: proxyConfig.cwd,
       enabled: proxyConfig.enabled,
       icon: proxyConfig.icon,
+      oauth: proxyConfig.oauth ? {
+        provider: proxyConfig.oauth.provider,
+        authorizationUrl: proxyConfig.oauth.authorizationUrl,
+        tokenUrl: proxyConfig.oauth.tokenUrl,
+        scopes: proxyConfig.oauth.scopes,
+      } : undefined,
       defaultPolicy: {
         allowedRoles: proxyConfig.defaultPolicy.allowedRoles,
         sensitivity: proxyConfig.defaultPolicy.sensitivity,
@@ -222,6 +235,12 @@ export class McpRouteHandler extends BaseRouteHandler {
       cwd?: string;
       enabled?: boolean;
       icon?: string;
+      oauth?: {
+        provider: string;
+        authorizationUrl: string;
+        tokenUrl: string;
+        scopes?: string[];
+      };
       defaultPolicy: {
         allowedRoles: string[];
         sensitivity: Sensitivity;
@@ -240,6 +259,7 @@ export class McpRouteHandler extends BaseRouteHandler {
     cwd?: string;
     enabled?: boolean;
     icon?: string;
+    oauth?: OAuthConfig;
     defaultPolicy: {
       allowedRoles: string[];
       sensitivity: Sensitivity;
@@ -265,6 +285,9 @@ export class McpRouteHandler extends BaseRouteHandler {
     if (updates.cwd !== undefined) existingConfig.cwd = updates.cwd;
     if (updates.enabled !== undefined) existingConfig.enabled = updates.enabled;
     if (updates.icon !== undefined) existingConfig.icon = updates.icon;
+    if (updates.oauth !== undefined) {
+      existingConfig.oauth = updates.oauth as OAuthConfig;
+    }
     if (updates.defaultPolicy !== undefined) existingConfig.defaultPolicy = updates.defaultPolicy;
     if (updates.disabledTools !== undefined) existingConfig.disabledTools = updates.disabledTools;
     
@@ -283,6 +306,7 @@ export class McpRouteHandler extends BaseRouteHandler {
       cwd: existingConfig.cwd,
       enabled: existingConfig.enabled,
       icon: existingConfig.icon,
+      oauth: existingConfig.oauth,
       defaultPolicy: {
         allowedRoles: existingConfig.defaultPolicy.allowedRoles,
         sensitivity: existingConfig.defaultPolicy.sensitivity,
