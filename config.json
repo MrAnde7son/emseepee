@@ -125,8 +125,11 @@
       "description": "Slack MCP server for messages, channels, and notifications",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/slack.svg",
       "serverUrl": "https://slack.com/api/mcp",
-      "headers": {
-        "Authorization": "Bearer ${SLACK_BOT_TOKEN}"
+      "oauth": {
+        "provider": "slack",
+        "authorizationUrl": "https://slack.com/oauth/v2/authorize",
+        "tokenUrl": "https://slack.com/api/oauth.v2.access",
+        "scopes": ["channels:read", "chat:write", "users:read"]
       },
       "enabled": false,
       "defaultPolicy": {
@@ -142,6 +145,12 @@
       "description": "Linear MCP server for issues, cycles, and project tracking",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/linear.svg",
       "serverUrl": "https://api.linear.app/mcp",
+      "oauth": {
+        "provider": "linear",
+        "authorizationUrl": "https://linear.app/oauth/authorize",
+        "tokenUrl": "https://api.linear.app/oauth/token",
+        "scopes": ["read", "write"]
+      },
       "enabled": false,
       "defaultPolicy": {
         "allowedRoles": [
@@ -257,6 +266,12 @@
       "description": "Sentry MCP server for error tracking, issues, and events",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/sentry.svg",
       "serverUrl": "https://mcp.sentry.dev/mcp",
+      "oauth": {
+        "provider": "sentry",
+        "authorizationUrl": "https://sentry.io/oauth/authorize/",
+        "tokenUrl": "https://sentry.io/oauth/token/",
+        "scopes": ["org:read", "project:read", "event:read"]
+      },
       "enabled": false,
       "defaultPolicy": {
         "allowedRoles": [
@@ -311,8 +326,11 @@
       "description": "Stripe MCP server for payments, invoices, and customers",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/stripe.svg",
       "serverUrl": "https://api.stripe.com/v1/mcp",
-      "headers": {
-        "Authorization": "Bearer ${STRIPE_API_KEY}"
+      "oauth": {
+        "provider": "stripe",
+        "authorizationUrl": "https://connect.stripe.com/oauth/authorize",
+        "tokenUrl": "https://connect.stripe.com/oauth/token",
+        "scopes": ["read_write"]
       },
       "enabled": false,
       "defaultPolicy": {
@@ -327,8 +345,11 @@
       "description": "HubSpot MCP server for contacts and CRM pipeline",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/hubspot.svg",
       "serverUrl": "https://api.hubapi.com/mcp",
-      "headers": {
-        "Authorization": "Bearer ${HUBSPOT_API_KEY}"
+      "oauth": {
+        "provider": "hubspot",
+        "authorizationUrl": "https://app.hubspot.com/oauth/authorize",
+        "tokenUrl": "https://api.hubapi.com/oauth/v1/token",
+        "scopes": ["contacts", "content", "crm.objects.contacts.read"]
       },
       "enabled": false,
       "defaultPolicy": {
@@ -344,8 +365,11 @@
       "description": "Jira/Atlassian MCP server for issues, sprints, and roadmaps",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/jira.svg",
       "serverUrl": "${JIRA_BASE_URL}/rest/api/3/mcp",
-      "headers": {
-        "Authorization": "Basic ${JIRA_EMAIL}:${JIRA_API_TOKEN}"
+      "oauth": {
+        "provider": "jira",
+        "authorizationUrl": "${JIRA_BASE_URL}/plugins/servlet/oauth/authorize",
+        "tokenUrl": "${JIRA_BASE_URL}/plugins/servlet/oauth/access-token",
+        "scopes": ["read:jira-work", "write:jira-work"]
       },
       "enabled": false,
       "defaultPolicy": {

@@ -109,6 +109,12 @@ export const Api = {
     cwd?: string;
     enabled?: boolean;
     icon?: string;
+    oauth?: {
+      provider: string;
+      authorizationUrl: string;
+      tokenUrl: string;
+      scopes?: string[];
+    };
     defaultPolicy: {
       allowedRoles: string[];
       sensitivity: string;
@@ -126,6 +132,12 @@ export const Api = {
     cwd?: string;
     enabled?: boolean;
     icon?: string;
+    oauth?: {
+      provider: string;
+      authorizationUrl: string;
+      tokenUrl: string;
+      scopes?: string[];
+    };
     defaultPolicy: {
       allowedRoles: string[];
       sensitivity: string;
