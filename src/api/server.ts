@@ -1,13 +1,12 @@
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import { URL } from "url";
 import { logger } from "../logger.js";
-import { getToolRegistry, getMcpServerProxies, clearConfigCache } from "../config.js";
+import { getToolRegistry, getMcpServerProxies, clearConfigCache, isThirdPartyToolConfig } from "../config.js";
 import { getPolicyRules } from "../config.js";
-import { loadConfigFromFile } from "../configLoader.js";
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import type { PolicyRule, PolicyOperation, PolicyRuleCondition, Sensitivity } from "../config.js";
+import type { PolicyRule, PolicyOperation, PolicyRuleCondition, Sensitivity, ToolInputSchema } from "../config.js";
 import { generateToken, verifyToken, extractTokenFromHeader } from "./auth.js";
 // Types matching dashboard types
 type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "bedrock" | "copilot" | "langchain" | "custom";
@@ -652,6 +651,115 @@ async function getTools(
   const paginatedTools = filteredTools.slice(startIndex, endIndex);
   
   return { data: paginatedTools, total, page, limit, totalPages };
+}
+
+/**
+ * Get input schema for a tool
+ */
+async function getToolInputSchema(toolId: string): Promise<Record<string, { type: string; description?: string; required?: boolean }>> {
+  const toolRegistry = await getToolRegistry();
+  
+  // Check built-in tools
+  for (const [category, categoryTools] of Object.entries(toolRegistry)) {
+    if (categoryTools[toolId]) {
+      const toolConfig = categoryTools[toolId];
+      
+      // For third-party tools, return their inputSchema
+      if (category === "third_party" && isThirdPartyToolConfig(toolConfig) && toolConfig.inputSchema) {
+        const schema: Record<string, { type: string; description?: string; required?: boolean }> = {};
+        const inputSchema = toolConfig.inputSchema as ToolInputSchema;
+        for (const [key, field] of Object.entries(inputSchema)) {
+          schema[key] = {
+            type: field.type,
+            description: field.description,
+            required: field.required,
+          };
+        }
+        return schema;
+      }
+      
+      // For built-in tools, return known schemas
+      if (toolId === "file_read_gateway") {
+        return {
+          path: { type: "string", description: "File path to read (absolute or project-relative)", required: true },
+          encoding: { type: "string", description: "File encoding", required: false },
+        };
+      }
+      if (toolId === "file_write_gateway") {
+        return {
+          path: { type: "string", description: "File path to write (absolute or project-relative)", required: true },
+          contents: { type: "string", description: "Content to write to the file", required: true },
+          encoding: { type: "string", description: "File encoding", required: false },
+        };
+      }
+      if (toolId === "file_search_gateway") {
+        return {
+          pattern: { type: "string", description: "Search pattern or query string to find files", required: true },
+          directory: { type: "string", description: "Directory to search in", required: false },
+          fileType: { type: "string", description: "Optional file type filter (e.g., '*.ts', '*.js')", required: false },
+          limit: { type: "number", description: "Maximum number of results", required: false },
+        };
+      }
+      if (toolId === "web_search_gateway") {
+        return {
+          query: { type: "string", description: "Search query", required: true },
+          limit: { type: "number", description: "Maximum number of results", required: false },
+        };
+      }
+      if (toolId === "terminal_command") {
+        return {
+          command: { type: "string", description: "The command to execute (e.g., 'ls', 'git', 'npm')", required: true },
+          args: { type: "array", description: "Array of command arguments", required: false },
+          cwd: { type: "string", description: "Working directory for the command", required: false },
+          env: { type: "object", description: "Additional environment variables", required: false },
+          timeout: { type: "number", description: "Timeout in milliseconds", required: false },
+          shell: { type: "boolean", description: "Whether to execute the command in a shell", required: false },
+        };
+      }
+    }
+  }
+  
+  // Check MCP tools
+  const mcpProxies = await getMcpServerProxies();
+  for (const [proxyName, proxyConfig] of Object.entries(mcpProxies)) {
+    if (proxyConfig.enabled === true) {
+      try {
+        const { McpServerProxyManager } = await import("../tools/handlers/McpServerProxyHandler.js");
+        const proxyManager = new McpServerProxyManager();
+        const discoveredTools = await proxyManager.connectAndDiscoverTools(proxyConfig);
+        
+        for (const tool of discoveredTools) {
+          if (tool.name === toolId || `${proxyName}:${tool.name}` === toolId) {
+            // Convert MCP schema to our format
+            const schema: Record<string, { type: string; description?: string; required?: boolean }> = {};
+            
+            if (tool.inputSchema && typeof tool.inputSchema === "object" && "properties" in tool.inputSchema) {
+              const properties = (tool.inputSchema as any).properties || {};
+              const required = (tool.inputSchema as any).required || [];
+              
+              for (const [key, prop] of Object.entries(properties)) {
+                const propObj = prop as any;
+                schema[key] = {
+                  type: propObj.type || "string",
+                  description: propObj.description,
+                  required: required.includes(key),
+                };
+              }
+            }
+            
+            await proxyManager.cleanup();
+            return schema;
+          }
+        }
+        
+        await proxyManager.cleanup();
+      } catch (error) {
+        // Continue to next proxy
+      }
+    }
+  }
+  
+  throw new Error(`Tool not found: ${toolId}`);
 }
 
 /**
@@ -1459,6 +1567,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const tools = await getTools(page, limit, searchQuery);
       sendJSON(res, 200, tools);
       return;
+    }
+    
+    // Get tool details including input schema
+    if (path.startsWith("/api/tools/") && method === "GET") {
+      const toolId = path.replace("/api/tools/", "");
+      if (toolId && !toolId.includes("/")) {
+        try {
+          const toolSchema = await getToolInputSchema(toolId);
+          sendJSON(res, 200, { inputSchema: toolSchema });
+          return;
+        } catch (error) {
+          sendJSON(res, 404, { error: error instanceof Error ? error.message : "Tool not found" });
+          return;
+        }
+      }
     }
     
     // Enable/disable tool

@@ -57,6 +57,7 @@ export const Api = {
     const searchStr = params.toString() ? `?${params.toString()}` : "";
     return fetchJSON<{ data: Tool[]; total: number; page: number; limit: number; totalPages: number }>(`/api/tools${searchStr}`);
   },
+  getToolInputSchema: (toolId: string) => fetchJSON<{ inputSchema: Record<string, { type: string; description?: string; required?: boolean }> }>(`/api/tools/${toolId}`),
   enableTool: (toolId: string) => postJSON<{ success: boolean }>(`/api/tools/${toolId}/enable`, {}),
   disableTool: (toolId: string) => postJSON<{ success: boolean }>(`/api/tools/${toolId}/disable`, {}),
   enableMcpServer: (mcpId: string) => postJSON<{ success: boolean }>(`/api/mcp/${mcpId}/enable`, {}),

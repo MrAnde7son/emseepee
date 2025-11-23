@@ -34,6 +34,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Info } from "lucide-react";
 
 // Common agent roles - can be extracted from policies or config
 const COMMON_AGENT_ROLES = ["coder_bot", "research_bot", "admin"];
@@ -79,6 +86,8 @@ export default function PoliciesPage() {
   const [webhookUrl, setWebhookUrl] = useState<string>("");
   const [webhookMethod, setWebhookMethod] = useState<"GET" | "POST" | "PUT">("POST");
   const [conditionArgs, setConditionArgs] = useState<Record<string, string>>({});
+  const [conditionEnv, setConditionEnv] = useState<string>("");
+  const [conditionCategory, setConditionCategory] = useState<string>("");
   const [updatingPolicy, setUpdatingPolicy] = useState(false);
   const [creatingPolicy, setCreatingPolicy] = useState(false);
   const [newPolicyData, setNewPolicyData] = useState<Partial<Policy>>({
@@ -96,6 +105,10 @@ export default function PoliciesPage() {
   const [newPolicyWebhookUrl, setNewPolicyWebhookUrl] = useState<string>("");
   const [newPolicyWebhookMethod, setNewPolicyWebhookMethod] = useState<"GET" | "POST" | "PUT">("POST");
   const [newPolicyConditionArgs, setNewPolicyConditionArgs] = useState<Record<string, string>>({});
+  const [newPolicyConditionEnv, setNewPolicyConditionEnv] = useState<string>("");
+  const [newPolicyConditionCategory, setNewPolicyConditionCategory] = useState<string>("");
+  const [availableToolArgs, setAvailableToolArgs] = useState<Record<string, { type: string; description?: string; required?: boolean }>>({});
+  const [newPolicyAvailableToolArgs, setNewPolicyAvailableToolArgs] = useState<Record<string, { type: string; description?: string; required?: boolean }>>({});
   
   const isUpdatingFromUrl = useRef(false);
   const prevSearchParamsRef = useRef<string>("");
@@ -325,6 +338,26 @@ export default function PoliciesPage() {
         setConditionArgs({});
       }
       
+      // Extract env condition
+      if (fullPolicy.condition?.env) {
+        const env = Array.isArray(fullPolicy.condition.env) 
+          ? fullPolicy.condition.env[0] 
+          : fullPolicy.condition.env;
+        setConditionEnv(env);
+      } else {
+        setConditionEnv("");
+      }
+      
+      // Extract category condition
+      if (fullPolicy.condition?.category) {
+        const category = Array.isArray(fullPolicy.condition.category)
+          ? fullPolicy.condition.category[0]
+          : fullPolicy.condition.category;
+        setConditionCategory(category);
+      } else {
+        setConditionCategory("");
+      }
+      
       // Extract scope target from condition if not already set
       if (!fullPolicy.scopeTarget && fullPolicy.condition) {
         if (fullPolicy.condition.toolName) {
@@ -344,11 +377,56 @@ export default function PoliciesPage() {
           setScopeTarget(providerId);
         }
       }
+      
+      // Fetch tool input schema if scope is tool
+      if (fullPolicy.scope === "tool" && fullPolicy.scopeTarget) {
+        try {
+          const schemaResponse = await Api.getToolInputSchema(fullPolicy.scopeTarget);
+          setAvailableToolArgs(schemaResponse.inputSchema);
+        } catch (error) {
+          console.error("Failed to fetch tool schema:", error);
+          setAvailableToolArgs({});
+        }
+      } else {
+        setAvailableToolArgs({});
+      }
     } catch (error) {
       console.error("Failed to fetch policy details:", error);
       alert(`Failed to load policy: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   };
+  
+  // Fetch tool input schema when scopeTarget changes for edit dialog
+  useEffect(() => {
+    if (editingPolicyData?.scope === "tool" && scopeTarget) {
+      Api.getToolInputSchema(scopeTarget)
+        .then((response) => {
+          setAvailableToolArgs(response.inputSchema);
+        })
+        .catch((error) => {
+          console.error("Failed to fetch tool schema:", error);
+          setAvailableToolArgs({});
+        });
+    } else {
+      setAvailableToolArgs({});
+    }
+  }, [scopeTarget, editingPolicyData?.scope]);
+  
+  // Fetch tool input schema when scopeTarget changes for create dialog
+  useEffect(() => {
+    if (newPolicyData.scope === "tool" && newPolicyScopeTarget) {
+      Api.getToolInputSchema(newPolicyScopeTarget)
+        .then((response) => {
+          setNewPolicyAvailableToolArgs(response.inputSchema);
+        })
+        .catch((error) => {
+          console.error("Failed to fetch tool schema:", error);
+          setNewPolicyAvailableToolArgs({});
+        });
+    } else {
+      setNewPolicyAvailableToolArgs({});
+    }
+  }, [newPolicyScopeTarget, newPolicyData.scope]);
 
   const handleUpdatePolicy = async () => {
     if (!editingPolicy || !editingPolicyData) return;
@@ -385,7 +463,7 @@ export default function PoliciesPage() {
       delete condition.agentRole;
       delete condition.providerId;
       delete condition.sensitivity;
-      delete condition.category;
+      // Note: category can still be used as an additional filter even with global scope
     }
     
     // Update condition args
@@ -408,6 +486,20 @@ export default function PoliciesPage() {
       }
     } else {
       delete condition.args;
+    }
+    
+    // Update env condition
+    if (conditionEnv.trim()) {
+      condition.env = conditionEnv.trim();
+    } else {
+      delete condition.env;
+    }
+    
+    // Update category condition
+    if (conditionCategory.trim()) {
+      condition.category = conditionCategory.trim();
+    } else {
+      delete condition.category;
     }
     
     // Build action
@@ -460,6 +552,8 @@ export default function PoliciesPage() {
       setWebhookUrl("");
       setWebhookMethod("POST");
       setConditionArgs({});
+      setConditionEnv("");
+      setConditionCategory("");
     } catch (error) {
       console.error("Failed to update policy:", error);
       alert(`Failed to update policy: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -502,7 +596,7 @@ export default function PoliciesPage() {
     if (Object.keys(newPolicyConditionArgs).length > 0) {
       const parsedArgs: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(newPolicyConditionArgs)) {
-        if (value.trim()) {
+        if (key.trim() && value.trim()) {
           // Try to parse as JSON, otherwise use as string
           try {
             parsedArgs[key] = JSON.parse(value);
@@ -514,6 +608,16 @@ export default function PoliciesPage() {
       if (Object.keys(parsedArgs).length > 0) {
         condition.args = parsedArgs;
       }
+    }
+    
+    // Add env condition
+    if (newPolicyConditionEnv.trim()) {
+      condition.env = newPolicyConditionEnv.trim();
+    }
+    
+    // Add category condition
+    if (newPolicyConditionCategory.trim()) {
+      condition.category = newPolicyConditionCategory.trim();
     }
     
     // Build action
@@ -838,14 +942,14 @@ export default function PoliciesPage() {
           setNewPolicyConditionArgs({});
         }
       }}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Create Policy</DialogTitle>
             <DialogDescription>
-              Create a new policy rule. Scope determines what the policy applies to: Tool (specific tools), Agent (specific agent roles), Provider (specific providers like Cursor, Gemini), MCP Server (specific MCP servers like GitHub), or Global (all operations).
+              Create a new policy rule.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 overflow-y-auto flex-1 min-h-0">
             <div className="space-y-2">
               <label htmlFor="create-name" className="text-sm font-medium">
                 Name <span className="text-red-500">*</span>
@@ -928,9 +1032,21 @@ export default function PoliciesPage() {
             </div>
             {newPolicyData.effect === "custom" && (
               <div className="space-y-2">
-                <label htmlFor="create-custom-code" className="text-sm font-medium">
-                  Custom Code <span className="text-red-500">*</span>
-                </label>
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor="create-custom-code" className="text-sm font-medium">
+                    Custom Code <span className="text-red-500">*</span>
+                  </label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p>Available variables: tool, agentId, agentRole, env, args, log(message, data?), result</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
                 <textarea
                   id="create-custom-code"
                   value={newPolicyCustomCode}
@@ -939,9 +1055,6 @@ export default function PoliciesPage() {
                   className="w-full min-h-[200px] px-3 py-2 text-sm border border-input bg-background rounded-md font-mono resize-y"
                   style={{ fontFamily: 'monospace' }}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Available variables: tool, agentId, agentRole, env, args, log(message, data?), result
-                </p>
               </div>
             )}
             {newPolicyData.effect === "webhook" && (
@@ -975,38 +1088,88 @@ export default function PoliciesPage() {
               </div>
             )}
             <div className="space-y-2">
-              <label htmlFor="create-action-message" className="text-sm font-medium">
-                Action Message
-              </label>
+              <div className="flex items-center gap-1.5">
+                <label htmlFor="create-action-message" className="text-sm font-medium">
+                  Action Message
+                </label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>This message will be logged or displayed when the policy is triggered</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <Input
                 id="create-action-message"
                 value={newPolicyActionMessage}
                 onChange={(e) => setNewPolicyActionMessage(e.target.value)}
                 placeholder="Optional message to log or display when policy matches"
               />
-              <p className="text-xs text-muted-foreground">
-                This message will be logged or displayed when the policy is triggered
-              </p>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Condition Arguments</label>
-              <p className="text-xs text-muted-foreground mb-2">
-                Define conditions on tool arguments (e.g., path: "secret" to match paths containing "secret")
-              </p>
+              <div className="flex items-center gap-1.5">
+                <label className="text-sm font-medium">Condition Arguments</label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Define conditions on tool arguments (e.g., path: &quot;secret&quot; to match paths containing &quot;secret&quot;)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <div className="space-y-2">
                 {Object.entries(newPolicyConditionArgs).map(([key, value], idx) => (
                   <div key={idx} className="flex gap-2">
-                    <Input
-                      placeholder="Argument name (e.g., path)"
-                      value={key}
-                      onChange={(e) => {
-                        const newArgs = { ...newPolicyConditionArgs };
-                        delete newArgs[key];
-                        newArgs[e.target.value] = value;
-                        setNewPolicyConditionArgs(newArgs);
-                      }}
-                      className="flex-1"
-                    />
+                    {newPolicyData.scope === "tool" && newPolicyScopeTarget && Object.keys(newPolicyAvailableToolArgs).length > 0 ? (
+                      <Select
+                        value={key}
+                        onValueChange={(newKey) => {
+                          const newArgs = { ...newPolicyConditionArgs };
+                          delete newArgs[key];
+                          newArgs[newKey] = value;
+                          setNewPolicyConditionArgs(newArgs);
+                        }}
+                      >
+                        <SelectTrigger className="flex-1 min-w-0">
+                          <SelectValue placeholder="Select argument" />
+                        </SelectTrigger>
+                        <SelectContent className="max-w-md">
+                          {Object.entries(newPolicyAvailableToolArgs).map(([argName, argInfo]) => (
+                            <SelectItem key={argName} value={argName} className="py-2">
+                              <div className="flex flex-col gap-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-medium">{argName}</span>
+                                  {argInfo.required && <span className="text-red-500 text-xs">*</span>}
+                                  <span className="text-xs text-muted-foreground">({argInfo.type})</span>
+                                </div>
+                                {argInfo.description && (
+                                  <span className="text-xs text-muted-foreground line-clamp-1">{argInfo.description}</span>
+                                )}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        placeholder="Argument name (e.g., path)"
+                        value={key}
+                        onChange={(e) => {
+                          const newArgs = { ...newPolicyConditionArgs };
+                          delete newArgs[key];
+                          newArgs[e.target.value] = value;
+                          setNewPolicyConditionArgs(newArgs);
+                        }}
+                        className="flex-1"
+                      />
+                    )}
                     <Input
                       placeholder="Value (string or JSON)"
                       value={value}
@@ -1034,11 +1197,71 @@ export default function PoliciesPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    setNewPolicyConditionArgs({ ...newPolicyConditionArgs, "": "" });
+                    if (newPolicyData.scope === "tool" && newPolicyScopeTarget && Object.keys(newPolicyAvailableToolArgs).length > 0) {
+                      // Pre-select first available argument
+                      const firstArg = Object.keys(newPolicyAvailableToolArgs)[0];
+                      setNewPolicyConditionArgs({ ...newPolicyConditionArgs, [firstArg]: "" });
+                    } else {
+                      setNewPolicyConditionArgs({ ...newPolicyConditionArgs, "": "" });
+                    }
                   }}
                 >
                   Add Argument Condition
                 </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor="create-condition-env" className="text-sm font-medium">
+                    Environment Filter
+                  </label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Optional: Match only in specific environment</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <Input
+                  id="create-condition-env"
+                  value={newPolicyConditionEnv}
+                  onChange={(e) => setNewPolicyConditionEnv(e.target.value)}
+                  placeholder="e.g., prod, dev, staging"
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor="create-condition-category" className="text-sm font-medium">
+                    Tool Category Filter
+                  </label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Optional: Match only tools in this category</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <Select value={newPolicyConditionCategory || undefined} onValueChange={(value) => setNewPolicyConditionCategory(value === "__none__" ? "" : value)}>
+                  <SelectTrigger id="create-condition-category">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    <SelectItem value="file">File</SelectItem>
+                    <SelectItem value="web">Web</SelectItem>
+                    <SelectItem value="terminal">Terminal</SelectItem>
+                    <SelectItem value="third_party">Third Party</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             {newPolicyData.scope !== "global" && (
@@ -1138,16 +1361,30 @@ export default function PoliciesPage() {
               </div>
             )}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Policy Behavior</label>
+              <div className="flex items-center gap-1.5">
+                <label className="text-sm font-medium">Policy Behavior</label>
+              </div>
               <div className="flex items-center space-x-2">
                 <Checkbox
                   id="create-stop-on-match"
                   checked={newPolicyStopOnMatch}
                   onCheckedChange={(checked) => setNewPolicyStopOnMatch(checked === true)}
                 />
-                <label htmlFor="create-stop-on-match" className="text-sm cursor-pointer">
-                  Stop on Match (stop evaluating other policies after this one matches)
-                </label>
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor="create-stop-on-match" className="text-sm cursor-pointer">
+                    Stop on Match
+                  </label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Stop evaluating other policies after this one matches</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </div>
             </div>
             <div className="space-y-2">
@@ -1184,6 +1421,9 @@ export default function PoliciesPage() {
                 setNewPolicyWebhookUrl("");
                 setNewPolicyWebhookMethod("POST");
                 setNewPolicyConditionArgs({});
+                setNewPolicyConditionEnv("");
+                setNewPolicyConditionCategory("");
+                setNewPolicyAvailableToolArgs({});
               }}
               disabled={creatingPolicy}
             >
@@ -1211,16 +1451,19 @@ export default function PoliciesPage() {
             setWebhookUrl("");
             setWebhookMethod("POST");
             setConditionArgs({});
+            setConditionEnv("");
+            setConditionCategory("");
+            setAvailableToolArgs({});
           }
         }}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
             <DialogHeader>
               <DialogTitle>Edit Policy</DialogTitle>
               <DialogDescription>
-                Update the policy settings. Scope determines what the policy applies to: Tool (specific tools), Agent (specific agent roles), Provider (specific providers like Cursor, Gemini), MCP Server (specific MCP servers like GitHub), or Global (all operations).
+                Update the policy settings.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <div className="space-y-4 py-4 overflow-y-auto flex-1 min-h-0">
               <div className="space-y-2">
                 <label htmlFor="edit-name" className="text-sm font-medium">
                   Name
@@ -1304,9 +1547,21 @@ export default function PoliciesPage() {
               </div>
               {editingPolicyData.effect === "custom" && (
                 <div className="space-y-2">
-                  <label htmlFor="edit-custom-code" className="text-sm font-medium">
-                    Custom Code <span className="text-red-500">*</span>
-                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <label htmlFor="edit-custom-code" className="text-sm font-medium">
+                      Custom Code <span className="text-red-500">*</span>
+                    </label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>Available variables: tool, agentId, agentRole, env, args, log(message, data?), result</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                   <textarea
                     id="edit-custom-code"
                     value={customCode}
@@ -1315,9 +1570,6 @@ export default function PoliciesPage() {
                     className="w-full min-h-[200px] px-3 py-2 text-sm border border-input bg-background rounded-md font-mono resize-y"
                     style={{ fontFamily: 'monospace' }}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Available variables: tool, agentId, agentRole, env, args, log(message, data?), result
-                  </p>
                 </div>
               )}
               {editingPolicyData.effect === "webhook" && (
@@ -1351,38 +1603,88 @@ export default function PoliciesPage() {
                 </div>
               )}
               <div className="space-y-2">
-                <label htmlFor="edit-action-message" className="text-sm font-medium">
-                  Action Message
-                </label>
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor="edit-action-message" className="text-sm font-medium">
+                    Action Message
+                  </label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>This message will be logged or displayed when the policy is triggered</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
                 <Input
                   id="edit-action-message"
                   value={actionMessage}
                   onChange={(e) => setActionMessage(e.target.value)}
                   placeholder="Optional message to log or display when policy matches"
                 />
-                <p className="text-xs text-muted-foreground">
-                  This message will be logged or displayed when the policy is triggered
-                </p>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Condition Arguments</label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Define conditions on tool arguments (e.g., path: "secret" to match paths containing "secret")
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-sm font-medium">Condition Arguments</label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Define conditions on tool arguments (e.g., path: &quot;secret&quot; to match paths containing &quot;secret&quot;)</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
                 <div className="space-y-2">
                   {Object.entries(conditionArgs).map(([key, value], idx) => (
                     <div key={idx} className="flex gap-2">
-                      <Input
-                        placeholder="Argument name (e.g., path)"
-                        value={key}
-                        onChange={(e) => {
-                          const newArgs = { ...conditionArgs };
-                          delete newArgs[key];
-                          newArgs[e.target.value] = value;
-                          setConditionArgs(newArgs);
-                        }}
-                        className="flex-1"
-                      />
+                      {editingPolicyData.scope === "tool" && scopeTarget && Object.keys(availableToolArgs).length > 0 ? (
+                        <Select
+                          value={key}
+                          onValueChange={(newKey) => {
+                            const newArgs = { ...conditionArgs };
+                            delete newArgs[key];
+                            newArgs[newKey] = value;
+                            setConditionArgs(newArgs);
+                          }}
+                        >
+                          <SelectTrigger className="flex-1 min-w-0">
+                            <SelectValue placeholder="Select argument" />
+                          </SelectTrigger>
+                          <SelectContent className="max-w-md">
+                            {Object.entries(availableToolArgs).map(([argName, argInfo]) => (
+                              <SelectItem key={argName} value={argName} className="py-2">
+                                <div className="flex flex-col gap-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-medium">{argName}</span>
+                                    {argInfo.required && <span className="text-red-500 text-xs">*</span>}
+                                    <span className="text-xs text-muted-foreground">({argInfo.type})</span>
+                                  </div>
+                                  {argInfo.description && (
+                                    <span className="text-xs text-muted-foreground line-clamp-1">{argInfo.description}</span>
+                                  )}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          placeholder="Argument name (e.g., path)"
+                          value={key}
+                          onChange={(e) => {
+                            const newArgs = { ...conditionArgs };
+                            delete newArgs[key];
+                            newArgs[e.target.value] = value;
+                            setConditionArgs(newArgs);
+                          }}
+                          className="flex-1"
+                        />
+                      )}
                       <Input
                         placeholder="Value (string or JSON)"
                         value={value}
@@ -1410,14 +1712,74 @@ export default function PoliciesPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      setConditionArgs({ ...conditionArgs, "": "" });
+                      if (editingPolicyData.scope === "tool" && scopeTarget && Object.keys(availableToolArgs).length > 0) {
+                        // Pre-select first available argument
+                        const firstArg = Object.keys(availableToolArgs)[0];
+                        setConditionArgs({ ...conditionArgs, [firstArg]: "" });
+                      } else {
+                        setConditionArgs({ ...conditionArgs, "": "" });
+                      }
                     }}
                   >
-                    Add Argument Condition
-                  </Button>
-                </div>
+                  Add Argument Condition
+                </Button>
               </div>
-              {editingPolicyData.scope !== "global" && (
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor="edit-condition-env" className="text-sm font-medium">
+                    Environment Filter
+                  </label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Optional: Match only in specific environment</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <Input
+                  id="edit-condition-env"
+                  value={conditionEnv}
+                  onChange={(e) => setConditionEnv(e.target.value)}
+                  placeholder="e.g., prod, dev, staging"
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor="edit-condition-category" className="text-sm font-medium">
+                    Tool Category Filter
+                  </label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Optional: Match only tools in this category</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                <Select value={conditionCategory || undefined} onValueChange={(value) => setConditionCategory(value === "__none__" ? "" : value)}>
+                  <SelectTrigger id="edit-condition-category">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    <SelectItem value="file">File</SelectItem>
+                    <SelectItem value="web">Web</SelectItem>
+                    <SelectItem value="terminal">Terminal</SelectItem>
+                    <SelectItem value="third_party">Third Party</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {editingPolicyData.scope !== "global" && (
                 <div className="space-y-2">
                   <label htmlFor="edit-scope-target" className="text-sm font-medium">
                     {editingPolicyData.scope === "tool" && "Select Tool"}
@@ -1513,16 +1875,30 @@ export default function PoliciesPage() {
                 </div>
               )}
               <div className="space-y-2">
-                <label className="text-sm font-medium">Policy Behavior</label>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-sm font-medium">Policy Behavior</label>
+                </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="edit-stop-on-match"
                     checked={stopOnMatch}
                     onCheckedChange={(checked) => setStopOnMatch(checked === true)}
                   />
-                  <label htmlFor="edit-stop-on-match" className="text-sm cursor-pointer">
-                    Stop on Match (stop evaluating other policies after this one matches)
-                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <label htmlFor="edit-stop-on-match" className="text-sm cursor-pointer">
+                      Stop on Match
+                    </label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Stop evaluating other policies after this one matches</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                 </div>
               </div>
               <div className="space-y-2">
