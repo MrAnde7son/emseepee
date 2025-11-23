@@ -603,7 +603,7 @@
       ],
       "sensitivity": "medium",
       "category": "file",
-      "enabled": true
+      "enabled": false
     },
     "file_search_gateway": {
       "name": "file_search_gateway",
@@ -614,7 +614,7 @@
       ],
       "sensitivity": "medium",
       "category": "file",
-      "enabled": true
+      "enabled": false
     },
     "file_write_gateway": {
       "name": "file_write_gateway",
@@ -625,7 +625,7 @@
       ],
       "sensitivity": "high",
       "category": "file",
-      "enabled": true
+      "enabled": false
     },
     "web_search_gateway": {
       "name": "web_search_gateway",
@@ -637,7 +637,7 @@
       ],
       "sensitivity": "medium",
       "category": "web",
-      "enabled": true
+      "enabled": false
     },
     "terminal_command": {
       "name": "terminal_command",
@@ -648,7 +648,7 @@
       ],
       "sensitivity": "high",
       "category": "terminal",
-      "enabled": true
+      "enabled": false
     }
   },
   "policyRules": [
