@@ -177,8 +177,10 @@ export class OpenAIAdapter extends BaseProviderAdapter {
         metadata.tenantId = agentData.tenantId;
       }
       if (agentData.metadata) {
-        // Merge any additional metadata
-        Object.assign(metadata, agentData.metadata);
+        // Merge any additional metadata, converting values to strings
+        for (const [key, value] of Object.entries(agentData.metadata)) {
+          metadata[key] = String(value);
+        }
       }
       if (!agentData.enabled) {
         metadata.disabled = "true";
@@ -250,7 +252,11 @@ export class OpenAIAdapter extends BaseProviderAdapter {
       // Update metadata
       const existingAgent = await this.getAgent(providerNativeId);
       const existingMetadata = existingAgent?.metadata || {};
-      const newMetadata: Record<string, string> = { ...existingMetadata };
+      // Convert existing metadata to string values for OpenAI (which expects Record<string, string>)
+      const newMetadata: Record<string, string> = {};
+      for (const [key, value] of Object.entries(existingMetadata)) {
+        newMetadata[key] = String(value);
+      }
 
       if (updates.role !== undefined) {
         newMetadata.role = updates.role;
@@ -270,8 +276,10 @@ export class OpenAIAdapter extends BaseProviderAdapter {
         }
       }
       if (updates.metadata) {
-        // Merge additional metadata
-        Object.assign(newMetadata, updates.metadata);
+        // Merge additional metadata, converting values to strings
+        for (const [key, value] of Object.entries(updates.metadata)) {
+          newMetadata[key] = String(value);
+        }
       }
 
       updatePayload.metadata = newMetadata;
