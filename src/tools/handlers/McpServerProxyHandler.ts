@@ -97,8 +97,11 @@ export class McpServerProxyHandler extends BaseGatewayHandler {
  * 2. Docker-based - uses StdioClientTransport with docker command
  * 3. Remote endpoint - uses StreamableHTTPClientTransport (HTTP/SSE)
  *    - Uses POST requests for JSON-RPC messages over HTTP
+ *    - Supports Server-Sent Events (SSE) streaming for bidirectional communication
+ *    - Preserves stream integrity by not consuming response bodies prematurely
  *    - Requires authentication headers for OAuth/API key-based services
  *    - Supports custom headers via proxy config
+ *    - Follows agentgateway patterns for SSE proxy implementation
  */
 export class McpServerProxyManager {
   private clients: Map<string, Client> = new Map();
@@ -219,12 +222,28 @@ export class McpServerProxyManager {
       logger.info(`[MCP-GATEWAY] Using StreamableHTTP transport for: ${serverUrl.origin}`);
       logger.info(`[MCP-GATEWAY] Request headers: ${JSON.stringify(maskedHeaders)}`);
 
+      // Check if SSL verification should be disabled (for development/testing only)
+      const allowInsecure = process.env.MCP_ALLOW_INSECURE === "true" || 
+                           process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0";
+      if (allowInsecure) {
+        logger.warn(
+          `[MCP-GATEWAY] SSL certificate verification is DISABLED for ${proxyConfig.name}. ` +
+          `This is insecure and should only be used for development/testing. ` +
+          `Do not use in production environments.`
+        );
+      }
+
       transport = new StreamableHTTPClientTransport(serverUrl, {
         requestInit: {},
         fetch: async (url, init) => {
           try {
             const mergedHeaders = this.mergeHeaders(init?.headers, headers);
             const method = init?.method || "GET";
+            
+            if (!mergedHeaders.has("accept")) {
+              mergedHeaders.set("accept", "text/event-stream, application/json");
+            }
+            
             logger.info(`[MCP-GATEWAY] Fetching ${url} with method ${method}`);
             
             // Log request details for debugging
@@ -247,28 +266,55 @@ export class McpServerProxyManager {
             });
             logger.info(`[MCP-GATEWAY] Response headers: ${JSON.stringify(Object.keys(responseHeaders))}`);
             
-            // If response is not OK, log the response body for debugging
+            const contentType = response.headers.get("content-type");
+            const isSSEStream = contentType?.includes("text/event-stream");
+            if (isSSEStream) {
+              logger.info(`[MCP-GATEWAY] Detected SSE stream response - preserving stream for proxying`);
+            }
+            
             if (!response.ok) {
               let errorBody = "";
-              try {
-                const contentType = response.headers.get("content-type");
-                if (contentType?.includes("application/json")) {
+              let errorJson: { error?: string; error_description?: string } | null = null;
+              
+              if (!isSSEStream) {
+                try {
                   errorBody = await response.clone().text();
-                } else {
-                  errorBody = await response.clone().text();
+                  logger.error(`[MCP-GATEWAY] Error response body: ${errorBody.substring(0, 500)}`);
+                  
+                  // Try to parse as JSON for more detailed error messages
+                  try {
+                    errorJson = JSON.parse(errorBody);
+                  } catch {
+                    // Not JSON, that's okay
+                  }
+                } catch (bodyError) {
+                  logger.error(`[MCP-GATEWAY] Could not read error response body:`, bodyError);
                 }
-                logger.error(`[MCP-GATEWAY] Error response body: ${errorBody.substring(0, 500)}`);
-              } catch (bodyError) {
-                logger.error(`[MCP-GATEWAY] Could not read error response body:`, bodyError);
               }
               
-              // Provide helpful error messages based on status code
               if (response.status === 401 || response.status === 403) {
+                let errorDetails = "";
+                
+                if (errorJson?.error === "invalid_token") {
+                  if (errorJson.error_description?.includes("Invalid token format")) {
+                    errorDetails = `\n\nToken format error: The provided token format is invalid. ` +
+                      `For Notion MCP, you need a valid OAuth2 access token obtained through Notion's OAuth flow. ` +
+                      `Internal tokens (starting with 'ntn_') or API keys are not valid for MCP API access. ` +
+                      `Please complete the OAuth flow to obtain a proper access token. ` +
+                      `See: https://developers.notion.com/docs/authorization`;
+                  } else {
+                    errorDetails = `\n\nToken error: ${errorJson.error_description || errorJson.error}`;
+                  }
+                } else if (errorJson?.error_description) {
+                  errorDetails = `\n\nError details: ${errorJson.error_description}`;
+                }
+                
                 throw new Error(
                   `Authentication failed (${response.status}). ` +
                   `This MCP server requires authentication. ` +
                   `Please configure 'headers' in the MCP proxy config with appropriate credentials (e.g., Authorization header). ` +
-                  `For OAuth-based services like Notion, you may need to complete the OAuth flow first.`
+                  `For OAuth-based services like Notion, you need to complete the OAuth flow to obtain a valid access token.` +
+                  errorDetails
                 );
               }
               if (response.status === 404) {
@@ -289,31 +335,118 @@ export class McpServerProxyManager {
             return response;
           } catch (fetchError) {
             logger.error(`[MCP-GATEWAY] Fetch error for ${url}:`, fetchError);
+            
+            let errorMessage = "";
+            let errorCode = "";
+            let underlyingError: Error | null = null;
+            
             if (fetchError instanceof Error) {
-              const msg = (fetchError.message || "").toLowerCase();
+              errorMessage = fetchError.message || "";
+              errorCode = (fetchError as any).code || "";
+              
+              // Node.js fetch (undici) errors often have a 'cause' property with the underlying error
+              if ((fetchError as any).cause instanceof Error) {
+                underlyingError = (fetchError as any).cause;
+                errorCode = (underlyingError as any).code || errorCode;
+                if (underlyingError) {
+                  logger.error(`[MCP-GATEWAY] Underlying error: ${underlyingError.message}`);
+                  logger.error(`[MCP-GATEWAY] Error code: ${errorCode}`);
+                }
+              }
+              
+              const msg = errorMessage.toLowerCase();
+              const code = errorCode.toLowerCase();
               const errorStack = fetchError.stack || "";
               
               // Log the full error for debugging
-              logger.error(`[MCP-GATEWAY] Error details: ${fetchError.message}`);
-              logger.error(`[MCP-GATEWAY] Error stack: ${errorStack.substring(0, 500)}`);
+              logger.error(`[MCP-GATEWAY] Error details: ${errorMessage}`);
+              logger.error(`[MCP-GATEWAY] Error code: ${errorCode || "none"}`);
+              if (errorStack) {
+                logger.error(`[MCP-GATEWAY] Error stack: ${errorStack.substring(0, 500)}`);
+              }
               
-              if (msg.includes("enotfound") || msg.includes("getaddrinfo")) {
+              // Check error code first (more reliable than message)
+              if (code === "enotfound" || code === "getaddrinfo failed" || msg.includes("enotfound") || msg.includes("getaddrinfo")) {
                 throw new Error(
                   `DNS resolution failed for ${serverUrl.hostname}. ` +
-                  `Please verify the serverUrl is correct and the hostname is reachable.`
+                  `Please verify the serverUrl is correct and the hostname is reachable. ` +
+                  `Error code: ${errorCode || "ENOTFOUND"}`
                 );
               }
-              if (msg.includes("econnrefused")) {
+              
+              if (code === "econnrefused" || msg.includes("econnrefused")) {
                 throw new Error(
                   `Connection refused to ${serverUrl.hostname}:${serverUrl.port || 443}. ` +
-                  `The server may be down or not accepting connections.`
+                  `The server may be down or not accepting connections. ` +
+                  `Error code: ${errorCode || "ECONNREFUSED"}`
                 );
               }
-              if (msg.includes("cert") || msg.includes("ssl") || msg.includes("tls")) {
+              
+              if (code === "econnreset" || msg.includes("econnreset")) {
                 throw new Error(
-                  `SSL/TLS certificate error for ${serverUrl.hostname}. ` +
-                  `Please verify the server has a valid certificate.`
+                  `Connection reset by ${serverUrl.hostname}. ` +
+                  `The server closed the connection unexpectedly. ` +
+                  `Error code: ${errorCode || "ECONNRESET"}`
                 );
+              }
+              
+              if (code === "etimedout" || msg.includes("etimedout") || msg.includes("timeout")) {
+                throw new Error(
+                  `Connection timeout to ${serverUrl.hostname}. ` +
+                  `The server took too long to respond. ` +
+                  `Error code: ${errorCode || "ETIMEDOUT"}`
+                );
+              }
+              
+              // Handle SSL/TLS certificate errors
+              if (code === "self_signed_cert_in_chain" || 
+                  code === "certificate" || 
+                  code === "uable_to_verify_leaf_signature" || 
+                  msg.includes("self-signed certificate") ||
+                  msg.includes("cert") || 
+                  msg.includes("ssl") || 
+                  msg.includes("tls") ||
+                  msg.includes("certificate") || 
+                  msg.includes("unable to verify")) {
+                const isSelfSigned = code === "self_signed_cert_in_chain" || msg.includes("self-signed");
+                
+                // Check if SSL verification is disabled via environment variable
+                const rejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+                const allowInsecure = process.env.MCP_ALLOW_INSECURE === "true" || rejectUnauthorized === "0";
+                
+                if (isSelfSigned && !allowInsecure) {
+                  throw new Error(
+                    `SSL/TLS certificate error: self-signed certificate in certificate chain for ${serverUrl.hostname}. ` +
+                    `This is often caused by a corporate proxy or firewall intercepting HTTPS connections. ` +
+                    `\n\nTo resolve this:\n` +
+                    `1. (Recommended) Install the corporate CA certificate:\n` +
+                    `   - Export the CA certificate from your corporate proxy/firewall\n` +
+                    `   - Set NODE_EXTRA_CA_CERTS=/path/to/ca-cert.pem before starting the server\n` +
+                    `   - Or install it in your system's trust store\n` +
+                    `\n` +
+                    `2. (Development only) Disable SSL verification:\n` +
+                    `   - Set NODE_TLS_REJECT_UNAUTHORIZED=0 before starting Node.js\n` +
+                    `   - Or set MCP_ALLOW_INSECURE=true\n` +
+                    `   - WARNING: This is insecure and should NEVER be used in production\n` +
+                    `   - You must restart the server after setting the environment variable\n` +
+                    `\n` +
+                    `Error code: ${errorCode || "SELF_SIGNED_CERT_IN_CHAIN"}`
+                  );
+                } else if (isSelfSigned && allowInsecure) {
+                  // If SSL verification is disabled but we still get the error,
+                  // it means the environment variable wasn't set before Node.js started
+                  throw new Error(
+                    `SSL verification is configured to be disabled, but Node.js is still rejecting the certificate. ` +
+                    `The NODE_TLS_REJECT_UNAUTHORIZED=0 or MCP_ALLOW_INSECURE=true environment variable ` +
+                    `must be set BEFORE starting Node.js. Please restart the server with the environment variable set.`
+                  );
+                } else {
+                  throw new Error(
+                    `SSL/TLS certificate error for ${serverUrl.hostname}. ` +
+                    `Please verify the server has a valid certificate. ` +
+                    `Error code: ${errorCode || "CERT_ERROR"}`
+                  );
+                }
               }
               
               // Check if it's an authentication-related error
@@ -325,8 +458,31 @@ export class McpServerProxyManager {
                   `For OAuth-based services, ensure you have completed the OAuth flow and have a valid access token.`
                 );
               }
+              
+              // Generic fetch failed - provide diagnostic information
+              if (msg.includes("fetch failed")) {
+                const diagnosticInfo = [
+                  `Failed to connect to ${serverUrl.toString()}`,
+                  `Hostname: ${serverUrl.hostname}`,
+                  `Port: ${serverUrl.port || (serverUrl.protocol === "https:" ? "443" : "80")}`,
+                  `Protocol: ${serverUrl.protocol}`,
+                  errorCode ? `Error code: ${errorCode}` : "",
+                  underlyingError ? `Underlying error: ${underlyingError.message}` : undefined
+                ].filter((item): item is string => Boolean(item)).join(", ");
+                
+                throw new Error(
+                  `Network connection failed: ${diagnosticInfo}. ` +
+                  `This could be due to: DNS resolution failure, network connectivity issues, ` +
+                  `firewall blocking the connection, or the server being unreachable. ` +
+                  `Please verify the serverUrl is correct and the endpoint is accessible.`
+                );
+              }
             }
-            throw fetchError;
+            
+            // Fallback: re-throw with context
+            throw new Error(
+              `Failed to connect to MCP server at ${serverUrl.toString()}: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`
+            );
           }
         },
       });
