@@ -7,6 +7,7 @@ import { Provider, Policy } from "@/lib/types";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -47,12 +48,39 @@ export default function ProvidersPage() {
   const [viewMode, setViewMode] = useState<"details" | "policies">("details");
   const [policyDetails, setPolicyDetails] = useState<Map<string, Policy & { condition?: PolicyCondition }>>(new Map());
   const [loadingPolicyDetails, setLoadingPolicyDetails] = useState(false);
+  const [showInstallDialog, setShowInstallDialog] = useState(false);
+  const [providerToInstall, setProviderToInstall] = useState<Provider | null>(null);
+  const [openaiConfig, setOpenaiConfig] = useState({
+    apiKey: "",
+    baseUrl: "https://api.openai.com/v1",
+    organizationId: "",
+  });
+  const [showApiKey, setShowApiKey] = useState(false);
   
-  const handleInstall = async (providerId: string) => {
+  const handleInstallClick = (provider: Provider) => {
+    // Check if provider needs configuration
+    if (provider.id === "openai") {
+      setProviderToInstall(provider);
+      setShowInstallDialog(true);
+      // Reset config
+      setOpenaiConfig({
+        apiKey: "",
+        baseUrl: "https://api.openai.com/v1",
+        organizationId: "",
+      });
+    } else {
+      // For providers that don't need config (like Cursor), install directly
+      handleInstall(provider.id);
+    }
+  };
+
+  const handleInstall = async (providerId: string, config?: Record<string, unknown>) => {
     setInstalling(providerId);
     try {
-      await Api.installProvider(providerId);
+      await Api.installProvider(providerId, config);
       await refetch();
+      setShowInstallDialog(false);
+      setProviderToInstall(null);
     } catch (error) {
       console.error("Failed to install provider:", error);
       alert(`Failed to install provider: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -61,10 +89,24 @@ export default function ProvidersPage() {
     }
   };
 
+  const handleInstallSubmit = () => {
+    if (providerToInstall?.id === "openai") {
+      if (!openaiConfig.apiKey || !openaiConfig.apiKey.startsWith("sk-")) {
+        alert("Please enter a valid OpenAI API key (must start with 'sk-')");
+        return;
+      }
+      handleInstall("openai", {
+        apiKey: openaiConfig.apiKey,
+        baseUrl: openaiConfig.baseUrl || "https://api.openai.com/v1",
+        organizationId: openaiConfig.organizationId || undefined,
+      });
+    }
+  };
+
   // Fetch full policy details when viewing policies for a provider
   useEffect(() => {
-    if (selectedProvider && viewMode === "policies" && policiesData) {
-      const providerScopedPolicies = policiesData.filter(
+    if (selectedProvider && viewMode === "policies" && policiesData?.data) {
+      const providerScopedPolicies = policiesData.data.filter(
         (p: Policy) => p.scope === "provider" && p.archived !== true
       );
       
@@ -96,9 +138,9 @@ export default function ProvidersPage() {
   // Get policies for the selected provider
   // Filter by checking if the policy's condition targets this provider
   const providerPolicies = useMemo(() => {
-    if (!selectedProvider || !policiesData) return [];
+    if (!selectedProvider || !policiesData?.data) return [];
     
-    const providerScopedPolicies = policiesData.filter(
+    const providerScopedPolicies = policiesData.data.filter(
       (policy: Policy) => policy.scope === "provider" && policy.archived !== true
     );
     
@@ -227,7 +269,7 @@ export default function ProvidersPage() {
                         <Button 
                           size="sm" 
                           className="text-xs"
-                          onClick={() => handleInstall(p.id)}
+                          onClick={() => handleInstallClick(p)}
                           disabled={installing === p.id}
                         >
                           {installing === p.id ? "Installing..." : "Install"}
@@ -428,6 +470,117 @@ export default function ProvidersPage() {
                   </Table>
                 </div>
               )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Install Provider Configuration Dialog */}
+      <Dialog open={showInstallDialog} onOpenChange={setShowInstallDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Install {providerToInstall?.name || "Provider"}
+            </DialogTitle>
+            <DialogDescription>
+              {providerToInstall?.id === "openai" 
+                ? "Enter your OpenAI API credentials to connect to ChatGPT"
+                : "Configure this provider"}
+            </DialogDescription>
+          </DialogHeader>
+          {providerToInstall?.id === "openai" && (
+            <div className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <label htmlFor="openai-api-key" className="text-sm font-medium">
+                  API Key <span className="text-destructive">*</span>
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    id="openai-api-key"
+                    type={showApiKey ? "text" : "password"}
+                    value={openaiConfig.apiKey}
+                    onChange={(e) =>
+                      setOpenaiConfig((prev) => ({ ...prev, apiKey: e.target.value }))
+                    }
+                    placeholder="sk-..."
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                  >
+                    {showApiKey ? "Hide" : "Show"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Your OpenAI API key. Get it from{" "}
+                  <a
+                    href="https://platform.openai.com/api-keys"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    platform.openai.com
+                  </a>
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="openai-base-url" className="text-sm font-medium">
+                  Base URL (Optional)
+                </label>
+                <Input
+                  id="openai-base-url"
+                  type="text"
+                  value={openaiConfig.baseUrl}
+                  onChange={(e) =>
+                    setOpenaiConfig((prev) => ({ ...prev, baseUrl: e.target.value }))
+                  }
+                  placeholder="https://api.openai.com/v1"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Custom API endpoint. Leave default for OpenAI.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="openai-org-id" className="text-sm font-medium">
+                  Organization ID (Optional)
+                </label>
+                <Input
+                  id="openai-org-id"
+                  type="text"
+                  value={openaiConfig.organizationId}
+                  onChange={(e) =>
+                    setOpenaiConfig((prev) => ({ ...prev, organizationId: e.target.value }))
+                  }
+                  placeholder="org-..."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Your OpenAI organization ID if you belong to multiple organizations.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowInstallDialog(false);
+                    setProviderToInstall(null);
+                  }}
+                  disabled={installing === "openai"}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleInstallSubmit}
+                  disabled={installing === "openai" || !openaiConfig.apiKey}
+                >
+                  {installing === "openai" ? "Installing..." : "Install"}
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

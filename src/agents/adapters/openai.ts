@@ -78,24 +78,48 @@ export class OpenAIAdapter extends BaseProviderAdapter {
     }
 
     try {
-      const response = await fetch(`${this.baseUrl}/assistants`, {
-        method: "GET",
-        headers: this.getHeaders(),
-      });
+      const allAssistants: any[] = [];
+      let hasMore = true;
+      let after: string | undefined = undefined;
+      const limit = 100; // OpenAI API max limit per page
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          logger.warn("[OPENAI-ADAPTER] Invalid API key");
-          return [];
+      // Fetch all assistants with pagination
+      while (hasMore) {
+        const params = new URLSearchParams({ limit: limit.toString() });
+        if (after) {
+          params.append("after", after);
         }
-        const errorText = await response.text();
-        throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+        
+        const response = await fetch(`${this.baseUrl}/assistants?${params.toString()}`, {
+          method: "GET",
+          headers: this.getHeaders(),
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            logger.warn("[OPENAI-ADAPTER] Invalid API key");
+            return [];
+          }
+          const errorText = await response.text();
+          throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+        }
+
+        const data = await response.json();
+        const assistants = data.data || [];
+        allAssistants.push(...assistants);
+
+        // Check if there are more pages
+        hasMore = data.has_more === true && assistants.length === limit;
+        if (hasMore && assistants.length > 0) {
+          // Use the last assistant's ID as the cursor for the next page
+          after = assistants[assistants.length - 1].id;
+        } else {
+          hasMore = false;
+        }
       }
 
-      const data = await response.json();
-      const assistants = data.data || [];
-
-      return assistants.map((assistant: any) => this.assistantToAgent(assistant));
+      logger.info(`[OPENAI-ADAPTER] Fetched ${allAssistants.length} assistants from OpenAI`);
+      return allAssistants.map((assistant: any) => this.assistantToAgent(assistant));
     } catch (error) {
       logger.error("[OPENAI-ADAPTER] Failed to list agents:", error);
       // Return empty array instead of throwing to allow other providers to work
@@ -348,11 +372,31 @@ export class OpenAIAdapter extends BaseProviderAdapter {
         headers: this.getHeaders(),
       });
 
-      // Consider available if we get 200 or 401 (401 means API key exists but might be invalid, but adapter is configured)
-      return response.ok || response.status === 401;
+      if (response.ok) {
+        return true;
+      }
+
+      // Handle different error statuses
+      if (response.status === 401) {
+        // 401 means unauthorized - API key might be invalid
+        const errorData = await response.text().catch(() => "");
+        logger.warn(`[OPENAI-ADAPTER] API key validation failed (401): ${errorData.substring(0, 100)}`);
+        return false; // Return false for 401 so we can show proper error message
+      }
+
+      // For other errors, consider it available (adapter is configured, just might have temporary issues)
+      logger.info(`[OPENAI-ADAPTER] API check returned status ${response.status}, considering available`);
+      return true;
     } catch (error) {
-      logger.info(`[OPENAI-ADAPTER] Provider is not available:`, error);
-      return false;
+      // Network errors or other exceptions - log but don't fail
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes("401") || errorMessage.includes("Unauthorized")) {
+        logger.warn(`[OPENAI-ADAPTER] API key appears invalid: ${errorMessage}`);
+        return false;
+      }
+      logger.info(`[OPENAI-ADAPTER] Provider availability check error (non-critical):`, errorMessage);
+      // Return true for network errors - adapter is configured, just might be temporarily unavailable
+      return true;
     }
   }
 }

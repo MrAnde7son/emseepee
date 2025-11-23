@@ -10,15 +10,23 @@ async function fetchJSON<T>(path: string): Promise<T> {
   return res.json();
 }
 
-async function postJSON<T>(path: string, body: unknown): Promise<T> {
+async function postJSON<T>(path: string, body: unknown, requireAuth: boolean = false): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (requireAuth) {
+    const token = localStorage.getItem("auth_token");
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  }
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
     cache: "no-store",
   });
   if (!res.ok) {
-    throw new Error(`Request failed: ${res.status}`);
+    const error = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
+    throw new Error(error.error || `Request failed: ${res.status}`);
   }
   return res.json();
 }
@@ -48,7 +56,7 @@ async function deleteJSON(path: string): Promise<void> {
 
 export const Api = {
   getProviders: () => fetchJSON<Provider[]>("/api/providers"),
-  installProvider: (providerId: string) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/install`, {}),
+  installProvider: (providerId: string, config?: Record<string, unknown>) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/install`, config || {}, true),
   getTools: (page?: number, limit?: number, search?: string) => {
     const params = new URLSearchParams();
     if (page) params.set("page", page.toString());
