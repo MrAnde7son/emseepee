@@ -72,6 +72,7 @@ export interface Agent {
   role?: string;
   env?: string;
   tenantId?: string;
+  owner?: string;
   metadata?: Record<string, unknown>;
   enabled: boolean;
   createdAt?: string;

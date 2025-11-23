@@ -12,8 +12,8 @@ export async function saveAgentToDb(agent: Agent): Promise<void> {
     await executeUpdate(
       `INSERT INTO agents (
         hakuna_id, name, description, provider_id, provider_native_id,
-        role, env, tenant_id, metadata, enabled, created_at, updated_at, last_seen_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        role, env, tenant_id, owner, metadata, enabled, created_at, updated_at, last_seen_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       ON CONFLICT (hakuna_id) DO UPDATE SET
         name = EXCLUDED.name,
         description = EXCLUDED.description,
@@ -22,6 +22,7 @@ export async function saveAgentToDb(agent: Agent): Promise<void> {
         role = EXCLUDED.role,
         env = EXCLUDED.env,
         tenant_id = EXCLUDED.tenant_id,
+        owner = EXCLUDED.owner,
         metadata = EXCLUDED.metadata,
         enabled = EXCLUDED.enabled,
         updated_at = EXCLUDED.updated_at,
@@ -35,6 +36,7 @@ export async function saveAgentToDb(agent: Agent): Promise<void> {
         agent.role || null,
         agent.env || null,
         agent.tenantId || null,
+        agent.owner || null,
         agent.metadata ? JSON.stringify(agent.metadata) : null,
         agent.enabled,
         agent.createdAt || new Date().toISOString(),
@@ -47,8 +49,8 @@ export async function saveAgentToDb(agent: Agent): Promise<void> {
     await executeUpdate(
       `INSERT OR REPLACE INTO agents (
         hakuna_id, name, description, provider_id, provider_native_id,
-        role, env, tenant_id, metadata, enabled, created_at, updated_at, last_seen_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        role, env, tenant_id, owner, metadata, enabled, created_at, updated_at, last_seen_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         agent.id,
         agent.name,
@@ -58,6 +60,7 @@ export async function saveAgentToDb(agent: Agent): Promise<void> {
         agent.role || null,
         agent.env || null,
         agent.tenantId || null,
+        agent.owner || null,
         agent.metadata ? JSON.stringify(agent.metadata) : null,
         agent.enabled ? 1 : 0,
         agent.createdAt || new Date().toISOString(),
@@ -85,6 +88,7 @@ export async function getAgentFromDb(hakunaId: string): Promise<Agent | null> {
       role: string | null;
       env: string | null;
       tenant_id: string | null;
+      owner: string | null;
       metadata: string | null;
       enabled: boolean;
       created_at: string;
@@ -104,6 +108,7 @@ export async function getAgentFromDb(hakunaId: string): Promise<Agent | null> {
       role: string | null;
       env: string | null;
       tenant_id: string | null;
+      owner: string | null;
       metadata: string | null;
       enabled: number;
       created_at: string;
@@ -129,6 +134,7 @@ export async function getAgentFromDb(hakunaId: string): Promise<Agent | null> {
     role: row.role || undefined,
     env: row.env || undefined,
     tenantId: row.tenant_id || undefined,
+    owner: row.owner || undefined,
     metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
     enabled: config.type === "postgres" ? row.enabled : row.enabled === 1,
     createdAt: row.created_at,
@@ -154,6 +160,7 @@ export async function getAllAgentsFromDb(): Promise<Agent[]> {
       role: string | null;
       env: string | null;
       tenant_id: string | null;
+      owner: string | null;
       metadata: string | null;
       enabled: boolean;
       created_at: string;
@@ -170,6 +177,7 @@ export async function getAllAgentsFromDb(): Promise<Agent[]> {
       role: string | null;
       env: string | null;
       tenant_id: string | null;
+      owner: string | null;
       metadata: string | null;
       enabled: number;
       created_at: string;
@@ -187,6 +195,7 @@ export async function getAllAgentsFromDb(): Promise<Agent[]> {
     role: row.role || undefined,
     env: row.env || undefined,
     tenantId: row.tenant_id || undefined,
+    owner: row.owner || undefined,
     metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
     enabled: config.type === "postgres" ? row.enabled : row.enabled === 1,
     createdAt: row.created_at,
@@ -212,6 +221,7 @@ export async function getAgentsByProviderFromDb(providerId: string): Promise<Age
       role: string | null;
       env: string | null;
       tenant_id: string | null;
+      owner: string | null;
       metadata: string | null;
       enabled: boolean;
       created_at: string;
@@ -231,6 +241,7 @@ export async function getAgentsByProviderFromDb(providerId: string): Promise<Age
       role: string | null;
       env: string | null;
       tenant_id: string | null;
+      owner: string | null;
       metadata: string | null;
       enabled: number;
       created_at: string;
@@ -251,6 +262,7 @@ export async function getAgentsByProviderFromDb(providerId: string): Promise<Age
     role: row.role || undefined,
     env: row.env || undefined,
     tenantId: row.tenant_id || undefined,
+    owner: row.owner || undefined,
     metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
     enabled: config.type === "postgres" ? row.enabled : row.enabled === 1,
     createdAt: row.created_at,

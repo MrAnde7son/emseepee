@@ -237,6 +237,7 @@ export const Api = {
     role?: string;
     env?: string;
     tenantId?: string;
+    owner?: string;
     metadata?: Record<string, unknown>;
     enabled?: boolean;
   }) => {
@@ -265,6 +266,7 @@ export const Api = {
     role: string;
     env: string;
     tenantId: string;
+    owner: string;
     metadata: Record<string, unknown>;
     enabled: boolean;
   }>) => {

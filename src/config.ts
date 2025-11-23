@@ -437,6 +437,8 @@ export interface Agent {
   env?: string;
   // Tenant/organization mapping
   tenantId?: string;
+  // Owner/user who created or manages this agent
+  owner?: string;
   // Custom metadata
   metadata?: Record<string, unknown>;
   // Whether this agent is active/enabled

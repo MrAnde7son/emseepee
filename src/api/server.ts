@@ -1638,6 +1638,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           role?: string;
           env?: string;
           tenantId?: string;
+          owner?: string;
           metadata?: Record<string, unknown>;
           enabled?: boolean;
         };
@@ -1656,6 +1657,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           role: body.role,
           env: body.env,
           tenantId: body.tenantId,
+          owner: body.owner,
           metadata: body.metadata,
           enabled: body.enabled ?? true,
         });
@@ -1697,6 +1699,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           role: string;
           env: string;
           tenantId: string;
+          owner: string;
           metadata: Record<string, unknown>;
           enabled: boolean;
         }>;

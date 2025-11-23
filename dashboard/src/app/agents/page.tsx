@@ -68,6 +68,7 @@ export default function AgentsPage() {
     role: "",
     env: "",
     tenantId: "",
+    owner: "",
     enabled: true,
   });
 
@@ -118,6 +119,7 @@ export default function AgentsPage() {
         role: formData.role || undefined,
         env: formData.env || undefined,
         tenantId: formData.tenantId || undefined,
+        owner: formData.owner || undefined,
         enabled: formData.enabled,
       });
       queryClient.invalidateQueries({ queryKey: ["agents"] });
@@ -129,6 +131,7 @@ export default function AgentsPage() {
         role: "",
         env: "",
         tenantId: "",
+        owner: "",
         enabled: true,
       });
     } catch (error) {
@@ -150,6 +153,7 @@ export default function AgentsPage() {
         role: formData.role || undefined,
         env: formData.env || undefined,
         tenantId: formData.tenantId || undefined,
+        owner: formData.owner || undefined,
         enabled: formData.enabled,
       });
       queryClient.invalidateQueries({ queryKey: ["agents"] });
@@ -189,6 +193,7 @@ export default function AgentsPage() {
       role: agent.role || "",
       env: agent.env || "",
       tenantId: agent.tenantId || "",
+      owner: agent.owner || "",
       enabled: agent.enabled,
     });
     setIsEditDialogOpen(true);
@@ -462,6 +467,12 @@ export default function AgentsPage() {
                   <div className="text-sm font-mono">{selectedAgent.tenantId}</div>
                 </div>
               )}
+              {selectedAgent.owner && (
+                <div>
+                  <label className="text-sm font-medium">Owner</label>
+                  <div className="text-sm">{selectedAgent.owner}</div>
+                </div>
+              )}
               {selectedAgent.metadata && Object.keys(selectedAgent.metadata).length > 0 && (
                 <div>
                   <label className="text-sm font-medium">Metadata</label>
@@ -630,6 +641,14 @@ export default function AgentsPage() {
                 value={formData.tenantId}
                 onChange={(e) => setFormData({ ...formData, tenantId: e.target.value })}
                 placeholder="Tenant identifier"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Owner</label>
+              <Input
+                value={formData.owner}
+                onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
+                placeholder="Owner/user identifier"
               />
             </div>
             <div className="flex items-center gap-2">
