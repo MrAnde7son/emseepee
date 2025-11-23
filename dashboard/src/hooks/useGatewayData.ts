@@ -32,3 +32,10 @@ export function useEvents(search: string, page?: number, limit?: number, filters
   });
 }
 
+export function useAgents(filters?: { providerId?: string; role?: string; tenantId?: string }) {
+  return useQuery({
+    queryKey: ["agents", filters],
+    queryFn: () => Api.getAgents(filters),
+  });
+}
+

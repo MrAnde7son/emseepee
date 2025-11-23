@@ -109,6 +109,14 @@ async function initialize() {
     throw error;
   }
 
+  // Initialize agent registry
+  try {
+    const { initializeAgentRegistry } = await import("./agents/index.js");
+    initializeAgentRegistry();
+  } catch (error) {
+    logger.warn("[INIT] Failed to initialize agent registry:", error);
+  }
+
   // Start API server after database is initialized
   startApiServer();
 

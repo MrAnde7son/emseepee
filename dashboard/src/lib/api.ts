@@ -1,4 +1,4 @@
-import { Provider, Tool, Policy, GatewayEvent } from "./types";
+import { Provider, Tool, Policy, GatewayEvent, Agent } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8000";
 
@@ -202,5 +202,108 @@ export const Api = {
   getTelemetryStatus: () => fetchJSON<{ enabled: boolean; mode: "self-hosted" | "cloud"; config: { mode: string; enabled: boolean; apiKey?: string; host?: string; instanceId?: string } | null }>("/api/telemetry/status"),
   getTelemetryConfig: () => fetchJSON<{ mode: "self-hosted" | "cloud"; enabled: boolean; apiKey?: string; host?: string; instanceId?: string }>("/api/telemetry/config"),
   updateTelemetryConfig: (config: { enabled?: boolean; mode?: "self-hosted" | "cloud"; apiKey?: string; host?: string }) => postJSON<{ success: boolean }>("/api/telemetry/config", config),
+  getAgents: async (params?: { providerId?: string; role?: string; tenantId?: string }) => {
+    const token = localStorage.getItem("auth_token");
+    const urlParams = new URLSearchParams();
+    if (params?.providerId) urlParams.set("providerId", params.providerId);
+    if (params?.role) urlParams.set("role", params.role);
+    if (params?.tenantId) urlParams.set("tenantId", params.tenantId);
+    const search = urlParams.toString() ? `?${urlParams.toString()}` : "";
+    const res = await fetch(`${BASE_URL}/api/agents${search}`, {
+      headers: token ? { "Authorization": `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      throw new Error(`Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<Agent[]>;
+  },
+  getAgent: async (agentId: string) => {
+    const token = localStorage.getItem("auth_token");
+    const res = await fetch(`${BASE_URL}/api/agents/${agentId}`, {
+      headers: token ? { "Authorization": `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      throw new Error(`Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<Agent>;
+  },
+  createAgent: async (agent: {
+    providerId: string;
+    name: string;
+    description?: string;
+    providerNativeId?: string;
+    role?: string;
+    env?: string;
+    tenantId?: string;
+    metadata?: Record<string, unknown>;
+    enabled?: boolean;
+  }) => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+    const res = await fetch(`${BASE_URL}/api/agents`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(agent),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
+      throw new Error(error.error || `Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<Agent>;
+  },
+  updateAgent: async (agentId: string, updates: Partial<{
+    name: string;
+    description: string;
+    role: string;
+    env: string;
+    tenantId: string;
+    metadata: Record<string, unknown>;
+    enabled: boolean;
+  }>) => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+    const res = await fetch(`${BASE_URL}/api/agents/${agentId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(updates),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
+      throw new Error(error.error || `Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<Agent>;
+  },
+  deleteAgent: async (agentId: string) => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+    const res = await fetch(`${BASE_URL}/api/agents/${agentId}`, {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
+      throw new Error(error.error || `Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<{ success: boolean }>;
+  },
 };
 

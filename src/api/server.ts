@@ -1559,6 +1559,198 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       return;
     }
     
+    // Agents endpoints
+    if (path === "/api/agents" && method === "GET") {
+      try {
+        const { getAgentRegistry } = await import("../agents/registry.js");
+        const registry = getAgentRegistry();
+        const providerId = url.searchParams.get("providerId") || undefined;
+        const role = url.searchParams.get("role") || undefined;
+        const tenantId = url.searchParams.get("tenantId") || undefined;
+        
+        let agents;
+        if (providerId) {
+          agents = await registry.getAgentsByProvider(providerId);
+        } else if (role) {
+          agents = await registry.getAgentsByRole(role);
+        } else if (tenantId) {
+          agents = await registry.getAgentsByTenant(tenantId);
+        } else {
+          agents = await registry.listAgents();
+        }
+        
+        sendJSON(res, 200, agents);
+        return;
+      } catch (error) {
+        logger.error("[API] Get agents error:", error);
+        sendJSON(res, 500, { error: error instanceof Error ? error.message : "Failed to get agents" });
+        return;
+      }
+    }
+    
+    if (path.startsWith("/api/agents/") && method === "GET") {
+      try {
+        const agentId = path.replace("/api/agents/", "");
+        if (!agentId || agentId.includes("/")) {
+          sendJSON(res, 400, { error: "Invalid agent ID" });
+          return;
+        }
+        
+        const { getAgentRegistry } = await import("../agents/registry.js");
+        const registry = getAgentRegistry();
+        const agent = await registry.getAgent(agentId);
+        
+        if (!agent) {
+          sendJSON(res, 404, { error: "Agent not found" });
+          return;
+        }
+        
+        sendJSON(res, 200, agent);
+        return;
+      } catch (error) {
+        logger.error("[API] Get agent error:", error);
+        sendJSON(res, 500, { error: error instanceof Error ? error.message : "Failed to get agent" });
+        return;
+      }
+    }
+    
+    if (path === "/api/agents" && method === "POST") {
+      try {
+        const authHeader = req.headers.authorization;
+        const token = extractTokenFromHeader(authHeader);
+        
+        if (!token) {
+          sendJSON(res, 401, { error: "No token provided" });
+          return;
+        }
+
+        const payload = verifyToken(token);
+        if (!payload) {
+          sendJSON(res, 401, { error: "Invalid or expired token" });
+          return;
+        }
+        
+        const body = await parseBody(req) as {
+          providerId: string;
+          name: string;
+          description?: string;
+          providerNativeId?: string;
+          role?: string;
+          env?: string;
+          tenantId?: string;
+          metadata?: Record<string, unknown>;
+          enabled?: boolean;
+        };
+        
+        if (!body.providerId || !body.name) {
+          sendJSON(res, 400, { error: "Provider ID and name are required" });
+          return;
+        }
+        
+        const { getAgentRegistry } = await import("../agents/registry.js");
+        const registry = getAgentRegistry();
+        const agent = await registry.createAgent(body.providerId, {
+          name: body.name,
+          description: body.description,
+          providerNativeId: body.providerNativeId,
+          role: body.role,
+          env: body.env,
+          tenantId: body.tenantId,
+          metadata: body.metadata,
+          enabled: body.enabled ?? true,
+        });
+        
+        sendJSON(res, 201, agent);
+        return;
+      } catch (error) {
+        logger.error("[API] Create agent error:", error);
+        sendJSON(res, 500, { error: error instanceof Error ? error.message : "Failed to create agent" });
+        return;
+      }
+    }
+    
+    if (path.startsWith("/api/agents/") && method === "PUT") {
+      try {
+        const authHeader = req.headers.authorization;
+        const token = extractTokenFromHeader(authHeader);
+        
+        if (!token) {
+          sendJSON(res, 401, { error: "No token provided" });
+          return;
+        }
+
+        const payload = verifyToken(token);
+        if (!payload) {
+          sendJSON(res, 401, { error: "Invalid or expired token" });
+          return;
+        }
+        
+        const agentId = path.replace("/api/agents/", "");
+        if (!agentId || agentId.includes("/")) {
+          sendJSON(res, 400, { error: "Invalid agent ID" });
+          return;
+        }
+        
+        const body = await parseBody(req) as Partial<{
+          name: string;
+          description: string;
+          role: string;
+          env: string;
+          tenantId: string;
+          metadata: Record<string, unknown>;
+          enabled: boolean;
+        }>;
+        
+        const { getAgentRegistry } = await import("../agents/registry.js");
+        const registry = getAgentRegistry();
+        const agent = await registry.updateAgent(agentId, body);
+        
+        sendJSON(res, 200, agent);
+        return;
+      } catch (error) {
+        logger.error("[API] Update agent error:", error);
+        const statusCode = error instanceof Error && error.message.includes("not found") ? 404 : 500;
+        sendJSON(res, statusCode, { error: error instanceof Error ? error.message : "Failed to update agent" });
+        return;
+      }
+    }
+    
+    if (path.startsWith("/api/agents/") && method === "DELETE") {
+      try {
+        const authHeader = req.headers.authorization;
+        const token = extractTokenFromHeader(authHeader);
+        
+        if (!token) {
+          sendJSON(res, 401, { error: "No token provided" });
+          return;
+        }
+
+        const payload = verifyToken(token);
+        if (!payload) {
+          sendJSON(res, 401, { error: "Invalid or expired token" });
+          return;
+        }
+        
+        const agentId = path.replace("/api/agents/", "");
+        if (!agentId || agentId.includes("/")) {
+          sendJSON(res, 400, { error: "Invalid agent ID" });
+          return;
+        }
+        
+        const { getAgentRegistry } = await import("../agents/registry.js");
+        const registry = getAgentRegistry();
+        await registry.deleteAgent(agentId);
+        
+        sendJSON(res, 200, { success: true });
+        return;
+      } catch (error) {
+        logger.error("[API] Delete agent error:", error);
+        const statusCode = error instanceof Error && error.message.includes("not found") ? 404 : 500;
+        sendJSON(res, statusCode, { error: error instanceof Error ? error.message : "Failed to delete agent" });
+        return;
+      }
+    }
+    
     // Tools endpoints
     if (path === "/api/tools" && method === "GET") {
       const page = parseInt(url.searchParams.get("page") || "1", 10);

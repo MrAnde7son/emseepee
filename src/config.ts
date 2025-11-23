@@ -4,6 +4,7 @@ export type Sensitivity = "low" | "medium" | "high";
 export type ToolCategory = "file" | "web" | "terminal" | "third_party";
 export type ToolExecutionType = "http" | "command" | "custom";
 export type PolicyOperation = "allow" | "log" | "block" | "webhook" | "custom";
+export type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "bedrock" | "copilot" | "langchain" | "custom";
 
 /**
  * Policy rule condition - when to apply this rule
@@ -15,6 +16,8 @@ export interface PolicyRuleCondition {
   category?: ToolCategory | ToolCategory[];
   // Match by agent role
   agentRole?: string | string[];
+  // Match by agent ID (Hakuna stable ID)
+  agentId?: string | string[];
   // Match by environment
   env?: string | string[];
   // Match by sensitivity level
@@ -412,4 +415,75 @@ export async function getEnabledCategories(): Promise<ToolCategory[]> {
       (tool) => tool.enabled === true
     );
   }) as ToolCategory[];
+}
+
+/**
+ * Agent metadata - unified representation of an agent across all providers
+ */
+export interface Agent {
+  // Stable Hakuna identity
+  id: string;
+  // Human-readable name
+  name: string;
+  // Description of the agent's purpose
+  description?: string;
+  // Provider this agent belongs to
+  providerId: string;
+  // Provider-specific native ID (e.g., GPT assistant ID, n8n workflow ID)
+  providerNativeId?: string;
+  // Agent role/category (e.g., "coder_bot", "research_bot", "admin")
+  role?: string;
+  // Environment context (e.g., "production", "staging", "development")
+  env?: string;
+  // Tenant/organization mapping
+  tenantId?: string;
+  // Custom metadata
+  metadata?: Record<string, unknown>;
+  // Whether this agent is active/enabled
+  enabled: boolean;
+  // Timestamps
+  createdAt?: string;
+  updatedAt?: string;
+  lastSeenAt?: string;
+}
+
+/**
+ * Provider Agent Adapter - interface for providers to implement
+ * Allows providers to project their native agent concept into Hakuna's unified Agent model
+ */
+export interface ProviderAgentAdapter {
+  /**
+   * Get the provider ID this adapter handles
+   */
+  getProviderId(): string;
+  
+  /**
+   * List all agents from this provider
+   */
+  listAgents(): Promise<Agent[]>;
+  
+  /**
+   * Get a specific agent by its provider-native ID
+   */
+  getAgent(providerNativeId: string): Promise<Agent | null>;
+  
+  /**
+   * Create a new agent in the provider
+   */
+  createAgent(agent: Omit<Agent, "id" | "providerId" | "createdAt" | "updatedAt">): Promise<Agent>;
+  
+  /**
+   * Update an existing agent
+   */
+  updateAgent(providerNativeId: string, updates: Partial<Agent>): Promise<Agent>;
+  
+  /**
+   * Delete an agent
+   */
+  deleteAgent(providerNativeId: string): Promise<void>;
+  
+  /**
+   * Check if the provider is available/connected
+   */
+  isAvailable(): Promise<boolean>;
 }
