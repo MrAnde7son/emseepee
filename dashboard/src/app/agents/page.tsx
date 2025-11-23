@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { useAgents, useProviders } from "@/hooks/useGatewayData";
 import { Api } from "@/lib/api";
-import { Agent, Provider } from "@/lib/types";
+import { Agent } from "@/lib/types";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -146,11 +146,11 @@ export default function AgentsPage() {
     try {
       await Api.updateAgent(selectedAgent.id, {
         name: formData.name,
-        description: formData.description || undefined,
-        role: formData.role || undefined,
-        env: formData.env || undefined,
-        tenantId: formData.tenantId || undefined,
-        owner: formData.owner || undefined,
+        description: formData.description,
+        role: formData.role,
+        env: formData.env,
+        tenantId: formData.tenantId,
+        owner: formData.owner,
         enabled: formData.enabled,
       });
       queryClient.invalidateQueries({ queryKey: ["agents"] });
@@ -335,7 +335,11 @@ export default function AgentsPage() {
               </TableRow>
             ) : (
               filteredAgents.map((agent) => (
-                <TableRow key={agent.id}>
+                <TableRow 
+                  key={agent.id}
+                  className="cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={() => setSelectedAgent(agent)}
+                >
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <div>
@@ -394,26 +398,35 @@ export default function AgentsPage() {
                       {formatDate(agent.lastSeenAt)}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-2">
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setSelectedAgent(agent)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedAgent(agent);
+                        }}
                       >
                         <Info className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => openEditDialog(agent)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditDialog(agent);
+                        }}
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => openDeleteDialog(agent)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDeleteDialog(agent);
+                        }}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -570,14 +583,6 @@ export default function AgentsPage() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Tenant ID</label>
-              <Input
-                value={formData.tenantId}
-                onChange={(e) => setFormData({ ...formData, tenantId: e.target.value })}
-                placeholder="Tenant identifier"
-              />
-            </div>
-            <div>
               <label className="text-sm font-medium">Owner</label>
               <Input
                 value={formData.owner}
@@ -610,7 +615,15 @@ export default function AgentsPage() {
       </Dialog>
 
       {/* Edit Agent Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+      <Dialog 
+        open={isEditDialogOpen} 
+        onOpenChange={(open) => {
+          setIsEditDialogOpen(open);
+          if (!open) {
+            setSelectedAgent(null);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Agent</DialogTitle>
@@ -650,14 +663,6 @@ export default function AgentsPage() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Tenant ID</label>
-              <Input
-                value={formData.tenantId}
-                onChange={(e) => setFormData({ ...formData, tenantId: e.target.value })}
-                placeholder="Tenant identifier"
-              />
-            </div>
-            <div>
               <label className="text-sm font-medium">Owner</label>
               <Input
                 value={formData.owner}
@@ -690,7 +695,15 @@ export default function AgentsPage() {
       </Dialog>
 
       {/* Delete Agent Dialog */}
-      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      <Dialog 
+        open={isDeleteDialogOpen} 
+        onOpenChange={(open) => {
+          setIsDeleteDialogOpen(open);
+          if (!open) {
+            setSelectedAgent(null);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Agent</DialogTitle>

@@ -203,7 +203,7 @@ async function getProviders(): Promise<Provider[]> {
     },
     {
       id: "openai",
-      name: "OpenAI ChatGPT Enterprise",
+      name: "OpenAI ChatGPT",
       type: "openai",
       status: registeredProviders.includes("openai") ? "connected" : "pending",
       icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/openai.svg",
@@ -1593,6 +1593,50 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           // Cursor doesn't need config stored, but we'll save empty config for consistency
           const { saveProviderConfig } = await import("../db/services/providerService.js");
           await saveProviderConfig(providerId, {});
+        } else if (providerId === "openai") {
+          // OpenAI requires API key
+          if (!config || !config.apiKey || typeof config.apiKey !== "string") {
+            sendJSON(res, 400, { error: "OpenAI provider requires 'apiKey' in configuration" });
+            return;
+          }
+
+          // Validate API key format (should start with 'sk-')
+          if (!config.apiKey.startsWith("sk-")) {
+            sendJSON(res, 400, { error: "Invalid OpenAI API key format. API keys should start with 'sk-'" });
+            return;
+          }
+
+          // Save provider configuration first (before validation)
+          // This allows installation even if API key validation fails
+          const { saveProviderConfig } = await import("../db/services/providerService.js");
+          await saveProviderConfig(providerId, config);
+
+          // Test the API key by attempting to create an adapter and check availability
+          // We validate but don't block installation if validation fails (user might fix API key later)
+          try {
+            const { AdapterFactory } = await import("../agents/factory.js");
+            const testAdapter = AdapterFactory.createAdapter("openai", config);
+            if (!testAdapter) {
+              logger.warn("[API] Failed to create OpenAI adapter for validation, but configuration saved");
+            } else {
+              // Test availability (this will make a lightweight API call)
+              // We catch errors here but don't block installation - just log a warning
+              try {
+                const isAvailable = await testAdapter.isAvailable();
+                if (!isAvailable) {
+                  logger.warn("[API] OpenAI API key validation failed, but installation completed. Please verify your API key.");
+                } else {
+                  logger.info("[API] OpenAI API key validated successfully");
+                }
+              } catch (validationError) {
+                // Don't block installation if validation fails - user might fix API key later
+                logger.warn("[API] OpenAI API key validation error (non-blocking):", validationError);
+              }
+            }
+          } catch (error) {
+            // Log but don't block - configuration is already saved
+            logger.warn("[API] OpenAI adapter validation had issues, but installation completed:", error);
+          }
         } else {
           // Generic provider installation - requires config
           if (!config || Object.keys(config).length === 0) {
@@ -1606,14 +1650,27 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         }
 
         // Register adapter dynamically
-        const { registerProviderAdapter } = await import("../agents/index.js");
-        await registerProviderAdapter(providerId, config);
+        try {
+          const { registerProviderAdapter } = await import("../agents/index.js");
+          await registerProviderAdapter(providerId, config);
+          logger.info(`[API] Successfully installed and registered provider: ${providerId}`);
+        } catch (adapterError) {
+          // Log but don't fail - config is saved, adapter registration can be retried
+          logger.warn(`[API] Failed to register adapter for ${providerId}, but config saved:`, adapterError);
+          // Still return success since config is saved - user can retry or fix API key
+        }
 
         sendJSON(res, 200, { success: true });
         return;
       } catch (error) {
         logger.error("[API] Install provider error:", error);
-        sendJSON(res, 500, { error: error instanceof Error ? error.message : "Failed to install provider" });
+        const errorMessage = error instanceof Error ? error.message : "Failed to install provider";
+        // Check if it's an authentication error
+        if (errorMessage.includes("401") || errorMessage.includes("Unauthorized")) {
+          sendJSON(res, 401, { error: "Authentication failed. Please check your API key." });
+        } else {
+          sendJSON(res, 500, { error: errorMessage });
+        }
         return;
       }
     }

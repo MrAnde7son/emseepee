@@ -97,6 +97,8 @@ async function initialize() {
       try {
         const { addProviderConfigsTable } = await import("./db/migrations/addProviderConfigs.js");
         await addProviderConfigsTable();
+        const { addOwnerColumnToAgents } = await import("./db/migrations/addOwnerToAgents.js");
+        await addOwnerColumnToAgents();
       } catch (error) {
         logger.warn("[DB] Migration failed (non-critical):", error);
         // Continue anyway - migration failures shouldn't block startup

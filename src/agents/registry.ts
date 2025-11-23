@@ -1,6 +1,6 @@
-import type { Agent, ProviderAgentAdapter, ProviderType } from "../config.js";
+import type { Agent, ProviderAgentAdapter } from "../config.js";
 import { logger } from "../logger.js";
-import { getAgentFromDb, saveAgentToDb } from "../db/services/agentService.js";
+import { getAgentFromDb, saveAgentToDb, getAllAgentsFromDb } from "../db/services/agentService.js";
 
 /**
  * Agent Registry - unified management of agents across all providers
@@ -41,43 +41,124 @@ export class AgentRegistry {
   }
 
   /**
-   * Merge database data with adapter data
-   * Database data takes precedence for fields like owner, tenantId, etc.
+   * Load all known agents from the database into a map keyed by Hakuna ID.
+   * If the schema is missing (e.g., before migrations) fall back to an empty map.
    */
-  private async mergeWithDatabaseData(agent: Agent): Promise<Agent> {
+  private async loadAgentsFromDb(): Promise<Map<string, Agent>> {
     try {
-      const dbAgent = await getAgentFromDb(agent.id);
-      if (dbAgent) {
-        // Merge database fields (owner, tenantId, etc.) with adapter data
-        return {
-          ...agent,
-          owner: dbAgent.owner || agent.owner,
-          tenantId: dbAgent.tenantId || agent.tenantId,
-          role: dbAgent.role || agent.role,
-          env: dbAgent.env || agent.env,
-          enabled: dbAgent.enabled !== undefined ? dbAgent.enabled : agent.enabled,
-          lastSeenAt: dbAgent.lastSeenAt || agent.lastSeenAt,
-        };
-      }
+      const agents = await getAllAgentsFromDb();
+      return new Map(agents.map((agent) => [agent.id, agent]));
     } catch (error) {
-      // Silently handle "table doesn't exist" errors - this is expected if the database
-      // hasn't been fully initialized or migrated yet
       if (error instanceof Error && error.message.includes("no such table")) {
-        // Table doesn't exist yet - return agent as-is without database merge
-        return agent;
+        return new Map();
       }
-      // Log other errors as warnings
-      logger.warn(`[AGENT-REGISTRY] Failed to merge database data for agent ${agent.id}:`, error);
+      logger.warn("[AGENT-REGISTRY] Failed to load agents from database:", error);
+      return new Map();
     }
-    return agent;
+  }
+
+  /**
+   * Get a single agent from the database, returning null on schema errors.
+   */
+  private async getAgentFromDatabase(agentId: string): Promise<Agent | null> {
+    try {
+      return await getAgentFromDb(agentId);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("no such table")) {
+        return null;
+      }
+      logger.warn(`[AGENT-REGISTRY] Failed to read agent ${agentId} from database:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Merge provider data with database data, preferring database-owned fields.
+   */
+  private mergeAgentData(providerAgent: Agent, dbAgent?: Agent): Agent {
+    return {
+      ...providerAgent,
+      // Preserve owner/tenant from DB if present
+      owner: dbAgent?.owner ?? providerAgent.owner,
+      tenantId: dbAgent?.tenantId ?? providerAgent.tenantId,
+      // Prefer provider values for descriptive fields, but keep DB fallback
+      role: providerAgent.role ?? dbAgent?.role,
+      env: providerAgent.env ?? dbAgent?.env,
+      enabled: dbAgent?.enabled ?? providerAgent.enabled,
+      // Keep timestamps from DB when available to avoid churn
+      createdAt: dbAgent?.createdAt ?? providerAgent.createdAt ?? new Date().toISOString(),
+      updatedAt: providerAgent.updatedAt ?? dbAgent?.updatedAt ?? new Date().toISOString(),
+      lastSeenAt: dbAgent?.lastSeenAt ?? providerAgent.lastSeenAt,
+      // Keep metadata/providerNativeId from provider if present, otherwise DB
+      metadata: providerAgent.metadata ?? dbAgent?.metadata,
+      providerNativeId: providerAgent.providerNativeId ?? dbAgent?.providerNativeId,
+    };
+  }
+
+  /**
+   * Persist an agent to the database, swallowing missing-table errors.
+   */
+  private async persistAgent(agent: Agent): Promise<void> {
+    try {
+      await saveAgentToDb(agent);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("no such table")) {
+        return;
+      }
+      logger.warn(`[AGENT-REGISTRY] Failed to persist agent ${agent.id} to database:`, error);
+    }
+  }
+
+  /**
+   * Persist and refresh the agent from the database to ensure we return canonical DB fields.
+   */
+  private async persistAndRefresh(agent: Agent): Promise<Agent> {
+    await this.persistAgent(agent);
+    const dbAgent = await this.getAgentFromDatabase(agent.id);
+    return dbAgent ? this.mergeAgentData(agent, dbAgent) : agent;
+  }
+
+  /**
+   * Cache a merged agent with TTL.
+   */
+  private cacheAgent(agent: Agent): void {
+    this.agentCache.set(agent.id, agent);
+    this.cacheExpiry.set(agent.id, Date.now() + this.CACHE_TTL_MS);
+  }
+
+  /**
+   * Sync provider-reported agents into the map/database and return merged data.
+   */
+  private async syncProviderAgents(
+    adapter: ProviderAgentAdapter,
+    agentsById: Map<string, Agent>
+  ): Promise<void> {
+    const providerAgents = await adapter.listAgents();
+    for (const providerAgent of providerAgents) {
+      const dbAgent = agentsById.get(providerAgent.id);
+      const mergedAgent = this.mergeAgentData(providerAgent, dbAgent);
+      const refreshed = await this.persistAndRefresh(mergedAgent);
+      agentsById.set(refreshed.id, refreshed);
+    }
+  }
+
+  /**
+   * Extract provider native ID from a Hakuna ID if the prefix matches the adapter.
+   */
+  private getProviderNativeId(agentId: string, adapter: ProviderAgentAdapter): string | null {
+    const prefix = `${adapter.getProviderId()}:`;
+    if (!agentId.startsWith(prefix)) {
+      return null;
+    }
+    return agentId.slice(prefix.length) || null;
   }
 
   /**
    * Get all agents across all providers
    */
   async listAgents(): Promise<Agent[]> {
-    const agents: Agent[] = [];
-    
+    const agentsById = await this.loadAgentsFromDb();
+
     for (const adapter of this.adapters.values()) {
       try {
         const isAvailable = await adapter.isAvailable();
@@ -85,18 +166,15 @@ export class AgentRegistry {
           logger.info(`[AGENT-REGISTRY] Provider ${adapter.getProviderId()} is not available, skipping`);
           continue;
         }
-        
-        const providerAgents = await adapter.listAgents();
-        // Merge each agent with database data
-        for (const agent of providerAgents) {
-          const mergedAgent = await this.mergeWithDatabaseData(agent);
-          agents.push(mergedAgent);
-        }
+
+        await this.syncProviderAgents(adapter, agentsById);
       } catch (error) {
         logger.error(`[AGENT-REGISTRY] Failed to list agents from provider ${adapter.getProviderId()}`, error);
       }
     }
-    
+
+    const agents = Array.from(agentsById.values());
+    agents.forEach((agent) => this.cacheAgent(agent));
     return agents;
   }
 
@@ -108,63 +186,76 @@ export class AgentRegistry {
     const cached = this.agentCache.get(agentId);
     const expiry = this.cacheExpiry.get(agentId);
     if (cached && expiry && Date.now() < expiry) {
-      // Still merge with database data in case it was updated
-      return await this.mergeWithDatabaseData(cached);
+      const dbAgent = await this.getAgentFromDatabase(agentId);
+      if (dbAgent) {
+        this.cacheAgent(dbAgent);
+        return dbAgent;
+      }
+      return cached;
     }
 
-    // Find agent across all providers
+    // Prefer database source of truth
+    const dbAgent = await this.getAgentFromDatabase(agentId);
+    if (dbAgent) {
+      this.cacheAgent(dbAgent);
+      return dbAgent;
+    }
+
+    // Fallback: ask providers directly (helps when DB isn't populated yet)
     for (const adapter of this.adapters.values()) {
+      const providerNativeId = this.getProviderNativeId(agentId, adapter);
+      if (!providerNativeId) {
+        continue;
+      }
+
       try {
         const isAvailable = await adapter.isAvailable();
         if (!isAvailable) {
           continue;
         }
-        
-        const agents = await adapter.listAgents();
-        const agent = agents.find(a => a.id === agentId);
-        
-        if (agent) {
-          // Merge with database data
-          const mergedAgent = await this.mergeWithDatabaseData(agent);
-          // Cache the merged agent
-          this.agentCache.set(agentId, mergedAgent);
-          this.cacheExpiry.set(agentId, Date.now() + this.CACHE_TTL_MS);
-          return mergedAgent;
+
+        const agent = await adapter.getAgent(providerNativeId);
+        if (!agent) {
+          continue;
         }
+
+        const mergedAgent = this.mergeAgentData(agent);
+        await this.persistAgent(mergedAgent);
+        this.cacheAgent(mergedAgent);
+        return mergedAgent;
       } catch (error) {
         logger.error(`[AGENT-REGISTRY] Failed to get agent ${agentId} from provider ${adapter.getProviderId()}`, error);
       }
     }
     
-    return null;
+    // Last resort: walk the full list to cover edge IDs that don't encode provider
+    const agents = await this.listAgents();
+    return agents.find((a) => a.id === agentId) ?? null;
   }
 
   /**
    * Get agents by provider ID
    */
   async getAgentsByProvider(providerId: string): Promise<Agent[]> {
+    const agentsById = await this.loadAgentsFromDb();
     const adapter = this.adapters.get(providerId);
+
     if (!adapter) {
       logger.warn(`[AGENT-REGISTRY] No adapter found for provider: ${providerId}`);
-      return [];
+    } else {
+      try {
+        const isAvailable = await adapter.isAvailable();
+        if (isAvailable) {
+          await this.syncProviderAgents(adapter, agentsById);
+        }
+      } catch (error) {
+        logger.error(`[AGENT-REGISTRY] Failed to get agents from provider ${providerId}`, error);
+      }
     }
 
-    try {
-      const isAvailable = await adapter.isAvailable();
-      if (!isAvailable) {
-        return [];
-      }
-      
-      const agents = await adapter.listAgents();
-      // Merge each agent with database data
-      const mergedAgents = await Promise.all(
-        agents.map(agent => this.mergeWithDatabaseData(agent))
-      );
-      return mergedAgents;
-    } catch (error) {
-      logger.error(`[AGENT-REGISTRY] Failed to get agents from provider ${providerId}`, error);
-      return [];
-    }
+    const agents = Array.from(agentsById.values()).filter((agent) => agent.providerId === providerId);
+    agents.forEach((agent) => this.cacheAgent(agent));
+    return agents;
   }
 
   /**
@@ -209,25 +300,11 @@ export class AgentRegistry {
       tenantId: agentData.tenantId || agent.tenantId,
     };
     
-    // Save to database (including owner field)
-    try {
-      await saveAgentToDb(mergedAgent);
-    } catch (error) {
-      // Silently handle "table doesn't exist" errors
-      if (error instanceof Error && error.message.includes("no such table")) {
-        // Table doesn't exist yet - skip database save silently
-      } else {
-        logger.warn(`[AGENT-REGISTRY] Failed to save agent ${mergedAgent.id} to database:`, error);
-      }
-      // Continue even if database save fails
-    }
+    const refreshed = await this.persistAndRefresh(mergedAgent);
+    this.cacheAgent(refreshed);
     
-    // Cache the merged agent
-    this.agentCache.set(mergedAgent.id, mergedAgent);
-    this.cacheExpiry.set(mergedAgent.id, Date.now() + this.CACHE_TTL_MS);
-    
-    logger.info(`[AGENT-REGISTRY] Created agent ${mergedAgent.id} in provider ${providerId}`);
-    return mergedAgent;
+    logger.info(`[AGENT-REGISTRY] Created agent ${refreshed.id} in provider ${providerId}`);
+    return refreshed;
   }
 
   /**
@@ -251,31 +328,21 @@ export class AgentRegistry {
     const updated = await adapter.updateAgent(agent.providerNativeId, updates);
     
     // Merge updates with existing agent data (especially for owner field)
-    const mergedAgent: Agent = {
-      ...updated,
-      owner: updates.owner !== undefined ? updates.owner : agent.owner,
-      tenantId: updates.tenantId !== undefined ? updates.tenantId : agent.tenantId,
-    };
+    // Always use updates.owner if provided, otherwise use existing agent.owner
+    const mergedAgent = this.mergeAgentData(
+      {
+        ...updated,
+        owner: updates.owner !== undefined ? updates.owner : (updated.owner ?? agent.owner),
+        tenantId: updates.tenantId !== undefined ? updates.tenantId : (updated.tenantId ?? agent.tenantId),
+      },
+      agent
+    );
     
-    // Save to database (including owner field)
-    try {
-      await saveAgentToDb(mergedAgent);
-    } catch (error) {
-      // Silently handle "table doesn't exist" errors
-      if (error instanceof Error && error.message.includes("no such table")) {
-        // Table doesn't exist yet - skip database save silently
-      } else {
-        logger.warn(`[AGENT-REGISTRY] Failed to save updated agent ${agentId} to database:`, error);
-      }
-      // Continue even if database save fails
-    }
-    
-    // Update cache
-    this.agentCache.set(agentId, mergedAgent);
-    this.cacheExpiry.set(agentId, Date.now() + this.CACHE_TTL_MS);
+    const refreshed = await this.persistAndRefresh(mergedAgent);
+    this.cacheAgent(refreshed);
     
     logger.info(`[AGENT-REGISTRY] Updated agent ${agentId}`);
-    return mergedAgent;
+    return refreshed;
   }
 
   /**
@@ -350,4 +417,3 @@ export function getAgentRegistry(): AgentRegistry {
 export function resetAgentRegistry(): void {
   registryInstance = null;
 }
-
