@@ -34,7 +34,7 @@ Hakuna Gateway is a minimal MCP server that normalizes tool usage through an int
    pnpm install --frozen-lockfile
    pnpm run dev
    ```
-   Visit http://localhost:3000 to manage tools and policies.
+   Visit http://localhost:1337 to manage tools and policies.
 
 ## Screenshot
 ![Dashboard library view](docs/images/dashboard-tools.png)

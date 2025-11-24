@@ -181,6 +181,15 @@ export class McpServerProxyManager {
     
       // Log the substituted URL right before creating URL object
       logger.info(`[MCP-GATEWAY] Using remote MCP URL: ${substitutedServerUrl}`);
+      
+      // Debug: Log raw headers from config (before processing)
+      if (proxyConfig.headers) {
+        logger.info(`[MCP-GATEWAY] Raw headers from config for ${proxyConfig.name}: ${JSON.stringify(Object.keys(proxyConfig.headers))}`);
+        if (proxyConfig.headers.Authorization) {
+          const authParts = proxyConfig.headers.Authorization.split(" ");
+          logger.info(`[MCP-GATEWAY] Authorization header from config: type="${authParts[0]}", token_length=${authParts[1]?.length || 0}`);
+        }
+      }
     
       // Warn if no authentication headers are configured (many MCP servers require auth)
       if (!headers || Object.keys(headers).length === 0) {
@@ -221,6 +230,13 @@ export class McpServerProxyManager {
       );
       logger.info(`[MCP-GATEWAY] Using StreamableHTTP transport for: ${serverUrl.origin}`);
       logger.info(`[MCP-GATEWAY] Request headers: ${JSON.stringify(maskedHeaders)}`);
+      
+      // Debug: Log Authorization header format for OAuth services
+      if (headers.Authorization) {
+        const authHeader = headers.Authorization;
+        const parts = authHeader.split(" ");
+        logger.info(`[MCP-GATEWAY] Authorization header format: type="${parts[0]}", token_length=${parts[1]?.length || 0}, token_prefix=${parts[1]?.substring(0, 10) || "none"}...`);
+      }
 
       // Check if SSL verification should be disabled (for development/testing only)
       const allowInsecure = process.env.MCP_ALLOW_INSECURE === "true" || 
@@ -298,10 +314,7 @@ export class McpServerProxyManager {
                 if (errorJson?.error === "invalid_token") {
                   if (errorJson.error_description?.includes("Invalid token format")) {
                     errorDetails = `\n\nToken format error: The provided token format is invalid. ` +
-                      `For Notion MCP, you need a valid OAuth2 access token obtained through Notion's OAuth flow. ` +
-                      `Internal tokens (starting with 'ntn_') or API keys are not valid for MCP API access. ` +
-                      `Please complete the OAuth flow to obtain a proper access token. ` +
-                      `See: https://developers.notion.com/docs/authorization`;
+                      `you need a valid OAuth2 access token obtained through OAuth flow.`
                   } else {
                     errorDetails = `\n\nToken error: ${errorJson.error_description || errorJson.error}`;
                   }
@@ -560,6 +573,47 @@ export class McpServerProxyManager {
    */
   getClient(proxyName: string): Client | undefined {
     return this.clients.get(proxyName);
+  }
+
+  /**
+   * Disconnect a specific MCP server proxy
+   * This forces reconnection with updated configuration (e.g., after OAuth)
+   */
+  async disconnect(proxyName: string): Promise<void> {
+    const client = this.clients.get(proxyName);
+    if (client) {
+      try {
+        await client.close();
+        this.clients.delete(proxyName);
+        logger.info(`[MCP-GATEWAY] Disconnected client for ${proxyName}`);
+      } catch (err) {
+        logger.warn(`[MCP-GATEWAY] Error closing client ${proxyName}:`, err);
+      }
+    }
+
+    const transport = this.transports.get(proxyName);
+    if (transport) {
+      try {
+        if (transport && typeof transport === "object" && "close" in transport && typeof transport.close === "function") {
+          await transport.close();
+        }
+        this.transports.delete(proxyName);
+        logger.info(`[MCP-GATEWAY] Disconnected transport for ${proxyName}`);
+      } catch (err) {
+        logger.warn(`[MCP-GATEWAY] Error closing transport ${proxyName}:`, err);
+      }
+    }
+
+    const process = this.processes.get(proxyName);
+    if (process) {
+      try {
+        process.kill();
+        this.processes.delete(proxyName);
+        logger.info(`[MCP-GATEWAY] Killed process for ${proxyName}`);
+      } catch (err) {
+        logger.warn(`[MCP-GATEWAY] Error killing process ${proxyName}:`, err);
+      }
+    }
   }
 
   /**

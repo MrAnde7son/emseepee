@@ -102,9 +102,13 @@ interface McpServerDetails {
   icon?: string;
   oauth?: {
     provider: string;
+    clientId?: string;
+    clientSecret?: string;
     authorizationUrl: string;
     tokenUrl: string;
     scopes?: string[];
+    clientIdHelpUrl?: string;
+    clientIdHelpText?: string;
   };
   defaultPolicy: {
     allowedRoles: string[];
@@ -1142,12 +1146,153 @@ export default function ToolsPage() {
                             {/* OAuth Authentication Section */}
                             {mcpDetails.oauth && (
                               <div className="flex items-start gap-2 pt-2 border-t">
-                                <span className="font-medium min-w-[100px] pt-2">Authentication:</span>
-                                <div className="flex-1 space-y-2">
+                                <span className="font-medium min-w-[100px] pt-2">OAuth:</span>
+                                <div className="flex-1 space-y-3">
+                                  {/* OAuth Client ID Configuration */}
+                                  <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <label className="text-sm font-medium min-w-[120px]">
+                                        Client ID:
+                                      </label>
+                                      {isEditingConfig ? (
+                                        <div className="flex-1 space-y-1">
+                                          <Input
+                                            type="text"
+                                            value={editedConfig.oauth?.clientId || mcpDetails.oauth.clientId || ""}
+                                            onChange={(e) => {
+                                              setEditedConfig({
+                                                ...editedConfig,
+                                                oauth: {
+                                                  ...mcpDetails.oauth!,
+                                                  ...editedConfig.oauth,
+                                                  clientId: e.target.value || undefined,
+                                                },
+                                              });
+                                            }}
+                                            placeholder="Enter OAuth client ID"
+                                            className="flex-1"
+                                          />
+                                          {(() => {
+                                            const { clientIdHelpText, clientIdHelpUrl } = mcpDetails.oauth;
+                                            
+                                            if (clientIdHelpText) {
+                                              // Check if help text contains {link} placeholder
+                                              if (clientIdHelpText.includes("{link}") && clientIdHelpUrl) {
+                                                const parts = clientIdHelpText.split("{link}");
+                                                const displayUrl = clientIdHelpUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
+                                                return (
+                                                  <p className="text-xs text-muted-foreground">
+                                                    {parts[0]}
+                                                    <a
+                                                      href={clientIdHelpUrl}
+                                                      target="_blank"
+                                                      rel="noopener noreferrer"
+                                                      className="text-primary hover:underline"
+                                                    >
+                                                      {displayUrl}
+                                                    </a>
+                                                    {parts[1]}
+                                                  </p>
+                                                );
+                                              }
+                                              // Plain text without link placeholder
+                                              return (
+                                                <p className="text-xs text-muted-foreground">
+                                                  {clientIdHelpText}
+                                                </p>
+                                              );
+                                            }
+                                            
+                                            // Fallback: use URL if provided
+                                            if (clientIdHelpUrl) {
+                                              const displayUrl = clientIdHelpUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
+                                              return (
+                                                <p className="text-xs text-muted-foreground">
+                                                  Get this from your OAuth provider at{" "}
+                                                  <a
+                                                    href={clientIdHelpUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-primary hover:underline"
+                                                  >
+                                                    {displayUrl}
+                                                  </a>
+                                                </p>
+                                              );
+                                            }
+                                            
+                                            // Default fallback
+                                            return (
+                                              <p className="text-xs text-muted-foreground">
+                                                Get this from your OAuth provider.
+                                              </p>
+                                            );
+                                          })()}
+                                        </div>
+                                      ) : (
+                                        <div className="flex-1">
+                                          {mcpDetails.oauth.clientId ? (
+                                            <code className="bg-muted px-2 py-1 rounded text-xs">
+                                              {mcpDetails.oauth.clientId}
+                                            </code>
+                                          ) : (
+                                            <span className="text-xs text-muted-foreground italic">
+                                              Not configured (will use {mcpDetails.id.toUpperCase()}_OAUTH_CLIENT_ID env var)
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* OAuth Client Secret Configuration */}
+                                  <div className="space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <label className="text-sm font-medium min-w-[120px]">
+                                        Client Secret:
+                                      </label>
+                                      {isEditingConfig ? (
+                                        <div className="flex-1 space-y-1">
+                                          <Input
+                                            type="password"
+                                            value={editedConfig.oauth?.clientSecret || mcpDetails.oauth.clientSecret || ""}
+                                            onChange={(e) => {
+                                              setEditedConfig({
+                                                ...editedConfig,
+                                                oauth: {
+                                                  ...mcpDetails.oauth!,
+                                                  ...editedConfig.oauth,
+                                                  clientSecret: e.target.value || undefined,
+                                                },
+                                              });
+                                            }}
+                                            placeholder="Enter OAuth client secret"
+                                            className="flex-1"
+                                          />
+                                          <p className="text-xs text-muted-foreground">
+                                            Keep this secret secure. It will be stored in the configuration.
+                                          </p>
+                                        </div>
+                                      ) : (
+                                        <div className="flex-1">
+                                          {mcpDetails.oauth.clientSecret ? (
+                                            <code className="bg-muted px-2 py-1 rounded text-xs">
+                                              •••••••••••••••••
+                                            </code>
+                                          ) : (
+                                            <span className="text-xs text-muted-foreground italic">
+                                              Not configured (will use {mcpDetails.id.toUpperCase()}_OAUTH_CLIENT_SECRET env var)
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* OAuth Status and Actions */}
                                   {(() => {
                                     const status = oauthStatus[mcpDetails.id];
                                     const isAuthenticated = status?.authenticated;
-                                    const isConfigured = status?.configured;
                                     
                                     return (
                                       <>
@@ -1169,56 +1314,76 @@ export default function ToolsPage() {
                                             </>
                                           )}
                                         </div>
-                                        <div className="flex gap-2">
-                                          {!isAuthenticated ? (
-                                            <Button
-                                              size="sm"
-                                              onClick={async () => {
-                                                if (!mcpDetails.id) return;
-                                                setInitiatingOAuth(mcpDetails.id);
-                                                try {
-                                                  const { authorizationUrl } = await Api.initiateOAuth(mcpDetails.id);
-                                                  // Open OAuth flow in new window
-                                                  window.location.href = authorizationUrl;
-                                                } catch (error) {
-                                                  console.error("Failed to initiate OAuth:", error);
-                                                  alert(`Failed to start OAuth flow: ${error instanceof Error ? error.message : "Unknown error"}`);
-                                                } finally {
-                                                  setInitiatingOAuth(null);
-                                                }
-                                              }}
-                                              disabled={initiatingOAuth === mcpDetails.id}
-                                              className="gap-2"
-                                            >
-                                              {initiatingOAuth === mcpDetails.id ? "Connecting..." : "Connect with OAuth"}
-                                            </Button>
-                                          ) : (
-                                            <Button
-                                              size="sm"
-                                              variant="outline"
-                                              onClick={async () => {
-                                                if (!mcpDetails.id) return;
-                                                if (confirm("Are you sure you want to revoke OAuth access?")) {
+                                        {!isEditingConfig && (
+                                          <div className="flex gap-2">
+                                            {!isAuthenticated ? (
+                                              <Button
+                                                size="sm"
+                                                onClick={async () => {
+                                                  if (!mcpDetails.id) return;
+                                                  setInitiatingOAuth(mcpDetails.id);
                                                   try {
-                                                    await Api.revokeOAuth(mcpDetails.id);
-                                                    setOauthStatus((prev) => ({
-                                                      ...prev,
-                                                      [mcpDetails.id]: { ...prev[mcpDetails.id], authenticated: false },
-                                                    }));
-                                                    // Reload details to clear headers
-                                                    Api.getMcpServerDetails(mcpDetails.id).then(setMcpDetails);
+                                                    const { authorizationUrl } = await Api.initiateOAuth(mcpDetails.id);
+                                                    // Open OAuth flow in new window
+                                                    window.location.href = authorizationUrl;
                                                   } catch (error) {
-                                                    console.error("Failed to revoke OAuth:", error);
-                                                    alert(`Failed to revoke OAuth: ${error instanceof Error ? error.message : "Unknown error"}`);
+                                                    console.error("Failed to initiate OAuth:", error);
+                                                    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+                                                    
+                                                    // Provide helpful guidance for common errors
+                                                    if (errorMessage.includes("OAuth client ID not configured")) {
+                                                      alert(
+                                                        `OAuth Configuration Required\n\n` +
+                                                        `To authenticate with ${mcpDetails.name}, you need to configure the OAuth client ID.\n\n` +
+                                                        `Please configure it in the MCP server settings above (click Edit to configure), or set the ${mcpDetails.id.toUpperCase()}_OAUTH_CLIENT_ID environment variable.\n\n` +
+                                                        `For Notion: Create an integration at https://www.notion.so/my-integrations`
+                                                      );
+                                                    } else if (errorMessage.includes("OAuth client secret not configured")) {
+                                                      alert(
+                                                        `OAuth Configuration Required\n\n` +
+                                                        `To authenticate with ${mcpDetails.name}, you need to configure the OAuth client secret.\n\n` +
+                                                        `Please configure it in the MCP server settings above (click Edit to configure), or set the ${mcpDetails.id.toUpperCase()}_OAUTH_CLIENT_SECRET environment variable.`
+                                                      );
+                                                    } else {
+                                                      alert(`Failed to start OAuth flow: ${errorMessage}`);
+                                                    }
+                                                  } finally {
+                                                    setInitiatingOAuth(null);
                                                   }
-                                                }
-                                              }}
-                                              className="gap-2"
-                                            >
-                                              Revoke Access
-                                            </Button>
-                                          )}
-                                        </div>
+                                                }}
+                                                disabled={initiatingOAuth === mcpDetails.id}
+                                                className="gap-2"
+                                              >
+                                                {initiatingOAuth === mcpDetails.id ? "Connecting..." : "Connect with OAuth"}
+                                              </Button>
+                                            ) : (
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={async () => {
+                                                  if (!mcpDetails.id) return;
+                                                  if (confirm("Are you sure you want to revoke OAuth access?")) {
+                                                    try {
+                                                      await Api.revokeOAuth(mcpDetails.id);
+                                                      setOauthStatus((prev) => ({
+                                                        ...prev,
+                                                        [mcpDetails.id]: { ...prev[mcpDetails.id], authenticated: false },
+                                                      }));
+                                                      // Reload details to clear headers
+                                                      Api.getMcpServerDetails(mcpDetails.id).then(setMcpDetails);
+                                                    } catch (error) {
+                                                      console.error("Failed to revoke OAuth:", error);
+                                                      alert(`Failed to revoke OAuth: ${error instanceof Error ? error.message : "Unknown error"}`);
+                                                    }
+                                                  }
+                                                }}
+                                                className="gap-2"
+                                              >
+                                                Revoke Access
+                                              </Button>
+                                            )}
+                                          </div>
+                                        )}
                                         {mcpDetails.oauth.scopes && mcpDetails.oauth.scopes.length > 0 && (
                                           <div className="text-xs text-muted-foreground">
                                             Required scopes: {mcpDetails.oauth.scopes.join(", ")}

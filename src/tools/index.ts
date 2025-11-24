@@ -10,6 +10,9 @@ import { McpServerProxyHandler, McpServerProxyManager } from "./handlers/McpServ
 import { convertInputSchemaToZod } from "./schemaConverter.js";
 import type { AgentContext } from "./handlers/BaseGatewayHandler.js";
 
+// Global singleton manager instance
+let globalProxyManager: McpServerProxyManager | null = null;
+
 export interface ToolRegistrationContext {
   server: McpServer;
   getAgentContext: () => AgentContext;
@@ -200,7 +203,11 @@ export async function registerMcpServerProxies(
   context: ToolRegistrationContext
 ): Promise<void> {
   const { server, getAgentContext } = context;
-  const proxyManager = new McpServerProxyManager();
+  // Use singleton manager to allow disconnecting specific proxies
+  if (!globalProxyManager) {
+    globalProxyManager = new McpServerProxyManager();
+  }
+  const proxyManager = globalProxyManager;
   const mcpServerProxies = await getMcpServerProxies();
 
   if (Object.keys(mcpServerProxies).length === 0) {
@@ -276,6 +283,15 @@ export async function registerMcpServerProxies(
 /**
  * Convert MCP input schema to Zod schema
  */
+/**
+ * Disconnect an MCP server proxy (e.g., after OAuth token update)
+ */
+export async function disconnectMcpServerProxy(proxyName: string): Promise<void> {
+  if (globalProxyManager) {
+    await globalProxyManager.disconnect(proxyName);
+  }
+}
+
 function convertMcpInputSchemaToZod(inputSchema: unknown): z.ZodObject<Record<string, z.ZodTypeAny>> {
   // MCP schemas are JSON Schema format, we need to convert to Zod
   // This is a simplified converter - you may need to enhance it for complex schemas

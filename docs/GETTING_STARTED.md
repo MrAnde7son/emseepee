@@ -25,7 +25,7 @@ cd dashboard
 pnpm install --frozen-lockfile
 pnpm run dev
 ```
-Then open http://localhost:3000 in your browser.
+Then open http://localhost:1337 in your browser.
 
 ## Minimal workflow
 1. Copy `.env.example` to `.env` and set any API keys you need (LLM, search providers, etc.).

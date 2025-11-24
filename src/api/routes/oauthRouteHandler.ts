@@ -97,7 +97,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       
       const clientId = oauthConfig.clientId || process.env[`${mcpId.toUpperCase()}_OAUTH_CLIENT_ID`] || "";
       if (!clientId) {
-        this.sendError(res, 400, `OAuth client ID not configured. Please set ${mcpId.toUpperCase()}_OAUTH_CLIENT_ID environment variable or configure it in the MCP config.`);
+        this.sendError(res, 400, `OAuth client ID not configured. Please configure it in the MCP server settings in the dashboard, or set the ${mcpId.toUpperCase()}_OAUTH_CLIENT_ID environment variable.`);
         return;
       }
       
@@ -140,7 +140,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         const errorDescription = url.searchParams.get("error_description") || error;
         logger.error(`[OAUTH] OAuth callback error: ${error} - ${errorDescription}`);
         // Redirect to frontend with error
-        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
         res.writeHead(302, {
           Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent(errorDescription)}`,
         });
@@ -190,9 +190,9 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       
       if (!clientSecret) {
         logger.error(`[OAUTH] OAuth client secret not configured for ${mcpId}`);
-        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
         res.writeHead(302, {
-          Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent("OAuth client secret not configured")}`,
+          Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent("OAuth client secret not configured. Please configure it in the MCP server settings in the dashboard, or set the " + mcpId.toUpperCase() + "_OAUTH_CLIENT_SECRET environment variable.")}`,
         });
         res.end();
         return;
@@ -237,7 +237,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
         logger.error(`[OAUTH] Token exchange failed: ${tokenResponse.status} ${errorText}`);
-        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
         res.writeHead(302, {
           Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent("Failed to exchange authorization code")}`,
         });
@@ -251,6 +251,8 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         expires_in?: number;
         token_type?: string;
       };
+      
+      logger.info(`[OAUTH] Token exchange successful for ${mcpId}. Token type: ${tokenData.token_type || "Bearer"}, Token length: ${tokenData.access_token?.length || 0}, Token prefix: ${tokenData.access_token?.substring(0, 10) || "none"}...`);
       
       // Store tokens
       const expiresAt = tokenData.expires_in 
@@ -268,23 +270,62 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       const { getMcpServerProxiesFromDb, saveMcpServerProxiesToDb } = await import("../../db/services/configService.js");
       const mcpProxiesDb = await getMcpServerProxiesFromDb();
       if (mcpProxiesDb[mcpId]) {
+        // Normalize token_type to "Bearer" (capitalized) per OAuth 2.0 spec
+        // Some providers return lowercase "bearer", but the spec requires "Bearer"
+        const rawTokenType = (tokenData.token_type || "Bearer").trim().toLowerCase();
+        const tokenType = rawTokenType === "bearer" ? "Bearer" : rawTokenType.charAt(0).toUpperCase() + rawTokenType.slice(1);
+        const authHeaderValue = `${tokenType} ${tokenData.access_token}`;
+        
+        logger.info(`[OAUTH] Setting Authorization header for ${mcpId}: "${tokenType} ${tokenData.access_token.substring(0, 10)}..."`);
+        
+        // Ensure headers object exists
+        if (!mcpProxiesDb[mcpId].headers) {
+          mcpProxiesDb[mcpId].headers = {};
+        }
+        
         mcpProxiesDb[mcpId].headers = {
           ...mcpProxiesDb[mcpId].headers,
-          Authorization: `${tokenData.token_type || "Bearer"} ${tokenData.access_token}`,
+          Authorization: authHeaderValue,
         };
+        
+        // Save to database and wait for it to complete
         await saveMcpServerProxiesToDb(mcpProxiesDb);
-        logger.info(`[OAUTH] OAuth tokens stored and headers updated for ${mcpId}`);
+        logger.info(`[OAUTH] Headers saved to database for ${mcpId}`);
+        
+        // Verify the save by reading back
+        const { getMcpServerProxiesFromDb } = await import("../../db/services/configService.js");
+        const verifyConfig = await getMcpServerProxiesFromDb();
+        if (verifyConfig[mcpId]?.headers?.Authorization) {
+          logger.info(`[OAUTH] Verified Authorization header saved: "${verifyConfig[mcpId].headers.Authorization.substring(0, 20)}..."`);
+        } else {
+          logger.error(`[OAUTH] WARNING: Authorization header not found after save for ${mcpId}`);
+        }
+        
+        // Clear config cache to ensure new headers are loaded
+        const { clearConfigCache } = await import("../../config.js");
+        clearConfigCache();
+        logger.info(`[OAUTH] Configuration cache cleared for ${mcpId}`);
+        
+        // Disconnect existing MCP client to force reconnection with new token
+        try {
+          const { disconnectMcpServerProxy } = await import("../../tools/index.js");
+          await disconnectMcpServerProxy(mcpId);
+          logger.info(`[OAUTH] Disconnected MCP client for ${mcpId} to force reconnection with new token`);
+        } catch (disconnectError) {
+          logger.warn(`[OAUTH] Failed to disconnect MCP client for ${mcpId}:`, disconnectError);
+          // Non-fatal - connection will be re-established on next tool discovery
+        }
       }
       
       // Redirect to frontend with success
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
       res.writeHead(302, {
         Location: `${frontendUrl}/tools?mcp=${mcpId}&oauth_success=true`,
       });
       res.end();
     } catch (error) {
       logger.error(`[OAUTH] Callback error:`, error);
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
       res.writeHead(302, {
         Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent(error instanceof Error ? error.message : "Unknown error")}`,
       });

@@ -179,9 +179,13 @@ export class McpRouteHandler extends BaseRouteHandler {
     icon?: string;
     oauth?: {
       provider: string;
+      clientId?: string;
+      clientSecret?: string;
       authorizationUrl: string;
       tokenUrl: string;
       scopes?: string[];
+      clientIdHelpUrl?: string;
+      clientIdHelpText?: string;
     };
     defaultPolicy: {
       allowedRoles: string[];
@@ -210,9 +214,13 @@ export class McpRouteHandler extends BaseRouteHandler {
       icon: proxyConfig.icon,
       oauth: proxyConfig.oauth ? {
         provider: proxyConfig.oauth.provider,
+        clientId: proxyConfig.oauth.clientId,
+        clientSecret: proxyConfig.oauth.clientSecret,
         authorizationUrl: proxyConfig.oauth.authorizationUrl,
         tokenUrl: proxyConfig.oauth.tokenUrl,
         scopes: proxyConfig.oauth.scopes,
+        clientIdHelpUrl: proxyConfig.oauth.clientIdHelpUrl,
+        clientIdHelpText: proxyConfig.oauth.clientIdHelpText,
       } : undefined,
       defaultPolicy: {
         allowedRoles: proxyConfig.defaultPolicy.allowedRoles,
@@ -237,9 +245,13 @@ export class McpRouteHandler extends BaseRouteHandler {
       icon?: string;
       oauth?: {
         provider: string;
+        clientId?: string;
+        clientSecret?: string;
         authorizationUrl: string;
         tokenUrl: string;
         scopes?: string[];
+        clientIdHelpUrl?: string;
+        clientIdHelpText?: string;
       };
       defaultPolicy: {
         allowedRoles: string[];
