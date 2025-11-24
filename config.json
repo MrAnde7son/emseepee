@@ -109,7 +109,9 @@
         "provider": "notion",
         "authorizationUrl": "https://api.notion.com/v1/oauth/authorize",
         "tokenUrl": "https://api.notion.com/v1/oauth/token",
-        "scopes": ["read", "update", "insert"]
+        "scopes": ["read", "update", "insert"],
+        "clientIdHelpUrl": "https://www.notion.so/my-integrations",
+        "clientIdHelpText": "Get this from your OAuth provider. For Notion, create an integration at {link}"
       },
       "enabled": false,
       "defaultPolicy": {

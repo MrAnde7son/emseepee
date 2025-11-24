@@ -76,6 +76,8 @@ export interface OAuthConfig {
   tokenUrl: string; // OAuth token endpoint
   scopes?: string[]; // Required OAuth scopes
   redirectUri?: string; // OAuth redirect URI (defaults to gateway callback URL)
+  clientIdHelpUrl?: string; // URL where users can get their OAuth client ID
+  clientIdHelpText?: string; // Custom help text for obtaining the OAuth client ID (supports {link} placeholder)
 }
 
 export interface McpServerProxyConfig {

@@ -128,8 +128,17 @@ export class ToolsRouteHandler extends BaseRouteHandler {
       }
       
       try {
+        // Clear config cache to ensure we have the latest headers (especially after OAuth)
+        clearConfigCache();
         const { McpServerProxyManager } = await import("../../tools/handlers/McpServerProxyHandler.js");
         const proxyManager = new McpServerProxyManager();
+        
+        // Reload config to get latest headers
+        const freshConfig = await getMcpServerProxies();
+        const freshProxyConfig = freshConfig[proxyName];
+        if (!freshProxyConfig) {
+          throw new Error(`MCP server proxy ${proxyName} not found`);
+        }
         
         try {
           const timeoutPromise = new Promise<never>((_, reject) => {
@@ -137,7 +146,7 @@ export class ToolsRouteHandler extends BaseRouteHandler {
           });
           
           const discoveredTools = await Promise.race([
-            proxyManager.connectAndDiscoverTools(proxyConfig),
+            proxyManager.connectAndDiscoverTools(freshProxyConfig),
             timeoutPromise,
           ]);
           
@@ -259,6 +268,8 @@ export class ToolsRouteHandler extends BaseRouteHandler {
       }
     }
     
+    // Clear config cache and reload to ensure we have latest headers
+    clearConfigCache();
     const mcpProxies = await getMcpServerProxies();
     for (const [proxyName, proxyConfig] of Object.entries(mcpProxies)) {
       if (proxyConfig.enabled === true) {

@@ -85,9 +85,13 @@ export const Api = {
     icon?: string;
     oauth?: {
       provider: string;
+      clientId?: string;
+      clientSecret?: string;
       authorizationUrl: string;
       tokenUrl: string;
       scopes?: string[];
+      clientIdHelpUrl?: string;
+      clientIdHelpText?: string;
     };
     defaultPolicy: {
       allowedRoles: string[];
@@ -111,9 +115,13 @@ export const Api = {
     icon?: string;
     oauth?: {
       provider: string;
+      clientId?: string;
+      clientSecret?: string;
       authorizationUrl: string;
       tokenUrl: string;
       scopes?: string[];
+      clientIdHelpUrl?: string;
+      clientIdHelpText?: string;
     };
     defaultPolicy: {
       allowedRoles: string[];
@@ -134,9 +142,13 @@ export const Api = {
     icon?: string;
     oauth?: {
       provider: string;
+      clientId?: string;
+      clientSecret?: string;
       authorizationUrl: string;
       tokenUrl: string;
       scopes?: string[];
+      clientIdHelpUrl?: string;
+      clientIdHelpText?: string;
     };
     defaultPolicy: {
       allowedRoles: string[];
