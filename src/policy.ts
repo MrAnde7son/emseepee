@@ -45,7 +45,7 @@ function matchesCondition(
   condition: PolicyRuleCondition,
   input: PolicyInput
 ): boolean {
-  const { tool, agentRole, env, args, intent, providerId } = input;
+  const { tool, agentId, agentRole, env, args, intent, providerId } = input;
 
   // Check tool name
   if (condition.toolName !== undefined) {
@@ -88,6 +88,16 @@ function matchesCondition(
       ? condition.agentRole
       : [condition.agentRole];
     if (!roles.includes(agentRole)) {
+      return false;
+    }
+  }
+
+  // Check agent ID
+  if (condition.agentId !== undefined) {
+    const agentIds = Array.isArray(condition.agentId)
+      ? condition.agentId
+      : [condition.agentId];
+    if (!agentIds.includes(agentId)) {
       return false;
     }
   }

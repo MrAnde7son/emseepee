@@ -1,4 +1,4 @@
-import { Provider, Tool, Policy, GatewayEvent } from "./types";
+import { Provider, Tool, Policy, GatewayEvent, Agent } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8000";
 
@@ -10,15 +10,23 @@ async function fetchJSON<T>(path: string): Promise<T> {
   return res.json();
 }
 
-async function postJSON<T>(path: string, body: unknown): Promise<T> {
+async function postJSON<T>(path: string, body: unknown, requireAuth: boolean = false): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (requireAuth) {
+    const token = localStorage.getItem("auth_token");
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+  }
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
     cache: "no-store",
   });
   if (!res.ok) {
-    throw new Error(`Request failed: ${res.status}`);
+    const error = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
+    throw new Error(error.error || `Request failed: ${res.status}`);
   }
   return res.json();
 }
@@ -48,7 +56,8 @@ async function deleteJSON(path: string): Promise<void> {
 
 export const Api = {
   getProviders: () => fetchJSON<Provider[]>("/api/providers"),
-  installProvider: (providerId: string) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/install`, {}),
+  installProvider: (providerId: string, config?: Record<string, unknown>) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/install`, config || {}, true),
+  uninstallProvider: (providerId: string) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/uninstall`, {}, true),
   getTools: (page?: number, limit?: number, search?: string) => {
     const params = new URLSearchParams();
     if (page) params.set("page", page.toString());
@@ -66,27 +75,46 @@ export const Api = {
     id: string;
     name: string;
     description?: string;
-    command: string;
-    args: string[];
+    command?: string;
+    args?: string[];
+    serverUrl?: string;
+    headers?: Record<string, string>;
     env?: Record<string, string>;
     cwd?: string;
     enabled?: boolean;
     icon?: string;
+    oauth?: {
+      provider: string;
+      authorizationUrl: string;
+      tokenUrl: string;
+      scopes?: string[];
+    };
     defaultPolicy: {
       allowedRoles: string[];
       sensitivity: string;
     };
     disabledTools?: string[];
   }>(`/api/mcp/${mcpId}`),
+  initiateOAuth: (mcpId: string) => fetchJSON<{ authorizationUrl: string; state: string }>(`/api/oauth/authorize/${mcpId}`),
+  getOAuthStatus: (mcpId: string) => fetchJSON<{ configured: boolean; authenticated: boolean; expiresAt?: number; hasRefreshToken: boolean }>(`/api/oauth/status/${mcpId}`),
+  revokeOAuth: (mcpId: string) => postJSON<{ success: boolean }>(`/api/oauth/revoke/${mcpId}`, {}),
   updateMcpServerConfig: (mcpId: string, updates: Partial<{
     name: string;
     description?: string;
-    command: string;
-    args: string[];
+    command?: string;
+    args?: string[];
+    serverUrl?: string;
+    headers?: Record<string, string>;
     env?: Record<string, string>;
     cwd?: string;
     enabled?: boolean;
     icon?: string;
+    oauth?: {
+      provider: string;
+      authorizationUrl: string;
+      tokenUrl: string;
+      scopes?: string[];
+    };
     defaultPolicy: {
       allowedRoles: string[];
       sensitivity: string;
@@ -96,12 +124,20 @@ export const Api = {
     id: string;
     name: string;
     description?: string;
-    command: string;
-    args: string[];
+    command?: string;
+    args?: string[];
+    serverUrl?: string;
+    headers?: Record<string, string>;
     env?: Record<string, string>;
     cwd?: string;
     enabled?: boolean;
     icon?: string;
+    oauth?: {
+      provider: string;
+      authorizationUrl: string;
+      tokenUrl: string;
+      scopes?: string[];
+    };
     defaultPolicy: {
       allowedRoles: string[];
       sensitivity: string;
@@ -202,5 +238,110 @@ export const Api = {
   getTelemetryStatus: () => fetchJSON<{ enabled: boolean; mode: "self-hosted" | "cloud"; config: { mode: string; enabled: boolean; apiKey?: string; host?: string; instanceId?: string } | null }>("/api/telemetry/status"),
   getTelemetryConfig: () => fetchJSON<{ mode: "self-hosted" | "cloud"; enabled: boolean; apiKey?: string; host?: string; instanceId?: string }>("/api/telemetry/config"),
   updateTelemetryConfig: (config: { enabled?: boolean; mode?: "self-hosted" | "cloud"; apiKey?: string; host?: string }) => postJSON<{ success: boolean }>("/api/telemetry/config", config),
+  getAgents: async (params?: { providerId?: string; role?: string; tenantId?: string }) => {
+    const token = localStorage.getItem("auth_token");
+    const urlParams = new URLSearchParams();
+    if (params?.providerId) urlParams.set("providerId", params.providerId);
+    if (params?.role) urlParams.set("role", params.role);
+    if (params?.tenantId) urlParams.set("tenantId", params.tenantId);
+    const search = urlParams.toString() ? `?${urlParams.toString()}` : "";
+    const res = await fetch(`${BASE_URL}/api/agents${search}`, {
+      headers: token ? { "Authorization": `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      throw new Error(`Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<Agent[]>;
+  },
+  getAgent: async (agentId: string) => {
+    const token = localStorage.getItem("auth_token");
+    const res = await fetch(`${BASE_URL}/api/agents/${agentId}`, {
+      headers: token ? { "Authorization": `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      throw new Error(`Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<Agent>;
+  },
+  createAgent: async (agent: {
+    providerId: string;
+    name: string;
+    description?: string;
+    providerNativeId?: string;
+    role?: string;
+    env?: string;
+    tenantId?: string;
+    owner?: string;
+    metadata?: Record<string, unknown>;
+    enabled?: boolean;
+  }) => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+    const res = await fetch(`${BASE_URL}/api/agents`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(agent),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
+      throw new Error(error.error || `Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<Agent>;
+  },
+  updateAgent: async (agentId: string, updates: Partial<{
+    name: string;
+    description: string;
+    role: string;
+    env: string;
+    tenantId: string;
+    owner: string;
+    metadata: Record<string, unknown>;
+    enabled: boolean;
+  }>) => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+    const res = await fetch(`${BASE_URL}/api/agents/${agentId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify(updates),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
+      throw new Error(error.error || `Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<Agent>;
+  },
+  deleteAgent: async (agentId: string) => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+    const res = await fetch(`${BASE_URL}/api/agents/${agentId}`, {
+      method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: `Request failed: ${res.status}` }));
+      throw new Error(error.error || `Request failed: ${res.status}`);
+    }
+    return res.json() as Promise<{ success: boolean }>;
+  },
 };
 

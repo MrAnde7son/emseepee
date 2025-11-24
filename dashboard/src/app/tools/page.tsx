@@ -92,12 +92,20 @@ interface McpServerDetails {
   id: string;
   name: string;
   description?: string;
-  command: string;
-  args: string[];
+  command?: string;
+  args?: string[];
+  serverUrl?: string;
+  headers?: Record<string, string>;
   env?: Record<string, string>;
   cwd?: string;
   enabled?: boolean;
   icon?: string;
+  oauth?: {
+    provider: string;
+    authorizationUrl: string;
+    tokenUrl: string;
+    scopes?: string[];
+  };
   defaultPolicy: {
     allowedRoles: string[];
     sensitivity: string;
@@ -226,6 +234,8 @@ export default function ToolsPage() {
   const [isEditingConfig, setIsEditingConfig] = useState(false);
   const [editedConfig, setEditedConfig] = useState<Partial<McpServerDetails>>({});
   const [updatingConfig, setUpdatingConfig] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState<Record<string, { configured: boolean; authenticated: boolean; expiresAt?: number; hasRefreshToken: boolean }>>({});
+  const [initiatingOAuth, setInitiatingOAuth] = useState<string | null>(null);
 
   // Group tools by category (exclude MCP tools as they're shown separately)
   const toolsByCategory = useMemo(() => {
@@ -440,6 +450,19 @@ export default function ToolsPage() {
           if (details.icon) {
             setMcpIcons((prev) => new Map(prev).set(selectedItem.id, details.icon!));
           }
+          // Load OAuth status if OAuth is configured
+          if (details.oauth) {
+            Api.getOAuthStatus(selectedItem.id)
+              .then((status) => {
+                setOauthStatus((prev) => ({
+                  ...prev,
+                  [selectedItem.id]: status,
+                }));
+              })
+              .catch((error) => {
+                console.error("Failed to load OAuth status:", error);
+              });
+          }
         })
         .catch((error) => {
           console.error("Failed to load MCP server details:", error);
@@ -455,6 +478,42 @@ export default function ToolsPage() {
       setEditedConfig({});
     }
   }, [selectedItem]);
+
+  // Handle OAuth callback from URL
+  useEffect(() => {
+    const oauthSuccess = searchParams.get("oauth_success");
+    const oauthError = searchParams.get("oauth_error");
+    const mcpId = searchParams.get("mcp");
+    
+    if (oauthSuccess && mcpId) {
+      // Reload OAuth status
+      Api.getOAuthStatus(mcpId)
+        .then((status) => {
+          setOauthStatus((prev) => ({
+            ...prev,
+            [mcpId]: status,
+          }));
+          // Reload MCP details to get updated headers
+          if (selectedItem?.type === "mcp" && selectedItem.id === mcpId) {
+            Api.getMcpServerDetails(mcpId).then(setMcpDetails);
+          }
+        })
+        .catch(console.error);
+      
+      // Clean up URL params
+      const params = new URLSearchParams(window.location.search);
+      params.delete("oauth_success");
+      params.delete("mcp");
+      router.replace(`?${params.toString()}`, { scroll: false });
+    }
+    
+    if (oauthError) {
+      alert(`OAuth error: ${oauthError}`);
+      const params = new URLSearchParams(window.location.search);
+      params.delete("oauth_error");
+      router.replace(`?${params.toString()}`, { scroll: false });
+    }
+  }, [searchParams, router, selectedItem]);
 
   const handleStartEdit = () => {
     if (mcpDetails) {
@@ -857,20 +916,45 @@ export default function ToolsPage() {
                     </div>
 
                     {selectedItem?.type === "mcp" && mcpDetails && (
-                      <div>
-                        <h3 className="font-semibold text-sm mb-2">Command</h3>
-                        <div className="bg-muted rounded-lg p-3 font-mono text-xs">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-muted-foreground">$</span>
-                            <span>{mcpDetails.command}</span>
-                          </div>
-                          {mcpDetails.args.length > 0 && (
-                            <div className="ml-4 text-muted-foreground">
-                              {mcpDetails.args.join(" ")}
+                      <>
+                        {mcpDetails.serverUrl ? (
+                          <div>
+                            <h3 className="font-semibold text-sm mb-2">Remote Endpoint</h3>
+                            <div className="bg-muted rounded-lg p-3 font-mono text-xs space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground">URL:</span>
+                                <span>{mcpDetails.serverUrl}</span>
+                              </div>
+                              {mcpDetails.headers && Object.keys(mcpDetails.headers).length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-border">
+                                  <div className="text-muted-foreground mb-1">Headers:</div>
+                                  {Object.entries(mcpDetails.headers).map(([key, value]) => (
+                                    <div key={key} className="ml-2 text-xs">
+                                      <span className="text-muted-foreground">{key}:</span>{" "}
+                                      <span>{value}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      </div>
+                          </div>
+                        ) : mcpDetails.command ? (
+                          <div>
+                            <h3 className="font-semibold text-sm mb-2">Command</h3>
+                            <div className="bg-muted rounded-lg p-3 font-mono text-xs">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-muted-foreground">$</span>
+                                <span>{mcpDetails.command}</span>
+                              </div>
+                              {mcpDetails.args && mcpDetails.args.length > 0 && (
+                                <div className="ml-4 text-muted-foreground">
+                                  {mcpDetails.args.join(" ")}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
                     )}
                   </div>
                 </TabsContent>
@@ -1017,37 +1101,173 @@ export default function ToolsPage() {
                     <div>
                       <h3 className="font-semibold text-sm mb-2">Execution Configuration</h3>
                       <div className="space-y-3 text-sm">
-                        <div className="flex items-start gap-2">
-                          <span className="font-medium min-w-[100px] pt-2">Command:</span>
-                          {isEditingConfig ? (
-                            <Input
-                              value={editedConfig.command || ""}
-                              onChange={(e) => setEditedConfig({ ...editedConfig, command: e.target.value })}
-                              className="flex-1"
-                              placeholder="e.g., npx, node"
-                            />
-                          ) : (
-                            <code className="bg-muted px-2 py-1 rounded text-xs">{mcpDetails.command}</code>
-                          )}
-                        </div>
-                        <div className="flex items-start gap-2">
-                          <span className="font-medium min-w-[100px] pt-2">Arguments:</span>
-                          {isEditingConfig ? (
-                            <Input
-                              value={editedConfig.args?.join(" ") || ""}
-                              onChange={(e) => setEditedConfig({ 
-                                ...editedConfig, 
-                                args: e.target.value.split(" ").filter(Boolean) 
-                              })}
-                              className="flex-1"
-                              placeholder="Space-separated arguments"
-                            />
-                          ) : (
-                            <code className="bg-muted px-2 py-1 rounded text-xs">
-                              {mcpDetails.args.length > 0 ? mcpDetails.args.join(" ") : "None"}
-                            </code>
-                          )}
-                        </div>
+                        {mcpDetails.serverUrl ? (
+                          <>
+                            <div className="flex items-start gap-2">
+                              <span className="font-medium min-w-[100px] pt-2">Server URL:</span>
+                              {isEditingConfig ? (
+                                <Input
+                                  value={editedConfig.serverUrl || ""}
+                                  onChange={(e) => setEditedConfig({ ...editedConfig, serverUrl: e.target.value })}
+                                  className="flex-1"
+                                  placeholder="https://api.example.com/mcp/"
+                                />
+                              ) : (
+                                <code className="bg-muted px-2 py-1 rounded text-xs">{mcpDetails.serverUrl}</code>
+                              )}
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="font-medium min-w-[100px] pt-2">Headers:</span>
+                              {isEditingConfig ? (
+                                <textarea
+                                  value={editedConfig.headers ? JSON.stringify(editedConfig.headers, null, 2) : ""}
+                                  onChange={(e) => {
+                                    try {
+                                      const headers = e.target.value ? JSON.parse(e.target.value) : {};
+                                      setEditedConfig({ ...editedConfig, headers });
+                                    } catch {
+                                      // Invalid JSON, ignore
+                                    }
+                                  }}
+                                  className="flex-1 font-mono text-xs min-h-[80px]"
+                                  placeholder='{"Authorization": "Bearer ${TOKEN}"}'
+                                />
+                              ) : (
+                                <code className="bg-muted px-2 py-1 rounded text-xs">
+                                  {mcpDetails.headers ? JSON.stringify(mcpDetails.headers, null, 2) : "None"}
+                                </code>
+                              )}
+                            </div>
+                            
+                            {/* OAuth Authentication Section */}
+                            {mcpDetails.oauth && (
+                              <div className="flex items-start gap-2 pt-2 border-t">
+                                <span className="font-medium min-w-[100px] pt-2">Authentication:</span>
+                                <div className="flex-1 space-y-2">
+                                  {(() => {
+                                    const status = oauthStatus[mcpDetails.id];
+                                    const isAuthenticated = status?.authenticated;
+                                    const isConfigured = status?.configured;
+                                    
+                                    return (
+                                      <>
+                                        <div className="flex items-center gap-2">
+                                          {isAuthenticated ? (
+                                            <>
+                                              <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                              <span className="text-sm text-green-600">Authenticated via OAuth</span>
+                                              {status.expiresAt && status.expiresAt > Date.now() && (
+                                                <span className="text-xs text-muted-foreground">
+                                                  (expires {new Date(status.expiresAt).toLocaleDateString()})
+                                                </span>
+                                              )}
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Circle className="h-4 w-4 text-gray-400" />
+                                              <span className="text-sm text-muted-foreground">Not authenticated</span>
+                                            </>
+                                          )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                          {!isAuthenticated ? (
+                                            <Button
+                                              size="sm"
+                                              onClick={async () => {
+                                                if (!mcpDetails.id) return;
+                                                setInitiatingOAuth(mcpDetails.id);
+                                                try {
+                                                  const { authorizationUrl } = await Api.initiateOAuth(mcpDetails.id);
+                                                  // Open OAuth flow in new window
+                                                  window.location.href = authorizationUrl;
+                                                } catch (error) {
+                                                  console.error("Failed to initiate OAuth:", error);
+                                                  alert(`Failed to start OAuth flow: ${error instanceof Error ? error.message : "Unknown error"}`);
+                                                } finally {
+                                                  setInitiatingOAuth(null);
+                                                }
+                                              }}
+                                              disabled={initiatingOAuth === mcpDetails.id}
+                                              className="gap-2"
+                                            >
+                                              {initiatingOAuth === mcpDetails.id ? "Connecting..." : "Connect with OAuth"}
+                                            </Button>
+                                          ) : (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={async () => {
+                                                if (!mcpDetails.id) return;
+                                                if (confirm("Are you sure you want to revoke OAuth access?")) {
+                                                  try {
+                                                    await Api.revokeOAuth(mcpDetails.id);
+                                                    setOauthStatus((prev) => ({
+                                                      ...prev,
+                                                      [mcpDetails.id]: { ...prev[mcpDetails.id], authenticated: false },
+                                                    }));
+                                                    // Reload details to clear headers
+                                                    Api.getMcpServerDetails(mcpDetails.id).then(setMcpDetails);
+                                                  } catch (error) {
+                                                    console.error("Failed to revoke OAuth:", error);
+                                                    alert(`Failed to revoke OAuth: ${error instanceof Error ? error.message : "Unknown error"}`);
+                                                  }
+                                                }
+                                              }}
+                                              className="gap-2"
+                                            >
+                                              Revoke Access
+                                            </Button>
+                                          )}
+                                        </div>
+                                        {mcpDetails.oauth.scopes && mcpDetails.oauth.scopes.length > 0 && (
+                                          <div className="text-xs text-muted-foreground">
+                                            Required scopes: {mcpDetails.oauth.scopes.join(", ")}
+                                          </div>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-start gap-2">
+                              <span className="font-medium min-w-[100px] pt-2">Command:</span>
+                              {isEditingConfig ? (
+                                <Input
+                                  value={editedConfig.command || ""}
+                                  onChange={(e) => setEditedConfig({ ...editedConfig, command: e.target.value })}
+                                  className="flex-1"
+                                  placeholder="e.g., docker, npx, node"
+                                />
+                              ) : (
+                                <code className="bg-muted px-2 py-1 rounded text-xs">
+                                  {mcpDetails.command || "Not set"}
+                                </code>
+                              )}
+                            </div>
+                            <div className="flex items-start gap-2">
+                              <span className="font-medium min-w-[100px] pt-2">Arguments:</span>
+                              {isEditingConfig ? (
+                                <Input
+                                  value={editedConfig.args?.join(" ") || ""}
+                                  onChange={(e) => setEditedConfig({ 
+                                    ...editedConfig, 
+                                    args: e.target.value.split(" ").filter(Boolean) 
+                                  })}
+                                  className="flex-1"
+                                  placeholder="Space-separated arguments"
+                                />
+                              ) : (
+                                <code className="bg-muted px-2 py-1 rounded text-xs">
+                                  {mcpDetails.args && mcpDetails.args.length > 0 ? mcpDetails.args.join(" ") : "None"}
+                                </code>
+                              )}
+                            </div>
+                          </>
+                        )}
                         <div className="flex items-start gap-2">
                           <span className="font-medium min-w-[100px] pt-2">Working Dir:</span>
                           {isEditingConfig ? (

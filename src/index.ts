@@ -92,6 +92,17 @@ async function initialize() {
     const exists = await schemaExists();
     if (!exists) {
       await createSchema();
+    } else {
+      // Run migrations for existing databases
+      try {
+        const { addProviderConfigsTable } = await import("./db/migrations/addProviderConfigs.js");
+        await addProviderConfigsTable();
+        const { addOwnerColumnToAgents } = await import("./db/migrations/addOwnerToAgents.js");
+        await addOwnerColumnToAgents();
+      } catch (error) {
+        logger.warn("[DB] Migration failed (non-critical):", error);
+        // Continue anyway - migration failures shouldn't block startup
+      }
     }
     
     // Verify initialization succeeded
@@ -107,6 +118,14 @@ async function initialize() {
     }
     // Don't fall back silently - this is critical for events
     throw error;
+  }
+
+  // Initialize agent registry (async - loads from database configs)
+  try {
+    const { initializeAgentRegistry } = await import("./agents/index.js");
+    await initializeAgentRegistry();
+  } catch (error) {
+    logger.warn("[INIT] Failed to initialize agent registry:", error);
   }
 
   // Start API server after database is initialized

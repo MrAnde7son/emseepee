@@ -4,9 +4,16 @@ import { useState, useMemo, useEffect } from "react";
 import { useProviders, usePolicies } from "@/hooks/useGatewayData";
 import { Api } from "@/lib/api";
 import { Provider, Policy } from "@/lib/types";
+import {
+  getProviderConfigSchema,
+  providerRequiresConfig,
+  validateProviderConfig,
+  type ConfigField,
+} from "@/lib/providerConfigs";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +36,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { RefreshCcw, Info, Clock } from "lucide-react";
+import { RefreshCcw, Info, Clock, Trash2 } from "lucide-react";
 
 interface PolicyCondition {
   providerId?: string | string[];
@@ -43,16 +50,47 @@ export default function ProvidersPage() {
   const { data, isLoading, refetch } = useProviders();
   const { data: policiesData } = usePolicies();
   const [installing, setInstalling] = useState<string | null>(null);
+  const [uninstalling, setUninstalling] = useState<string | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
   const [viewMode, setViewMode] = useState<"details" | "policies">("details");
   const [policyDetails, setPolicyDetails] = useState<Map<string, Policy & { condition?: PolicyCondition }>>(new Map());
   const [loadingPolicyDetails, setLoadingPolicyDetails] = useState(false);
+  const [showInstallDialog, setShowInstallDialog] = useState(false);
+  const [showUninstallDialog, setShowUninstallDialog] = useState(false);
+  const [providerToInstall, setProviderToInstall] = useState<Provider | null>(null);
+  const [providerToUninstall, setProviderToUninstall] = useState<Provider | null>(null);
+  const [providerConfig, setProviderConfig] = useState<Record<string, string>>({});
+  const [showPasswordFields, setShowPasswordFields] = useState<Set<string>>(new Set());
   
-  const handleInstall = async (providerId: string) => {
+  const handleInstallClick = (provider: Provider) => {
+    // Check if provider needs configuration
+    if (providerRequiresConfig(provider.id)) {
+      setProviderToInstall(provider);
+      setShowInstallDialog(true);
+      // Initialize config with default values from schema
+      const schema = getProviderConfigSchema(provider.id);
+      const initialConfig: Record<string, string> = {};
+      if (schema) {
+        for (const field of schema.fields) {
+          initialConfig[field.key] = field.defaultValue || "";
+        }
+      }
+      setProviderConfig(initialConfig);
+      setShowPasswordFields(new Set());
+    } else {
+      // For providers that don't need config (like Cursor), install directly
+      handleInstall(provider.id);
+    }
+  };
+
+  const handleInstall = async (providerId: string, config?: Record<string, unknown>) => {
     setInstalling(providerId);
     try {
-      await Api.installProvider(providerId);
+      await Api.installProvider(providerId, config);
       await refetch();
+      setShowInstallDialog(false);
+      setProviderToInstall(null);
+      setProviderConfig({});
     } catch (error) {
       console.error("Failed to install provider:", error);
       alert(`Failed to install provider: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -61,10 +99,85 @@ export default function ProvidersPage() {
     }
   };
 
+  const handleInstallSubmit = () => {
+    if (!providerToInstall) return;
+
+    // Validate configuration
+    const validation = validateProviderConfig(providerToInstall.id, providerConfig);
+    if (!validation.valid) {
+      alert(validation.errors.join("\n"));
+      return;
+    }
+
+    // Build config object, removing empty optional fields
+    const schema = getProviderConfigSchema(providerToInstall.id);
+    const configToSubmit: Record<string, unknown> = {};
+    
+    if (schema) {
+      for (const field of schema.fields) {
+        const value = providerConfig[field.key];
+        // Include field if it has a value or is required
+        if (value && value.trim() !== "") {
+          configToSubmit[field.key] = value.trim();
+        } else if (field.required) {
+          configToSubmit[field.key] = "";
+        }
+      }
+    } else {
+      // Fallback: include all non-empty values
+      Object.entries(providerConfig).forEach(([key, value]) => {
+        if (value && value.trim() !== "") {
+          configToSubmit[key] = value.trim();
+        }
+      });
+    }
+
+    handleInstall(providerToInstall.id, configToSubmit);
+  };
+
+  const togglePasswordVisibility = (fieldKey: string) => {
+    setShowPasswordFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(fieldKey)) {
+        next.delete(fieldKey);
+      } else {
+        next.add(fieldKey);
+      }
+      return next;
+    });
+  };
+
+  const updateConfigField = (fieldKey: string, value: string) => {
+    setProviderConfig((prev) => ({
+      ...prev,
+      [fieldKey]: value,
+    }));
+  };
+
+  const handleUninstallClick = (provider: Provider) => {
+    setProviderToUninstall(provider);
+    setShowUninstallDialog(true);
+  };
+
+  const handleUninstall = async (providerId: string) => {
+    setUninstalling(providerId);
+    try {
+      await Api.uninstallProvider(providerId);
+      await refetch();
+      setShowUninstallDialog(false);
+      setProviderToUninstall(null);
+    } catch (error) {
+      console.error("Failed to uninstall provider:", error);
+      alert(`Failed to uninstall provider: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setUninstalling(null);
+    }
+  };
+
   // Fetch full policy details when viewing policies for a provider
   useEffect(() => {
-    if (selectedProvider && viewMode === "policies" && policiesData) {
-      const providerScopedPolicies = policiesData.filter(
+    if (selectedProvider && viewMode === "policies" && policiesData?.data) {
+      const providerScopedPolicies = policiesData.data.filter(
         (p: Policy) => p.scope === "provider" && p.archived !== true
       );
       
@@ -96,9 +209,9 @@ export default function ProvidersPage() {
   // Get policies for the selected provider
   // Filter by checking if the policy's condition targets this provider
   const providerPolicies = useMemo(() => {
-    if (!selectedProvider || !policiesData) return [];
+    if (!selectedProvider || !policiesData?.data) return [];
     
-    const providerScopedPolicies = policiesData.filter(
+    const providerScopedPolicies = policiesData.data.filter(
       (policy: Policy) => policy.scope === "provider" && policy.archived !== true
     );
     
@@ -227,7 +340,7 @@ export default function ProvidersPage() {
                         <Button 
                           size="sm" 
                           className="text-xs"
-                          onClick={() => handleInstall(p.id)}
+                          onClick={() => handleInstallClick(p)}
                           disabled={installing === p.id}
                         >
                           {installing === p.id ? "Installing..." : "Install"}
@@ -255,6 +368,16 @@ export default function ProvidersPage() {
                             }}
                           >
                             Policies
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="text-xs text-destructive hover:text-destructive"
+                            onClick={() => handleUninstallClick(p)}
+                            disabled={uninstalling === p.id}
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            {uninstalling === p.id ? "Uninstalling..." : "Uninstall"}
                           </Button>
                         </>
                       )}
@@ -430,6 +553,159 @@ export default function ProvidersPage() {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Install Provider Configuration Dialog */}
+      <Dialog open={showInstallDialog} onOpenChange={setShowInstallDialog}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Install {providerToInstall?.name || "Provider"}
+            </DialogTitle>
+            <DialogDescription>
+              {providerToInstall
+                ? getProviderConfigSchema(providerToInstall.id)?.description ||
+                  "Configure this provider"
+                : "Configure this provider"}
+            </DialogDescription>
+          </DialogHeader>
+          {providerToInstall && (() => {
+            const schema = getProviderConfigSchema(providerToInstall.id);
+            if (!schema) {
+              return (
+                <div className="text-sm text-muted-foreground py-4">
+                  No configuration required for this provider.
+                </div>
+              );
+            }
+
+            return (
+              <div className="space-y-4 mt-4">
+                {schema.fields.map((field: ConfigField) => {
+                  const isPassword = field.type === "password";
+                  const showPassword = showPasswordFields.has(field.key);
+                  const inputType = isPassword && !showPassword ? "password" : "text";
+
+                  return (
+                    <div key={field.key} className="space-y-2">
+                      <label
+                        htmlFor={`provider-config-${field.key}`}
+                        className="text-sm font-medium"
+                      >
+                        {field.label}
+                        {field.required && (
+                          <span className="text-destructive ml-1">*</span>
+                        )}
+                      </label>
+                      <div className="flex gap-2">
+                        <Input
+                          id={`provider-config-${field.key}`}
+                          type={inputType}
+                          value={providerConfig[field.key] || ""}
+                          onChange={(e) =>
+                            updateConfigField(field.key, e.target.value)
+                          }
+                          placeholder={field.placeholder}
+                          className="flex-1"
+                          required={field.required}
+                        />
+                        {isPassword && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => togglePasswordVisibility(field.key)}
+                          >
+                            {showPassword ? "Hide" : "Show"}
+                          </Button>
+                        )}
+                      </div>
+                      {field.description && (
+                        <p className="text-xs text-muted-foreground">
+                          {field.description}
+                          {field.helpUrl && (
+                            <>
+                              {" "}
+                              <a
+                                href={field.helpUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline"
+                              >
+                                Learn more
+                              </a>
+                            </>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowInstallDialog(false);
+                      setProviderToInstall(null);
+                      setProviderConfig({});
+                    }}
+                    disabled={installing === providerToInstall.id}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleInstallSubmit}
+                    disabled={
+                      installing === providerToInstall.id ||
+                      !schema.fields
+                        .filter((f) => f.required)
+                        .every((f) => providerConfig[f.key]?.trim())
+                    }
+                  >
+                    {installing === providerToInstall.id
+                      ? "Installing..."
+                      : "Install"}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Uninstall Provider Confirmation Dialog */}
+      <Dialog open={showUninstallDialog} onOpenChange={setShowUninstallDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Uninstall {providerToUninstall?.name || "Provider"}?
+            </DialogTitle>
+            <DialogDescription>
+              This will remove the provider configuration and unregister the adapter. 
+              This action cannot be undone. You will need to reinstall and reconfigure the provider to use it again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowUninstallDialog(false);
+                setProviderToUninstall(null);
+              }}
+              disabled={uninstalling === providerToUninstall?.id}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => providerToUninstall && handleUninstall(providerToUninstall.id)}
+              disabled={uninstalling === providerToUninstall?.id || !providerToUninstall}
+            >
+              {uninstalling === providerToUninstall?.id ? "Uninstalling..." : "Uninstall"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

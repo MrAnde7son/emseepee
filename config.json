@@ -2,11 +2,12 @@
   "mcpServerProxies": {
     "github": {
       "name": "github",
-      "description": "GitHub MCP server proxied through gateway",
+      "description": "GitHub MCP server for repository operations",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/github.svg",
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "@modelcontextprotocol/server-github"
+        "run", "--rm", "-i",
+        "mcp/github"
       ],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
@@ -24,9 +25,10 @@
       "name": "sqlite",
       "description": "SQLite MCP server for schema introspection and query operations",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/sqlite.svg",
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "@modelcontextprotocol/server-sqlite"
+        "run", "--rm", "-i",
+        "mcp/sqlite"
       ],
       "env": {},
       "enabled": false,
@@ -42,9 +44,10 @@
       "name": "postgres",
       "description": "PostgreSQL MCP server for schema introspection and query operations",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/postgresql.svg",
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "@modelcontextprotocol/server-postgres"
+        "run", "--rm", "-i",
+        "mcp/postgres"
       ],
       "env": {
         "POSTGRES_CONNECTION_STRING": ""
@@ -62,9 +65,10 @@
       "name": "mysql",
       "description": "MySQL MCP server for schema introspection and query operations",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/mysql.svg",
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "@modelcontextprotocol/server-mysql"
+        "run", "--rm", "-i",
+        "mcp/mysql"
       ],
       "env": {
         "MYSQL_CONNECTION_STRING": ""
@@ -82,11 +86,12 @@
       "name": "docker",
       "description": "Docker MCP server for building/running containers, managing images, and inspecting logs",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/docker.svg",
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "@modelcontextprotocol/server-docker"
+        "run", "--rm", "-i",
+        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+        "mcp/docker"
       ],
-      "env": {},
       "enabled": false,
       "defaultPolicy": {
         "allowedRoles": [
@@ -99,12 +104,12 @@
       "name": "notion",
       "description": "Notion MCP server for reading/writing pages and databases",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/notion.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-notion"
-      ],
-      "env": {
-        "NOTION_API_KEY": ""
+      "serverUrl": "https://mcp.notion.com/mcp",
+      "oauth": {
+        "provider": "notion",
+        "authorizationUrl": "https://api.notion.com/v1/oauth/authorize",
+        "tokenUrl": "https://api.notion.com/v1/oauth/token",
+        "scopes": ["read", "update", "insert"]
       },
       "enabled": false,
       "defaultPolicy": {
@@ -119,13 +124,12 @@
       "name": "slack",
       "description": "Slack MCP server for messages, channels, and notifications",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/slack.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-slack"
-      ],
-      "env": {
-        "SLACK_BOT_TOKEN": "",
-        "SLACK_APP_TOKEN": ""
+      "serverUrl": "https://slack.com/api/mcp",
+      "oauth": {
+        "provider": "slack",
+        "authorizationUrl": "https://slack.com/oauth/v2/authorize",
+        "tokenUrl": "https://slack.com/api/oauth.v2.access",
+        "scopes": ["channels:read", "chat:write", "users:read"]
       },
       "enabled": false,
       "defaultPolicy": {
@@ -140,12 +144,12 @@
       "name": "linear",
       "description": "Linear MCP server for issues, cycles, and project tracking",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/linear.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-linear"
-      ],
-      "env": {
-        "LINEAR_API_KEY": ""
+      "serverUrl": "https://api.linear.app/mcp",
+      "oauth": {
+        "provider": "linear",
+        "authorizationUrl": "https://linear.app/oauth/authorize",
+        "tokenUrl": "https://api.linear.app/oauth/token",
+        "scopes": ["read", "write"]
       },
       "enabled": false,
       "defaultPolicy": {
@@ -160,52 +164,13 @@
       "name": "google_drive",
       "description": "Google Drive/Sheets MCP server for docs, sheets, and structured data",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/googledrive.svg",
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "@modelcontextprotocol/server-google-drive"
+        "run", "--rm", "-i",
+        "mcp/google-drive"
       ],
       "env": {
         "GOOGLE_APPLICATION_CREDENTIALS": ""
-      },
-      "enabled": false,
-      "defaultPolicy": {
-        "allowedRoles": [
-          "coder_bot",
-          "admin"
-        ],
-        "sensitivity": "medium"
-      }
-    },
-    "openai": {
-      "name": "openai",
-      "description": "OpenAI MCP server for models, embeddings, and file uploads",
-      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/openai.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-openai"
-      ],
-      "env": {
-        "OPENAI_API_KEY": ""
-      },
-      "enabled": false,
-      "defaultPolicy": {
-        "allowedRoles": [
-          "coder_bot",
-          "admin"
-        ],
-        "sensitivity": "medium"
-      }
-    },
-    "anthropic": {
-      "name": "anthropic",
-      "description": "Anthropic MCP server for Claude integration",
-      "icon": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/anthropic.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-anthropic"
-      ],
-      "env": {
-        "ANTHROPIC_API_KEY": ""
       },
       "enabled": false,
       "defaultPolicy": {
@@ -220,9 +185,10 @@
       "name": "vertex_ai",
       "description": "Vertex AI MCP server for Gemini models, embeddings, and prediction",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/googlecloud.svg",
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "@modelcontextprotocol/server-vertex-ai"
+        "run", "--rm", "-i",
+        "mcp/vertex-ai"
       ],
       "env": {
         "GOOGLE_APPLICATION_CREDENTIALS": "",
@@ -241,9 +207,10 @@
       "name": "aws_bedrock",
       "description": "AWS Bedrock MCP server for Claude/Sonar/Llama models and orchestration",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/amazonaws.svg",
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "@modelcontextprotocol/server-aws-bedrock"
+        "run", "--rm", "-i",
+        "mcp/aws-bedrock"
       ],
       "env": {
         "AWS_ACCESS_KEY_ID": "",
@@ -263,13 +230,9 @@
       "name": "n8n",
       "description": "n8n MCP server for triggering workflows, running nodes, and getting executions",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/n8n.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-n8n"
-      ],
-      "env": {
-        "N8N_API_KEY": "",
-        "N8N_BASE_URL": ""
+      "serverUrl": "${N8N_BASE_URL}/mcp",
+      "headers": {
+        "X-N8N-API-KEY": "${N8N_API_KEY}"
       },
       "enabled": false,
       "defaultPolicy": {
@@ -284,13 +247,11 @@
       "name": "cloudflare",
       "description": "Cloudflare MCP server for DNS, Workers, and KV storage",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/cloudflare.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-cloudflare"
-      ],
-      "env": {
-        "CLOUDFLARE_API_TOKEN": "",
-        "CLOUDFLARE_ACCOUNT_ID": ""
+      "serverUrl": "https://api.cloudflare.com/client/v4/mcp",
+      "headers": {
+        "Authorization": "Bearer ${CLOUDFLARE_API_TOKEN}",
+        "X-Auth-Email": "${CLOUDFLARE_EMAIL}",
+        "X-Auth-Key": "${CLOUDFLARE_API_KEY}"
       },
       "enabled": false,
       "defaultPolicy": {
@@ -304,13 +265,12 @@
       "name": "sentry",
       "description": "Sentry MCP server for error tracking, issues, and events",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/sentry.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-sentry"
-      ],
-      "env": {
-        "SENTRY_AUTH_TOKEN": "",
-        "SENTRY_ORG": ""
+      "serverUrl": "https://mcp.sentry.dev/mcp",
+      "oauth": {
+        "provider": "sentry",
+        "authorizationUrl": "https://sentry.io/oauth/authorize/",
+        "tokenUrl": "https://sentry.io/oauth/token/",
+        "scopes": ["org:read", "project:read", "event:read"]
       },
       "enabled": false,
       "defaultPolicy": {
@@ -325,13 +285,10 @@
       "name": "datadog",
       "description": "Datadog MCP server for metrics, logs, and traces",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/datadog.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-datadog"
-      ],
-      "env": {
-        "DATADOG_API_KEY": "",
-        "DATADOG_APP_KEY": ""
+      "serverUrl": "https://api.datadoghq.com/api/mcp",
+      "headers": {
+        "DD-API-KEY": "${DATADOG_API_KEY}",
+        "DD-APPLICATION-KEY": "${DATADOG_APP_KEY}"
       },
       "enabled": false,
       "defaultPolicy": {
@@ -346,9 +303,10 @@
       "name": "temporal",
       "description": "Temporal MCP server for durable workflows",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/temporal.svg",
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "@modelcontextprotocol/server-temporal"
+        "run", "--rm", "-i",
+        "mcp/temporal"
       ],
       "env": {
         "TEMPORAL_ADDRESS": "",
@@ -367,12 +325,12 @@
       "name": "stripe",
       "description": "Stripe MCP server for payments, invoices, and customers",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/stripe.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-stripe"
-      ],
-      "env": {
-        "STRIPE_API_KEY": ""
+      "serverUrl": "https://api.stripe.com/v1/mcp",
+      "oauth": {
+        "provider": "stripe",
+        "authorizationUrl": "https://connect.stripe.com/oauth/authorize",
+        "tokenUrl": "https://connect.stripe.com/oauth/token",
+        "scopes": ["read_write"]
       },
       "enabled": false,
       "defaultPolicy": {
@@ -386,12 +344,12 @@
       "name": "hubspot",
       "description": "HubSpot MCP server for contacts and CRM pipeline",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/hubspot.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-hubspot"
-      ],
-      "env": {
-        "HUBSPOT_API_KEY": ""
+      "serverUrl": "https://api.hubapi.com/mcp",
+      "oauth": {
+        "provider": "hubspot",
+        "authorizationUrl": "https://app.hubspot.com/oauth/authorize",
+        "tokenUrl": "https://api.hubapi.com/oauth/v1/token",
+        "scopes": ["contacts", "content", "crm.objects.contacts.read"]
       },
       "enabled": false,
       "defaultPolicy": {
@@ -406,14 +364,12 @@
       "name": "jira",
       "description": "Jira/Atlassian MCP server for issues, sprints, and roadmaps",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/jira.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-jira"
-      ],
-      "env": {
-        "JIRA_API_TOKEN": "",
-        "JIRA_BASE_URL": "",
-        "JIRA_EMAIL": ""
+      "serverUrl": "${JIRA_BASE_URL}/rest/api/3/mcp",
+      "oauth": {
+        "provider": "jira",
+        "authorizationUrl": "${JIRA_BASE_URL}/plugins/servlet/oauth/authorize",
+        "tokenUrl": "${JIRA_BASE_URL}/plugins/servlet/oauth/access-token",
+        "scopes": ["read:jira-work", "write:jira-work"]
       },
       "enabled": false,
       "defaultPolicy": {
@@ -428,9 +384,10 @@
       "name": "salesforce",
       "description": "Salesforce MCP server for CRM and workflow automation",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/salesforce.svg",
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "@modelcontextprotocol/server-salesforce"
+        "run", "--rm", "-i",
+        "mcp/salesforce"
       ],
       "env": {
         "SALESFORCE_USERNAME": "",
@@ -449,13 +406,9 @@
       "name": "pinecone",
       "description": "Pinecone MCP server for vector search",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/pinecone.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-pinecone"
-      ],
-      "env": {
-        "PINECONE_API_KEY": "",
-        "PINECONE_ENVIRONMENT": ""
+      "serverUrl": "https://api.pinecone.io/mcp",
+      "headers": {
+        "Api-Key": "${PINECONE_API_KEY}"
       },
       "enabled": false,
       "defaultPolicy": {
@@ -470,13 +423,9 @@
       "name": "weaviate",
       "description": "Weaviate MCP server for embeddings and hybrid search",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/weaviate.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-weaviate"
-      ],
-      "env": {
-        "WEAVIATE_API_KEY": "",
-        "WEAVIATE_URL": ""
+      "serverUrl": "${WEAVIATE_URL}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${WEAVIATE_API_KEY}"
       },
       "enabled": false,
       "defaultPolicy": {
@@ -491,9 +440,10 @@
       "name": "snowflake",
       "description": "Snowflake MCP server for queries, tables, and pipelines",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/snowflake.svg",
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "@modelcontextprotocol/server-snowflake"
+        "run", "--rm", "-i",
+        "mcp/snowflake"
       ],
       "env": {
         "SNOWFLAKE_ACCOUNT": "",
@@ -514,9 +464,10 @@
       "name": "bigquery",
       "description": "BigQuery MCP server for analytics and ML workflows",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/googlecloud.svg",
-      "command": "npx",
+      "command": "docker",
       "args": [
-        "@modelcontextprotocol/server-bigquery"
+        "run", "--rm", "-i",
+        "mcp/bigquery"
       ],
       "env": {
         "GOOGLE_APPLICATION_CREDENTIALS": "",
@@ -535,13 +486,9 @@
       "name": "twilio",
       "description": "Twilio MCP server for SMS, calls, and OTP flows",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/twilio.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-twilio"
-      ],
-      "env": {
-        "TWILIO_ACCOUNT_SID": "",
-        "TWILIO_AUTH_TOKEN": ""
+      "serverUrl": "https://api.twilio.com/mcp",
+      "headers": {
+        "Authorization": "Basic ${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}"
       },
       "enabled": false,
       "defaultPolicy": {
@@ -555,12 +502,9 @@
       "name": "sendgrid",
       "description": "SendGrid MCP server for email sending and templates",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/sendgrid.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-sendgrid"
-      ],
-      "env": {
-        "SENDGRID_API_KEY": ""
+      "serverUrl": "https://api.sendgrid.com/v3/mcp",
+      "headers": {
+        "Authorization": "Bearer ${SENDGRID_API_KEY}"
       },
       "enabled": false,
       "defaultPolicy": {
@@ -575,13 +519,10 @@
       "name": "supabase",
       "description": "Supabase MCP server for auth, storage, and SQL",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/supabase.svg",
-      "command": "npx",
-      "args": [
-        "@modelcontextprotocol/server-supabase"
-      ],
-      "env": {
-        "SUPABASE_URL": "",
-        "SUPABASE_KEY": ""
+      "serverUrl": "${SUPABASE_URL}/mcp",
+      "headers": {
+        "apikey": "${SUPABASE_KEY}",
+        "Authorization": "Bearer ${SUPABASE_KEY}"
       },
       "enabled": false,
       "defaultPolicy": {

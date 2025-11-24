@@ -59,6 +59,49 @@ export async function createSchema(): Promise<void> {
     await executeUpdate(`
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     `);
+
+    await executeUpdate(`
+      CREATE TABLE IF NOT EXISTS agents (
+        id SERIAL PRIMARY KEY,
+        hakuna_id VARCHAR(255) UNIQUE NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        provider_id VARCHAR(255) NOT NULL,
+        provider_native_id VARCHAR(255),
+        role VARCHAR(255),
+        env VARCHAR(255),
+        tenant_id VARCHAR(255),
+        owner VARCHAR(255),
+        metadata JSONB,
+        enabled BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMP
+      )
+    `);
+
+    await executeUpdate(`
+      CREATE INDEX IF NOT EXISTS idx_agents_hakuna_id ON agents(hakuna_id);
+      CREATE INDEX IF NOT EXISTS idx_agents_provider_id ON agents(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_agents_role ON agents(role);
+      CREATE INDEX IF NOT EXISTS idx_agents_tenant_id ON agents(tenant_id);
+    `);
+
+    await executeUpdate(`
+      CREATE TABLE IF NOT EXISTS provider_configs (
+        id SERIAL PRIMARY KEY,
+        provider_id VARCHAR(255) UNIQUE NOT NULL,
+        config JSONB NOT NULL,
+        enabled BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await executeUpdate(`
+      CREATE INDEX IF NOT EXISTS idx_provider_configs_provider_id ON provider_configs(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_provider_configs_enabled ON provider_configs(enabled);
+    `);
   } else {
     // SQLite schema
     await executeUpdate(`
@@ -109,6 +152,45 @@ export async function createSchema(): Promise<void> {
     await executeUpdate(`
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     `);
+
+    await executeUpdate(`
+      CREATE TABLE IF NOT EXISTS agents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        hakuna_id TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        provider_id TEXT NOT NULL,
+        provider_native_id TEXT,
+        role TEXT,
+        env TEXT,
+        tenant_id TEXT,
+        owner TEXT,
+        metadata TEXT,
+        enabled INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at DATETIME
+      )
+    `);
+
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_hakuna_id ON agents(hakuna_id)`);
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_provider_id ON agents(provider_id)`);
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_role ON agents(role)`);
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_tenant_id ON agents(tenant_id)`);
+
+    await executeUpdate(`
+      CREATE TABLE IF NOT EXISTS provider_configs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider_id TEXT UNIQUE NOT NULL,
+        config TEXT NOT NULL,
+        enabled INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_provider_configs_provider_id ON provider_configs(provider_id)`);
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_provider_configs_enabled ON provider_configs(enabled)`);
   }
 
   logger.info("[DB] Database schema created successfully");

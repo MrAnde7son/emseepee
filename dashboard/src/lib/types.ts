@@ -24,6 +24,7 @@ export interface PolicyCondition {
   toolName?: string | string[];
   category?: string | string[];
   agentRole?: string | string[];
+  agentId?: string | string[];
   env?: string | string[];
   sensitivity?: "low" | "medium" | "high" | Array<"low" | "medium" | "high">;
   args?: Record<string, unknown>;
@@ -60,5 +61,22 @@ export interface GatewayEvent {
   decision: "allow" | "deny" | "log";
   riskLevel?: "low" | "medium" | "high";
   latencyMs?: number;
+}
+
+export interface Agent {
+  id: string;
+  name: string;
+  description?: string;
+  providerId: string;
+  providerNativeId?: string;
+  role?: string;
+  env?: string;
+  tenantId?: string;
+  owner?: string;
+  metadata?: Record<string, unknown>;
+  enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  lastSeenAt?: string;
 }
 

@@ -51,8 +51,20 @@ If you have an existing `config.json` file, you can migrate it to the database:
 2. **Manual Migration**: You can also run the migration script manually:
 
 ```bash
+# Build first
 npm run build
-node dist/db/migrate.js
+
+# Migrate (only if database is empty)
+npm run migrate
+
+# Force overwrite existing config in database
+npm run migrate:force
+```
+
+Or directly:
+```bash
+node dist/db/migrate.js           # Migrate only if database is empty
+node dist/db/migrate.js --force  # Force overwrite existing config
 ```
 
 ## How It Works
