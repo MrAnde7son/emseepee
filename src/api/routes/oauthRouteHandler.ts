@@ -140,7 +140,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         const errorDescription = url.searchParams.get("error_description") || error;
         logger.error(`[OAUTH] OAuth callback error: ${error} - ${errorDescription}`);
         // Redirect to frontend with error
-        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
         res.writeHead(302, {
           Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent(errorDescription)}`,
         });
@@ -190,7 +190,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       
       if (!clientSecret) {
         logger.error(`[OAUTH] OAuth client secret not configured for ${mcpId}`);
-        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
         res.writeHead(302, {
           Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent("OAuth client secret not configured. Please configure it in the MCP server settings in the dashboard, or set the " + mcpId.toUpperCase() + "_OAUTH_CLIENT_SECRET environment variable.")}`,
         });
@@ -237,7 +237,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
         logger.error(`[OAUTH] Token exchange failed: ${tokenResponse.status} ${errorText}`);
-        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
         res.writeHead(302, {
           Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent("Failed to exchange authorization code")}`,
         });
@@ -318,14 +318,14 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       }
       
       // Redirect to frontend with success
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
       res.writeHead(302, {
         Location: `${frontendUrl}/tools?mcp=${mcpId}&oauth_success=true`,
       });
       res.end();
     } catch (error) {
       logger.error(`[OAUTH] Callback error:`, error);
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
       res.writeHead(302, {
         Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent(error instanceof Error ? error.message : "Unknown error")}`,
       });

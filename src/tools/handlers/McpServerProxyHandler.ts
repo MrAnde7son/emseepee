@@ -314,10 +314,7 @@ export class McpServerProxyManager {
                 if (errorJson?.error === "invalid_token") {
                   if (errorJson.error_description?.includes("Invalid token format")) {
                     errorDetails = `\n\nToken format error: The provided token format is invalid. ` +
-                      `For Notion MCP, you need a valid OAuth2 access token obtained through Notion's OAuth flow. ` +
-                      `Internal tokens (starting with 'ntn_') or API keys are not valid for MCP API access. ` +
-                      `Please complete the OAuth flow to obtain a proper access token. ` +
-                      `See: https://developers.notion.com/docs/authorization`;
+                      `you need a valid OAuth2 access token obtained through OAuth flow.`
                   } else {
                     errorDetails = `\n\nToken error: ${errorJson.error_description || errorJson.error}`;
                   }
