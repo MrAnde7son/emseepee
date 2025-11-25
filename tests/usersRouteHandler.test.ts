@@ -1,0 +1,99 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { IncomingMessage, ServerResponse } from "http";
+
+import { UsersRouteHandler } from "../src/api/routes/usersRouteHandler.js";
+import * as userService from "../src/db/services/userService.js";
+import * as authMiddleware from "../src/api/middleware/auth.js";
+
+type MockResponse = ServerResponse & { data: string; statusCode?: number; headers?: Record<string, string> };
+
+function createMockResponse(): MockResponse {
+  const res = {
+    data: "",
+    statusCode: undefined as number | undefined,
+    headers: {} as Record<string, string>,
+    writeHead(this: MockResponse, statusCode: number, headers: Record<string, string>) {
+      this.statusCode = statusCode;
+      this.headers = headers;
+      return this;
+    },
+    end(this: MockResponse, chunk?: string) {
+      if (chunk) {
+        this.data += chunk;
+      }
+      return this;
+    },
+  } as Partial<MockResponse>;
+
+  return res as MockResponse;
+}
+
+function createRequest(method: string = "GET", headers: Record<string, string> = {}): IncomingMessage {
+  return { method, headers } as IncomingMessage;
+}
+
+describe("UsersRouteHandler", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns sanitized users when authorized", async () => {
+    vi.spyOn(authMiddleware.AuthMiddleware, "requireAuth").mockReturnValue({
+      userId: 1,
+      email: "admin@example.com",
+      role: "admin",
+    });
+
+    vi.spyOn(userService, "listUsers").mockResolvedValue([
+      {
+        id: 1,
+        email: "user1@example.com",
+        name: "User One",
+        passwordHash: "secret",
+        role: "member",
+        tenantId: "tenant-a",
+        createdAt: "2024-01-01T00:00:00Z",
+        updatedAt: "2024-01-02T00:00:00Z",
+      },
+      {
+        id: 2,
+        email: "user2@example.com",
+        name: null,
+        passwordHash: "secret",
+        role: "member",
+        tenantId: null,
+        createdAt: "2024-02-01T00:00:00Z",
+        updatedAt: "2024-02-02T00:00:00Z",
+      },
+    ] as any);
+
+    const handler = new UsersRouteHandler();
+    const req = createRequest("GET", { authorization: "Bearer token" });
+    const res = createMockResponse();
+
+    const handled = await handler.handle(req, res, "/api/users", "GET");
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(200);
+
+    const payload = JSON.parse(res.data) as Array<Record<string, unknown>>;
+    expect(payload).toHaveLength(2);
+    expect(payload[0]).toMatchObject({ id: 1, email: "user1@example.com", name: "User One", role: "member" });
+    expect(payload[0]).not.toHaveProperty("passwordHash");
+  });
+
+  it("returns an error when no auth token is provided", async () => {
+    vi.spyOn(authMiddleware.AuthMiddleware, "requireAuth").mockReturnValue(null);
+
+    const handler = new UsersRouteHandler();
+    const req = createRequest("GET");
+    const res = createMockResponse();
+
+    const handled = await handler.handle(req, res, "/api/users", "GET");
+
+    expect(handled).toBe(true);
+    expect(res.statusCode).toBe(401);
+    const payload = JSON.parse(res.data) as { error: string };
+    expect(payload.error).toContain("No token provided");
+  });
+});

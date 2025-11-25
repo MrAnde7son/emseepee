@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { useAgents, useProviders } from "@/hooks/useGatewayData";
+import { useAgents, useProviders, useUsers } from "@/hooks/useGatewayData";
 import { Api } from "@/lib/api";
 import { Agent } from "@/lib/types";
 
@@ -70,6 +70,7 @@ export default function AgentsPage() {
   });
 
   const { data: providers } = useProviders();
+  const { data: users = [] } = useUsers();
   const filters = useMemo(() => {
     const f: { providerId?: string; role?: string } = {};
     if (selectedProvider !== "all") f.providerId = selectedProvider;
@@ -100,6 +101,15 @@ export default function AgentsPage() {
     });
     return Array.from(roles).sort();
   }, [agents]);
+
+  const ownerOptions = useMemo(
+    () =>
+      users.map((user) => ({
+        value: user.email,
+        label: user.name ? `${user.name} (${user.email})` : user.email,
+      })),
+    [users]
+  );
 
   const handleCreateAgent = async () => {
     if (!formData.providerId || !formData.name) {
@@ -208,6 +218,19 @@ export default function AgentsPage() {
 
   const getProviderName = (providerId: string) => {
     return providers?.find((p) => p.id === providerId)?.name || providerId;
+  };
+
+  const getOwnerLabel = (owner?: string) => {
+    if (!owner) return null;
+    const option = ownerOptions.find((opt) => opt.value === owner);
+    if (option) return option.label;
+
+    const matchingUser = users.find((user) => String(user.id) === owner);
+    if (matchingUser) {
+      return matchingUser.name ? `${matchingUser.name} (${matchingUser.email})` : matchingUser.email;
+    }
+
+    return owner;
   };
 
   return (
@@ -367,7 +390,7 @@ export default function AgentsPage() {
                   </TableCell>
                   <TableCell>
                     {agent.owner ? (
-                      <span className="text-sm">{agent.owner}</span>
+                      <span className="text-sm">{getOwnerLabel(agent.owner)}</span>
                     ) : (
                       <span className="text-muted-foreground text-sm">—</span>
                     )}
@@ -489,7 +512,7 @@ export default function AgentsPage() {
               {selectedAgent.owner && (
                 <div>
                   <label className="text-sm font-medium">Owner</label>
-                  <div className="text-sm">{selectedAgent.owner}</div>
+                  <div className="text-sm">{getOwnerLabel(selectedAgent.owner)}</div>
                 </div>
               )}
               {selectedAgent.metadata && Object.keys(selectedAgent.metadata).length > 0 && (
@@ -584,11 +607,28 @@ export default function AgentsPage() {
             </div>
             <div>
               <label className="text-sm font-medium">Owner</label>
-              <Input
-                value={formData.owner}
-                onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
-                placeholder="Owner/user identifier"
-              />
+              <Select
+                value={formData.owner || "none"}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, owner: value === "none" ? "" : value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Assign owner" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Unassigned</SelectItem>
+                  {ownerOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                  {formData.owner &&
+                    !ownerOptions.some((opt) => opt.value === formData.owner) && (
+                      <SelectItem value={formData.owner}>Current: {formData.owner}</SelectItem>
+                    )}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -664,11 +704,28 @@ export default function AgentsPage() {
             </div>
             <div>
               <label className="text-sm font-medium">Owner</label>
-              <Input
-                value={formData.owner}
-                onChange={(e) => setFormData({ ...formData, owner: e.target.value })}
-                placeholder="Owner/user identifier"
-              />
+              <Select
+                value={formData.owner || "none"}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, owner: value === "none" ? "" : value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Assign owner" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Unassigned</SelectItem>
+                  {ownerOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                  {formData.owner &&
+                    !ownerOptions.some((opt) => opt.value === formData.owner) && (
+                      <SelectItem value={formData.owner}>Current: {formData.owner}</SelectItem>
+                    )}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center gap-2">
               <input

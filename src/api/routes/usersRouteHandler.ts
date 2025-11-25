@@ -5,6 +5,11 @@ import { ErrorHandler } from "../middleware/errorHandler.js";
 
 export class UsersRouteHandler extends BaseRouteHandler {
   async handle(req: IncomingMessage, res: ServerResponse, path: string, method: string): Promise<boolean> {
+    if (path === "/api/users" && method === "GET") {
+      await this.handleListUsers(req, res);
+      return true;
+    }
+
     if (path.startsWith("/api/users/") && method === "PUT") {
       const userIdStr = path.replace("/api/users/", "");
       const userId = parseInt(userIdStr, 10);
@@ -48,6 +53,33 @@ export class UsersRouteHandler extends BaseRouteHandler {
       });
     } catch (error) {
       ErrorHandler.handle(error, res, "Update user error");
+    }
+  }
+
+  private async handleListUsers(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    try {
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const { listUsers } = await import("../../db/services/userService.js");
+      const users = await listUsers();
+
+      const sanitizedUsers = users.map((user) => ({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        tenantId: user.tenantId,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      }));
+
+      this.sendJSON(res, 200, sanitizedUsers);
+    } catch (error) {
+      ErrorHandler.handle(error, res, "List users error");
     }
   }
 }
