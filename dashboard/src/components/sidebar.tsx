@@ -128,9 +128,9 @@ export function Sidebar() {
             <Image
               src="/hakuna-logo.png"
               alt="Hakuna"
-              width={120}
+              width={40}
               height={40}
-              className="h-8 w-auto object-contain"
+              className="h-8 w-8 object-contain"
               priority
             />
             <span className="text-sm font-semibold text-foreground">Hakuna</span>
@@ -142,7 +142,7 @@ export function Sidebar() {
               alt="Hakuna"
               width={40}
               height={40}
-              className="h-8 w-auto object-contain"
+              className="h-8 w-8 object-contain"
               priority
             />
           </div>
@@ -230,4 +230,3 @@ export function Sidebar() {
     </aside>
   );
 }
-
