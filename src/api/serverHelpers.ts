@@ -6,10 +6,10 @@ import type { PolicyRule, PolicyRuleCondition, PolicyOperation } from "../config
 import { logger } from "../logger.js";
 import type { Policy } from "./types.js";
 
-export async function saveConfigToDb(updatedPolicyRules: PolicyRule[]): Promise<void> {
+export async function saveConfigToDb(updatedPolicyRules: PolicyRule[], tenantId?: string): Promise<void> {
   try {
     const { savePolicyRulesToDb } = await import("../db/services/configService.js");
-    await savePolicyRulesToDb(updatedPolicyRules);
+    await savePolicyRulesToDb(updatedPolicyRules, tenantId);
     clearConfigCache();
   } catch (error) {
     logger.error("[API] Failed to save config to database:", error);
@@ -65,9 +65,10 @@ export async function getPolicies(
     effect?: string;
     enabled?: string;
     priority?: string;
-  }
+  },
+  tenantId?: string
 ): Promise<{ data: Policy[]; total: number; page: number; limit: number; totalPages: number }> {
-  const rules = await getPolicyRules();
+  const rules = await getPolicyRules(tenantId);
   
   const allPolicies: Policy[] = rules.map((rule, idx): Policy => {
     const scope = inferScopeFromCondition(rule.condition);
@@ -148,9 +149,12 @@ export async function getPolicies(
   return { data: paginatedPolicies, total, page, limit, totalPages };
 }
 
-export async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string } | Partial<Policy> & { scopeTarget?: string }): Promise<Policy> {
+export async function addPolicy(
+  rule: Omit<PolicyRule, "name"> & { name?: string } | Partial<Policy> & { scopeTarget?: string },
+  tenantId?: string
+): Promise<Policy> {
   const { getAllConfigFromDb } = await import("../db/services/configService.js");
-  const config = await getAllConfigFromDb();
+  const config = await getAllConfigFromDb(tenantId);
   
   const isPolicyFormat = "effect" in rule || "scope" in rule || "enabled" in rule;
   
@@ -208,7 +212,7 @@ export async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string
   }
   
   config.policyRules.push(newRule);
-  await saveConfigToDb(config.policyRules);
+  await saveConfigToDb(config.policyRules, tenantId);
   
   const scope = inferScopeFromCondition(newRule.condition);
   return {
@@ -223,9 +227,9 @@ export async function addPolicy(rule: Omit<PolicyRule, "name"> & { name?: string
   };
 }
 
-export async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<Policy>): Promise<Policy> {
+export async function updatePolicy(id: string, updates: Partial<PolicyRule> | Partial<Policy>, tenantId?: string): Promise<Policy> {
   const { getAllConfigFromDb } = await import("../db/services/configService.js");
-  const config = await getAllConfigFromDb();
+  const config = await getAllConfigFromDb(tenantId);
   
   const index = parseInt(id.replace("policy-", ""), 10);
   if (isNaN(index) || index < 0 || index >= config.policyRules.length) {
@@ -337,7 +341,7 @@ export async function updatePolicy(id: string, updates: Partial<PolicyRule> | Pa
   }
   
   config.policyRules[index] = updatedRule;
-  await saveConfigToDb(config.policyRules);
+  await saveConfigToDb(config.policyRules, tenantId);
   
   const scope = inferScopeFromCondition(updatedRule.condition);
   return {
@@ -352,9 +356,9 @@ export async function updatePolicy(id: string, updates: Partial<PolicyRule> | Pa
   };
 }
 
-export async function archivePolicy(id: string): Promise<void> {
+export async function archivePolicy(id: string, tenantId?: string): Promise<void> {
   const { getAllConfigFromDb } = await import("../db/services/configService.js");
-  const config = await getAllConfigFromDb();
+  const config = await getAllConfigFromDb(tenantId);
   
   const index = parseInt(id.replace("policy-", ""), 10);
   if (isNaN(index) || index < 0 || index >= config.policyRules.length) {
@@ -362,12 +366,12 @@ export async function archivePolicy(id: string): Promise<void> {
   }
   
   config.policyRules[index].archived = true;
-  await saveConfigToDb(config.policyRules);
+  await saveConfigToDb(config.policyRules, tenantId);
 }
 
-export async function restorePolicy(id: string): Promise<void> {
+export async function restorePolicy(id: string, tenantId?: string): Promise<void> {
   const { getAllConfigFromDb } = await import("../db/services/configService.js");
-  const config = await getAllConfigFromDb();
+  const config = await getAllConfigFromDb(tenantId);
   
   const index = parseInt(id.replace("policy-", ""), 10);
   if (isNaN(index) || index < 0 || index >= config.policyRules.length) {
@@ -375,12 +379,12 @@ export async function restorePolicy(id: string): Promise<void> {
   }
   
   config.policyRules[index].archived = false;
-  await saveConfigToDb(config.policyRules);
+  await saveConfigToDb(config.policyRules, tenantId);
 }
 
-export async function deletePolicy(id: string): Promise<void> {
+export async function deletePolicy(id: string, tenantId?: string): Promise<void> {
   const { getAllConfigFromDb } = await import("../db/services/configService.js");
-  const config = await getAllConfigFromDb();
+  const config = await getAllConfigFromDb(tenantId);
   
   const index = parseInt(id.replace("policy-", ""), 10);
   if (isNaN(index) || index < 0 || index >= config.policyRules.length) {
@@ -388,7 +392,7 @@ export async function deletePolicy(id: string): Promise<void> {
   }
   
   config.policyRules.splice(index, 1);
-  await saveConfigToDb(config.policyRules);
+  await saveConfigToDb(config.policyRules, tenantId);
 }
 
 export async function getEvents(
@@ -401,7 +405,8 @@ export async function getEvents(
     agents?: string[];
     tools?: string[];
     riskLevels?: string[];
-  }
+  },
+  tenantId?: string
 ): Promise<{ data: import("./types.js").GatewayEvent[]; total: number; page: number; limit: number; totalPages: number }> {
   try {
     const { getEvents: getEventsFromDb, getEventsCount, getEventsWithFilters, getEventsWithFiltersCount } = await import("../db/services/eventService.js");
@@ -418,11 +423,11 @@ export async function getEvents(
     );
     
     if (hasFilters || searchQuery) {
-      total = await getEventsWithFiltersCount(searchQuery, filters);
-      data = await getEventsWithFilters(searchQuery, filters, limit, (page - 1) * limit);
+      total = await getEventsWithFiltersCount(searchQuery, filters, tenantId);
+      data = await getEventsWithFilters(searchQuery, filters, limit, (page - 1) * limit, tenantId);
     } else {
-      total = await getEventsCount();
-      data = await getEventsFromDb(limit, (page - 1) * limit);
+      total = await getEventsCount(tenantId);
+      data = await getEventsFromDb(limit, (page - 1) * limit, tenantId);
     }
     
     const totalPages = Math.ceil(total / limit);

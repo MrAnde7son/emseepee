@@ -27,7 +27,7 @@ export class AuthRouteHandler extends BaseRouteHandler {
 
   private async handleRegister(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
-      const body = await RequestParser.parseBody(req) as { name?: string; email: string; password: string };
+      const body = await RequestParser.parseBody(req) as { name?: string; email: string; password: string; tenantId?: string };
       
       if (!body.email || !body.password) {
         this.sendError(res, 400, "Email and password are required");
@@ -47,14 +47,16 @@ export class AuthRouteHandler extends BaseRouteHandler {
         return;
       }
 
+      const tenantId = body.tenantId || body.email.split("@")[1] || `tenant-${Date.now()}`;
       const user = await createUser({
         email: body.email,
         name: body.name,
         password: body.password,
         role: "user",
+        tenantId,
       });
 
-      const token = generateToken(user.id, user.email, user.role);
+      const token = generateToken(user.id, user.email, user.role, user.tenantId);
 
       this.sendJSON(res, 201, {
         token,
@@ -63,6 +65,7 @@ export class AuthRouteHandler extends BaseRouteHandler {
           email: user.email,
           name: user.name,
           role: user.role,
+          tenantId: user.tenantId,
         },
       });
     } catch (error) {
@@ -87,7 +90,7 @@ export class AuthRouteHandler extends BaseRouteHandler {
         return;
       }
 
-      const token = generateToken(user.id, user.email, user.role);
+      const token = generateToken(user.id, user.email, user.role, user.tenantId);
 
       this.sendJSON(res, 200, {
         token,
@@ -96,6 +99,7 @@ export class AuthRouteHandler extends BaseRouteHandler {
           email: user.email,
           name: user.name,
           role: user.role,
+          tenantId: user.tenantId,
         },
       });
     } catch (error) {
@@ -125,6 +129,7 @@ export class AuthRouteHandler extends BaseRouteHandler {
           email: user.email,
           name: user.name,
           role: user.role,
+          tenantId: user.tenantId,
         },
       });
     } catch (error) {

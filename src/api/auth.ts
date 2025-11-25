@@ -1,35 +1,25 @@
 import { createHmac, randomBytes } from "crypto";
-import { readFileSync } from "fs";
-import { join } from "path";
 import { logger } from "../logger.js";
 
 /**
- * Get JWT secret from SECRET file or environment variable
+ * Generate a JWT secret lazily at runtime.
+ * This keeps secrets out of env/files and ensures a fresh key per process start.
  */
+let JWT_SECRET: string | null = null;
 function getJwtSecret(): string {
-  // Try environment variable first
-  if (process.env.JWT_SECRET) {
-    return process.env.JWT_SECRET;
+  if (!JWT_SECRET) {
+    JWT_SECRET = randomBytes(64).toString("hex");
+    logger.info("[Auth] Generated new in-memory JWT secret");
   }
-  
-  // Try to read from SECRET file
-  try {
-    const secretPath = join(process.cwd(), "SECRET");
-    return readFileSync(secretPath, "utf-8").trim();
-  } catch {
-    // Fallback to default (not secure, but works for development)
-    logger.warn("[Auth] No JWT_SECRET found, using default secret (not secure for production)");
-    return "default-secret-change-in-production";
-  }
+  return JWT_SECRET;
 }
-
-const JWT_SECRET = getJwtSecret();
 const JWT_EXPIRY = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 
 export interface JWTPayload {
   userId: number;
   email: string;
   role: string;
+  tenantId?: string | null;
   iat: number;
   exp: number;
 }
@@ -37,12 +27,14 @@ export interface JWTPayload {
 /**
  * Generate a JWT token
  */
-export function generateToken(userId: number, email: string, role: string): string {
+export function generateToken(userId: number, email: string, role: string, tenantId?: string | null): string {
   const now = Date.now();
+  const secret = getJwtSecret();
   const payload: JWTPayload = {
     userId,
     email,
     role,
+    tenantId,
     iat: Math.floor(now / 1000),
     exp: Math.floor((now + JWT_EXPIRY) / 1000),
   };
@@ -58,7 +50,7 @@ export function generateToken(userId: number, email: string, role: string): stri
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
 
   // Create signature
-  const signature = createHmac("sha256", JWT_SECRET)
+  const signature = createHmac("sha256", secret)
     .update(`${encodedHeader}.${encodedPayload}`)
     .digest("base64url");
 
@@ -70,6 +62,7 @@ export function generateToken(userId: number, email: string, role: string): stri
  */
 export function verifyToken(token: string): JWTPayload | null {
   try {
+    const secret = getJwtSecret();
     const parts = token.split(".");
     if (parts.length !== 3) {
       return null;
@@ -78,7 +71,7 @@ export function verifyToken(token: string): JWTPayload | null {
     const [encodedHeader, encodedPayload, signature] = parts;
 
     // Verify signature
-    const expectedSignature = createHmac("sha256", JWT_SECRET)
+    const expectedSignature = createHmac("sha256", secret)
       .update(`${encodedHeader}.${encodedPayload}`)
       .digest("base64url");
 
@@ -139,4 +132,3 @@ export function extractTokenFromHeader(authHeader: string | undefined): string |
 
   return parts[1];
 }
-

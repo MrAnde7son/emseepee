@@ -5,6 +5,7 @@ import { logger } from "../../logger.js";
 
 export interface GatewayEvent {
   id: string;
+  tenantId?: string;
   timestamp: string;
   provider: string;
   agentId: string;
@@ -47,44 +48,47 @@ export async function saveEvent(event: Omit<GatewayEvent, "id" | "timestamp">): 
     const eventId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const timestamp = new Date().toISOString();
     const config = getDatabaseConfig();
+    const tenantParam = event.tenantId ?? null;
 
   const metadata = event.metadata ? JSON.stringify(event.metadata) : null;
 
-  if (config.type === "postgres") {
-    await executeUpdate(
-      `INSERT INTO events (event_id, timestamp, provider, agent_id, tool_name, intent_summary, decision, risk_level, latency_ms, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)`,
-      [
-        eventId,
-        timestamp,
-        event.provider,
-        event.agentId,
-        event.toolName,
-        event.intentSummary,
-        event.decision,
-        event.riskLevel || null,
-        event.latencyMs || null,
-        metadata,
-      ]
-    );
-  } else {
-    await executeUpdate(
-      `INSERT INTO events (event_id, timestamp, provider, agent_id, tool_name, intent_summary, decision, risk_level, latency_ms, metadata)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        eventId,
-        timestamp,
-        event.provider,
-        event.agentId,
-        event.toolName,
-        event.intentSummary,
-        event.decision,
-        event.riskLevel || null,
-        event.latencyMs || null,
-        metadata,
-      ]
-    );
-  }
+    if (config.type === "postgres") {
+      await executeUpdate(
+        `INSERT INTO events (event_id, tenant_id, timestamp, provider, agent_id, tool_name, intent_summary, decision, risk_level, latency_ms, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)`,
+        [
+          eventId,
+          tenantParam,
+          timestamp,
+          event.provider,
+          event.agentId,
+          event.toolName,
+          event.intentSummary,
+          event.decision,
+          event.riskLevel || null,
+          event.latencyMs || null,
+          metadata,
+        ]
+      );
+    } else {
+      await executeUpdate(
+        `INSERT INTO events (event_id, tenant_id, timestamp, provider, agent_id, tool_name, intent_summary, decision, risk_level, latency_ms, metadata)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          eventId,
+          tenantParam,
+          timestamp,
+          event.provider,
+          event.agentId,
+          event.toolName,
+          event.intentSummary,
+          event.decision,
+          event.riskLevel || null,
+          event.latencyMs || null,
+          metadata,
+        ]
+      );
+    }
 
     logger.info(`[EVENT-SERVICE] Successfully saved event: ${event.toolName} by ${event.agentId}`);
 
@@ -103,7 +107,7 @@ export async function saveEvent(event: Omit<GatewayEvent, "id" | "timestamp">): 
 /**
  * Get events from database with pagination
  */
-export async function getEvents(limit: number = MAX_EVENTS, offset: number = 0): Promise<GatewayEvent[]> {
+export async function getEvents(limit: number = MAX_EVENTS, offset: number = 0, tenantId?: string): Promise<GatewayEvent[]> {
   // Check if database is initialized
   if (!isDatabaseInitialized()) {
     logger.warn("[EVENT-SERVICE] Database not initialized, returning empty events list");
@@ -113,69 +117,80 @@ export async function getEvents(limit: number = MAX_EVENTS, offset: number = 0):
   try {
     const config = getDatabaseConfig();
   
-  let query: string;
-  if (config.type === "postgres") {
-    query = `SELECT 
-      event_id as id,
-      timestamp,
-      provider,
-      agent_id as "agentId",
-      tool_name as "toolName",
-      intent_summary as "intentSummary",
-      decision,
-      risk_level as "riskLevel",
-      latency_ms as "latencyMs",
-      metadata
-    FROM events
-    ORDER BY timestamp DESC
-    LIMIT $1 OFFSET $2`;
-  } else {
-    query = `SELECT 
-      event_id as id,
-      timestamp,
-      provider,
-      agent_id as agentId,
-      tool_name as toolName,
-      intent_summary as intentSummary,
-      decision,
-      risk_level as riskLevel,
-      latency_ms as latencyMs,
-      metadata
-    FROM events
-    ORDER BY timestamp DESC
-    LIMIT ? OFFSET ?`;
-  }
+    let query: string;
+    const tenantParam = tenantId ?? null;
+    if (config.type === "postgres") {
+      query = `SELECT 
+        event_id as id,
+        tenant_id as "tenantId",
+        timestamp,
+        provider,
+        agent_id as "agentId",
+        tool_name as "toolName",
+        intent_summary as "intentSummary",
+        decision,
+        risk_level as "riskLevel",
+        latency_ms as "latencyMs",
+        metadata
+      FROM events
+      WHERE tenant_id IS NOT DISTINCT FROM $1
+      ORDER BY timestamp DESC
+      LIMIT $2 OFFSET $3`;
+    } else {
+      query = `SELECT 
+        event_id as id,
+        tenant_id as tenantId,
+        timestamp,
+        provider,
+        agent_id as agentId,
+        tool_name as toolName,
+        intent_summary as intentSummary,
+        decision,
+        risk_level as riskLevel,
+        latency_ms as latencyMs,
+        metadata
+      FROM events
+      WHERE ((tenant_id IS NULL AND ? IS NULL) OR tenant_id = ?)
+      ORDER BY timestamp DESC
+      LIMIT ? OFFSET ?`;
+    }
 
-  const results = await executeQuery<{
-    id: string;
-    timestamp: string;
-    provider: string;
-    agentId: string;
-    toolName: string;
-    intentSummary: string;
-    decision: string;
-    riskLevel: string | null;
-    latencyMs: number | null;
-    metadata: string | null;
-  }>(query, [limit, offset]);
+    const params = config.type === "postgres"
+      ? [tenantParam, limit, offset]
+      : [tenantParam, tenantParam, limit, offset];
 
-  // Only log if there are events to reduce noise
-  if (results.length > 0) {
-    logger.info(`[EVENT-SERVICE] Retrieved ${results.length} events from database`);
-  }
+    const results = await executeQuery<{
+      id: string;
+      tenantId: string | null;
+      timestamp: string;
+      provider: string;
+      agentId: string;
+      toolName: string;
+      intentSummary: string;
+      decision: string;
+      riskLevel: string | null;
+      latencyMs: number | null;
+      metadata: string | null;
+    }>(query, params);
 
-  return results.map((row) => ({
-    id: row.id,
-    timestamp: row.timestamp,
-    provider: row.provider,
-    agentId: row.agentId,
-    toolName: row.toolName,
-    intentSummary: row.intentSummary,
-    decision: row.decision as "allow" | "deny" | "log",
-    riskLevel: row.riskLevel as "low" | "medium" | "high" | undefined,
-    latencyMs: row.latencyMs || undefined,
-    metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
-  }));
+    // Only log if there are events to reduce noise
+    if (results.length > 0) {
+      logger.info(`[EVENT-SERVICE] Retrieved ${results.length} events from database`);
+    }
+
+    return results.map((row) => ({
+      id: row.id,
+      tenantId: row.tenantId ?? undefined,
+      timestamp: row.timestamp,
+      provider: row.provider,
+      agentId: row.agentId,
+      toolName: row.toolName,
+      intentSummary: row.intentSummary,
+      decision: row.decision as "allow" | "deny" | "log",
+      riskLevel: row.riskLevel as "low" | "medium" | "high" | undefined,
+      latencyMs: row.latencyMs || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    }));
   } catch (error) {
     logger.error("[EVENT-SERVICE] Failed to get events from database:", error);
     if (error instanceof Error) {
@@ -188,7 +203,7 @@ export async function getEvents(limit: number = MAX_EVENTS, offset: number = 0):
 /**
  * Get total count of events
  */
-export async function getEventsCount(): Promise<number> {
+export async function getEventsCount(tenantId?: string): Promise<number> {
   // Check if database is initialized
   if (!isDatabaseInitialized()) {
     return 0;
@@ -196,11 +211,15 @@ export async function getEventsCount(): Promise<number> {
 
   try {
     const config = getDatabaseConfig();
+    const tenantParam = tenantId ?? null;
     const query = config.type === "postgres"
-      ? `SELECT COUNT(*) as count FROM events`
-      : `SELECT COUNT(*) as count FROM events`;
+      ? `SELECT COUNT(*) as count FROM events WHERE tenant_id IS NOT DISTINCT FROM $1`
+      : `SELECT COUNT(*) as count FROM events WHERE ((tenant_id IS NULL AND ? IS NULL) OR tenant_id = ?)`;
     
-    const results = await executeQuery<{ count: number }>(query, []);
+    const results = await executeQuery<{ count: number }>(
+      query,
+      config.type === "postgres" ? [tenantParam] : [tenantParam, tenantParam]
+    );
     return results[0]?.count || 0;
   } catch (error) {
     logger.error("[EVENT-SERVICE] Failed to get events count:", error);
@@ -214,7 +233,8 @@ export async function getEventsCount(): Promise<number> {
 export async function searchEvents(
   searchQuery: string,
   limit: number = MAX_EVENTS,
-  offset: number = 0
+  offset: number = 0,
+  tenantId?: string
 ): Promise<GatewayEvent[]> {
   // Check if database is initialized
   if (!isDatabaseInitialized()) {
@@ -225,87 +245,94 @@ export async function searchEvents(
   try {
     const config = getDatabaseConfig();
     const query = searchQuery.toLowerCase();
+    const tenantParam = tenantId ?? null;
   
   let sql: string;
-  if (config.type === "postgres") {
-    sql = `SELECT 
-      event_id as id,
-      timestamp,
-      provider,
-      agent_id as "agentId",
-      tool_name as "toolName",
-      intent_summary as "intentSummary",
-      decision,
-      risk_level as "riskLevel",
-      latency_ms as "latencyMs",
-      metadata
-    FROM events
-    WHERE 
-      LOWER(agent_id) LIKE $1 OR
-      LOWER(provider) LIKE $1 OR
-      LOWER(tool_name) LIKE $1 OR
-      LOWER(intent_summary) LIKE $1 OR
-      LOWER(decision) LIKE $1
-    ORDER BY timestamp DESC
-    LIMIT $2 OFFSET $3`;
-  } else {
-    sql = `SELECT 
-      event_id as id,
-      timestamp,
-      provider,
-      agent_id as agentId,
-      tool_name as toolName,
-      intent_summary as intentSummary,
-      decision,
-      risk_level as riskLevel,
-      latency_ms as latencyMs,
-      metadata
-    FROM events
-    WHERE 
-      LOWER(agent_id) LIKE ? OR
-      LOWER(provider) LIKE ? OR
-      LOWER(tool_name) LIKE ? OR
-      LOWER(intent_summary) LIKE ? OR
-      LOWER(decision) LIKE ?
-    ORDER BY timestamp DESC
-    LIMIT ? OFFSET ?`;
-  }
+    if (config.type === "postgres") {
+      sql = `SELECT 
+        event_id as id,
+        tenant_id as "tenantId",
+        timestamp,
+        provider,
+        agent_id as "agentId",
+        tool_name as "toolName",
+        intent_summary as "intentSummary",
+        decision,
+        risk_level as "riskLevel",
+        latency_ms as "latencyMs",
+        metadata
+      FROM events
+      WHERE tenant_id IS NOT DISTINCT FROM $1 AND (
+        LOWER(agent_id) LIKE $2 OR
+        LOWER(provider) LIKE $2 OR
+        LOWER(tool_name) LIKE $2 OR
+        LOWER(intent_summary) LIKE $2 OR
+        LOWER(decision) LIKE $2
+      )
+      ORDER BY timestamp DESC
+      LIMIT $3 OFFSET $4`;
+    } else {
+      sql = `SELECT 
+        event_id as id,
+        tenant_id as tenantId,
+        timestamp,
+        provider,
+        agent_id as agentId,
+        tool_name as toolName,
+        intent_summary as intentSummary,
+        decision,
+        risk_level as riskLevel,
+        latency_ms as latencyMs,
+        metadata
+      FROM events
+      WHERE ((tenant_id IS NULL AND ? IS NULL) OR tenant_id = ?) AND (
+        LOWER(agent_id) LIKE ? OR
+        LOWER(provider) LIKE ? OR
+        LOWER(tool_name) LIKE ? OR
+        LOWER(intent_summary) LIKE ? OR
+        LOWER(decision) LIKE ?
+      )
+      ORDER BY timestamp DESC
+      LIMIT ? OFFSET ?`;
+    }
 
-  const searchPattern = `%${query}%`;
-  const params = config.type === "postgres"
-    ? [searchPattern, limit, offset]
-    : [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, limit, offset];
+    const searchPattern = `%${query}%`;
+    const params = config.type === "postgres"
+      ? [tenantParam, searchPattern, limit, offset]
+      : [tenantParam, tenantParam, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, limit, offset];
 
-  const results = await executeQuery<{
-    id: string;
-    timestamp: string;
-    provider: string;
-    agentId: string;
-    toolName: string;
-    intentSummary: string;
-    decision: string;
-    riskLevel: string | null;
-    latencyMs: number | null;
-    metadata: string | null;
-  }>(sql, params);
+    const results = await executeQuery<{
+      id: string;
+      tenantId: string | null;
+      timestamp: string;
+      provider: string;
+      agentId: string;
+      toolName: string;
+      intentSummary: string;
+      decision: string;
+      riskLevel: string | null;
+      latencyMs: number | null;
+      metadata: string | null;
+    }>(sql, params);
 
-  // Only log if there are results to reduce noise
-  if (results.length > 0) {
-    logger.info(`[EVENT-SERVICE] Retrieved ${results.length} events from database (search: "${searchQuery}")`);
-  }
+    // Only log if there are results to reduce noise
+    if (results.length > 0) {
+      logger.info(`[EVENT-SERVICE] Retrieved ${results.length} events from database (search: "${searchQuery}")`);
+    }
 
-  return results.map((row) => ({
-    id: row.id,
-    timestamp: row.timestamp,
-    provider: row.provider,
-    agentId: row.agentId,
-    toolName: row.toolName,
-    intentSummary: row.intentSummary,
-    decision: row.decision as "allow" | "deny" | "log",
-    riskLevel: row.riskLevel as "low" | "medium" | "high" | undefined,
-    latencyMs: row.latencyMs || undefined,
-    metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
-  }));
+    return results.map((row) => ({
+      id: row.id,
+      tenantId: row.tenantId ?? undefined,
+      timestamp: row.timestamp,
+      provider: row.provider,
+      agentId: row.agentId,
+      toolName: row.toolName,
+      intentSummary: row.intentSummary,
+      decision: row.decision as "allow" | "deny" | "log",
+      riskLevel: row.riskLevel as "low" | "medium" | "high" | undefined,
+      latencyMs: row.latencyMs || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+    }));
   } catch (error) {
     logger.error("[EVENT-SERVICE] Failed to search events from database:", error);
     if (error instanceof Error) {
@@ -318,7 +345,7 @@ export async function searchEvents(
 /**
  * Get total count of events matching search query
  */
-export async function searchEventsCount(searchQuery: string): Promise<number> {
+export async function searchEventsCount(searchQuery: string, tenantId?: string): Promise<number> {
   // Check if database is initialized
   if (!isDatabaseInitialized()) {
     return 0;
@@ -327,32 +354,35 @@ export async function searchEventsCount(searchQuery: string): Promise<number> {
   try {
     const config = getDatabaseConfig();
     const query = searchQuery.toLowerCase();
+    const tenantParam = tenantId ?? null;
     const searchPattern = `%${query}%`;
     
     let sql: string;
     if (config.type === "postgres") {
       sql = `SELECT COUNT(*) as count
       FROM events
-      WHERE 
-        LOWER(agent_id) LIKE $1 OR
-        LOWER(provider) LIKE $1 OR
-        LOWER(tool_name) LIKE $1 OR
-        LOWER(intent_summary) LIKE $1 OR
-        LOWER(decision) LIKE $1`;
+      WHERE tenant_id IS NOT DISTINCT FROM $1 AND (
+        LOWER(agent_id) LIKE $2 OR
+        LOWER(provider) LIKE $2 OR
+        LOWER(tool_name) LIKE $2 OR
+        LOWER(intent_summary) LIKE $2 OR
+        LOWER(decision) LIKE $2
+      )`;
     } else {
       sql = `SELECT COUNT(*) as count
       FROM events
-      WHERE 
+      WHERE ((tenant_id IS NULL AND ? IS NULL) OR tenant_id = ?) AND (
         LOWER(agent_id) LIKE ? OR
         LOWER(provider) LIKE ? OR
         LOWER(tool_name) LIKE ? OR
         LOWER(intent_summary) LIKE ? OR
-        LOWER(decision) LIKE ?`;
+        LOWER(decision) LIKE ?
+      )`;
     }
     
     const params = config.type === "postgres"
-      ? [searchPattern]
-      : [searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
+      ? [tenantParam, searchPattern]
+      : [tenantParam, tenantParam, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern];
     
     const results = await executeQuery<{ count: number }>(sql, params);
     return results[0]?.count || 0;
@@ -375,7 +405,8 @@ export async function getEventsWithFilters(
     riskLevels?: string[];
   },
   limit: number = MAX_EVENTS,
-  offset: number = 0
+  offset: number = 0,
+  tenantId?: string
 ): Promise<GatewayEvent[]> {
   // Check if database is initialized
   if (!isDatabaseInitialized()) {
@@ -385,9 +416,19 @@ export async function getEventsWithFilters(
 
   try {
     const config = getDatabaseConfig();
+    const tenantParam = tenantId ?? null;
     const conditions: string[] = [];
     const params: unknown[] = [];
     let paramIndex = 1;
+
+    if (config.type === "postgres") {
+      conditions.push(`tenant_id IS NOT DISTINCT FROM $${paramIndex}`);
+      params.push(tenantParam);
+      paramIndex++;
+    } else {
+      conditions.push(`((tenant_id IS NULL AND ? IS NULL) OR tenant_id = ?)`);
+      params.push(tenantParam, tenantParam);
+    }
 
     // Add search conditions
     if (searchQuery) {
@@ -505,6 +546,7 @@ export async function getEventsWithFilters(
     if (config.type === "postgres") {
       sql = `SELECT 
         event_id as id,
+        tenant_id as "tenantId",
         timestamp,
         provider,
         agent_id as "agentId",
@@ -521,6 +563,7 @@ export async function getEventsWithFilters(
     } else {
       sql = `SELECT 
         event_id as id,
+        tenant_id as tenantId,
         timestamp,
         provider,
         agent_id as agentId,
@@ -540,6 +583,7 @@ export async function getEventsWithFilters(
 
     const results = await executeQuery<{
       id: string;
+      tenantId: string | null;
       timestamp: string;
       provider: string;
       agentId: string;
@@ -553,6 +597,7 @@ export async function getEventsWithFilters(
 
     return results.map((row) => ({
       id: row.id,
+      tenantId: row.tenantId ?? undefined,
       timestamp: row.timestamp,
       provider: row.provider,
       agentId: row.agentId,
@@ -583,7 +628,8 @@ export async function getEventsWithFiltersCount(
     agents?: string[];
     tools?: string[];
     riskLevels?: string[];
-  }
+  },
+  tenantId?: string
 ): Promise<number> {
   // Check if database is initialized
   if (!isDatabaseInitialized()) {
@@ -592,9 +638,19 @@ export async function getEventsWithFiltersCount(
 
   try {
     const config = getDatabaseConfig();
+    const tenantParam = tenantId ?? null;
     const conditions: string[] = [];
     const params: unknown[] = [];
     let paramIndex = 1;
+
+    if (config.type === "postgres") {
+      conditions.push(`tenant_id IS NOT DISTINCT FROM $${paramIndex}`);
+      params.push(tenantParam);
+      paramIndex++;
+    } else {
+      conditions.push(`((tenant_id IS NULL AND ? IS NULL) OR tenant_id = ?)`);
+      params.push(tenantParam, tenantParam);
+    }
 
     // Add search conditions
     if (searchQuery) {
@@ -701,7 +757,7 @@ export async function getEventsWithFiltersCount(
 /**
  * Get all unique filter values for events (for filter dropdowns)
  */
-export async function getEventFilterOptions(): Promise<{
+export async function getEventFilterOptions(tenantId?: string): Promise<{
   decisions: string[];
   providers: string[];
   agents: string[];
@@ -715,36 +771,40 @@ export async function getEventFilterOptions(): Promise<{
 
   try {
     const config = getDatabaseConfig();
+    const tenantParam = tenantId ?? null;
+    const tenantConditionPostgres = `tenant_id IS NOT DISTINCT FROM $1`;
+    const tenantConditionSqlite = `((tenant_id IS NULL AND ? IS NULL) OR tenant_id = ?)`;
+    const tenantArgs = config.type === "postgres" ? [tenantParam] : [tenantParam, tenantParam];
     
     // Get unique decisions
     const decisionsQuery = config.type === "postgres"
-      ? `SELECT DISTINCT decision FROM events WHERE decision IS NOT NULL ORDER BY decision`
-      : `SELECT DISTINCT decision FROM events WHERE decision IS NOT NULL ORDER BY decision`;
-    const decisions = await executeQuery<{ decision: string }>(decisionsQuery, []);
+      ? `SELECT DISTINCT decision FROM events WHERE decision IS NOT NULL AND ${tenantConditionPostgres} ORDER BY decision`
+      : `SELECT DISTINCT decision FROM events WHERE decision IS NOT NULL AND ${tenantConditionSqlite} ORDER BY decision`;
+    const decisions = await executeQuery<{ decision: string }>(decisionsQuery, tenantArgs);
     
     // Get unique providers
     const providersQuery = config.type === "postgres"
-      ? `SELECT DISTINCT provider FROM events WHERE provider IS NOT NULL ORDER BY provider`
-      : `SELECT DISTINCT provider FROM events WHERE provider IS NOT NULL ORDER BY provider`;
-    const providers = await executeQuery<{ provider: string }>(providersQuery, []);
+      ? `SELECT DISTINCT provider FROM events WHERE provider IS NOT NULL AND ${tenantConditionPostgres} ORDER BY provider`
+      : `SELECT DISTINCT provider FROM events WHERE provider IS NOT NULL AND ${tenantConditionSqlite} ORDER BY provider`;
+    const providers = await executeQuery<{ provider: string }>(providersQuery, tenantArgs);
     
     // Get unique agents
     const agentsQuery = config.type === "postgres"
-      ? `SELECT DISTINCT agent_id as agentId FROM events WHERE agent_id IS NOT NULL ORDER BY agent_id`
-      : `SELECT DISTINCT agent_id as agentId FROM events WHERE agent_id IS NOT NULL ORDER BY agent_id`;
-    const agents = await executeQuery<{ agentId: string }>(agentsQuery, []);
+      ? `SELECT DISTINCT agent_id as agentId FROM events WHERE agent_id IS NOT NULL AND ${tenantConditionPostgres} ORDER BY agent_id`
+      : `SELECT DISTINCT agent_id as agentId FROM events WHERE agent_id IS NOT NULL AND ${tenantConditionSqlite} ORDER BY agent_id`;
+    const agents = await executeQuery<{ agentId: string }>(agentsQuery, tenantArgs);
     
     // Get unique tools
     const toolsQuery = config.type === "postgres"
-      ? `SELECT DISTINCT tool_name as toolName FROM events WHERE tool_name IS NOT NULL ORDER BY tool_name`
-      : `SELECT DISTINCT tool_name as toolName FROM events WHERE tool_name IS NOT NULL ORDER BY tool_name`;
-    const tools = await executeQuery<{ toolName: string }>(toolsQuery, []);
+      ? `SELECT DISTINCT tool_name as toolName FROM events WHERE tool_name IS NOT NULL AND ${tenantConditionPostgres} ORDER BY tool_name`
+      : `SELECT DISTINCT tool_name as toolName FROM events WHERE tool_name IS NOT NULL AND ${tenantConditionSqlite} ORDER BY tool_name`;
+    const tools = await executeQuery<{ toolName: string }>(toolsQuery, tenantArgs);
     
     // Get unique risk levels
     const riskLevelsQuery = config.type === "postgres"
-      ? `SELECT DISTINCT risk_level as riskLevel FROM events WHERE risk_level IS NOT NULL ORDER BY risk_level`
-      : `SELECT DISTINCT risk_level as riskLevel FROM events WHERE risk_level IS NOT NULL ORDER BY risk_level`;
-    const riskLevels = await executeQuery<{ riskLevel: string }>(riskLevelsQuery, []);
+      ? `SELECT DISTINCT risk_level as riskLevel FROM events WHERE risk_level IS NOT NULL AND ${tenantConditionPostgres} ORDER BY risk_level`
+      : `SELECT DISTINCT risk_level as riskLevel FROM events WHERE risk_level IS NOT NULL AND ${tenantConditionSqlite} ORDER BY risk_level`;
+    const riskLevels = await executeQuery<{ riskLevel: string }>(riskLevelsQuery, tenantArgs);
     
     return {
       decisions: decisions.map((r) => r.decision).filter((d): d is "allow" | "deny" | "log" => 
@@ -813,4 +873,3 @@ async function cleanupOldEvents(): Promise<void> {
     // Don't throw - cleanup failures shouldn't break event saving
   }
 }
-

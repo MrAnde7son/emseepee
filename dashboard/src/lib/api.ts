@@ -2,8 +2,16 @@ import { Provider, Tool, Policy, GatewayEvent, Agent } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8000";
 
-async function fetchJSON<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, { cache: "no-store" });
+async function fetchJSON<T>(path: string, options?: { requireAuth?: boolean }): Promise<T> {
+  const headers: Record<string, string> = {};
+  if (options?.requireAuth) {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  const res = await fetch(`${BASE_URL}${path}`, { cache: "no-store", headers });
   if (!res.ok) {
     throw new Error(`Request failed: ${res.status}`);
   }
@@ -31,10 +39,18 @@ async function postJSON<T>(path: string, body: unknown, requireAuth: boolean = f
   return res.json();
 }
 
-async function putJSON<T>(path: string, body: unknown): Promise<T> {
+async function putJSON<T>(path: string, body: unknown, requireAuth: boolean = false): Promise<T> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (requireAuth) {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -44,9 +60,18 @@ async function putJSON<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
-async function deleteJSON(path: string): Promise<void> {
+async function deleteJSON(path: string, requireAuth: boolean = false): Promise<void> {
+  const headers: Record<string, string> = {};
+  if (requireAuth) {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+    headers["Authorization"] = `Bearer ${token}`;
+  }
   const res = await fetch(`${BASE_URL}${path}`, {
     method: "DELETE",
+    headers,
     cache: "no-store",
   });
   if (!res.ok) {
@@ -55,7 +80,7 @@ async function deleteJSON(path: string): Promise<void> {
 }
 
 export const Api = {
-  getProviders: () => fetchJSON<Provider[]>("/api/providers"),
+  getProviders: () => fetchJSON<Provider[]>("/api/providers", { requireAuth: true }),
   installProvider: (providerId: string, config?: Record<string, unknown>) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/install`, config || {}, true),
   uninstallProvider: (providerId: string) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/uninstall`, {}, true),
   getTools: (page?: number, limit?: number, search?: string) => {
@@ -64,13 +89,13 @@ export const Api = {
     if (limit) params.set("limit", limit.toString());
     if (search) params.set("q", search);
     const searchStr = params.toString() ? `?${params.toString()}` : "";
-    return fetchJSON<{ data: Tool[]; total: number; page: number; limit: number; totalPages: number }>(`/api/tools${searchStr}`);
+    return fetchJSON<{ data: Tool[]; total: number; page: number; limit: number; totalPages: number }>(`/api/tools${searchStr}`, { requireAuth: true });
   },
-  getToolInputSchema: (toolId: string) => fetchJSON<{ inputSchema: Record<string, { type: string; description?: string; required?: boolean }> }>(`/api/tools/${toolId}`),
-  enableTool: (toolId: string) => postJSON<{ success: boolean }>(`/api/tools/${toolId}/enable`, {}),
-  disableTool: (toolId: string) => postJSON<{ success: boolean }>(`/api/tools/${toolId}/disable`, {}),
-  enableMcpServer: (mcpId: string) => postJSON<{ success: boolean }>(`/api/mcp/${mcpId}/enable`, {}),
-  disableMcpServer: (mcpId: string) => postJSON<{ success: boolean }>(`/api/mcp/${mcpId}/disable`, {}),
+  getToolInputSchema: (toolId: string) => fetchJSON<{ inputSchema: Record<string, { type: string; description?: string; required?: boolean }> }>(`/api/tools/${toolId}`, { requireAuth: true }),
+  enableTool: (toolId: string) => postJSON<{ success: boolean }>(`/api/tools/${toolId}/enable`, {}, true),
+  disableTool: (toolId: string) => postJSON<{ success: boolean }>(`/api/tools/${toolId}/disable`, {}, true),
+  enableMcpServer: (mcpId: string) => postJSON<{ success: boolean }>(`/api/mcp/${mcpId}/enable`, {}, true),
+  disableMcpServer: (mcpId: string) => postJSON<{ success: boolean }>(`/api/mcp/${mcpId}/disable`, {}, true),
   getMcpServerDetails: (mcpId: string) => fetchJSON<{
     id: string;
     name: string;
@@ -98,10 +123,10 @@ export const Api = {
       sensitivity: string;
     };
     disabledTools?: string[];
-  }>(`/api/mcp/${mcpId}`),
-  initiateOAuth: (mcpId: string) => fetchJSON<{ authorizationUrl: string; state: string }>(`/api/oauth/authorize/${mcpId}`),
-  getOAuthStatus: (mcpId: string) => fetchJSON<{ configured: boolean; authenticated: boolean; expiresAt?: number; hasRefreshToken: boolean }>(`/api/oauth/status/${mcpId}`),
-  revokeOAuth: (mcpId: string) => postJSON<{ success: boolean }>(`/api/oauth/revoke/${mcpId}`, {}),
+  }>(`/api/mcp/${mcpId}`, { requireAuth: true }),
+  initiateOAuth: (mcpId: string) => fetchJSON<{ authorizationUrl: string; state: string }>(`/api/oauth/authorize/${mcpId}`, { requireAuth: true }),
+  getOAuthStatus: (mcpId: string) => fetchJSON<{ configured: boolean; authenticated: boolean; expiresAt?: number; hasRefreshToken: boolean }>(`/api/oauth/status/${mcpId}`, { requireAuth: true }),
+  revokeOAuth: (mcpId: string) => postJSON<{ success: boolean }>(`/api/oauth/revoke/${mcpId}`, {}, true),
   updateMcpServerConfig: (mcpId: string, updates: Partial<{
     name: string;
     description?: string;
@@ -155,7 +180,7 @@ export const Api = {
       sensitivity: string;
     };
     disabledTools?: string[];
-  }>(`/api/mcp/${mcpId}`, updates),
+  }>(`/api/mcp/${mcpId}`, updates, true),
   getPolicies: (includeArchived?: boolean, page?: number, limit?: number, filters?: { search?: string; scope?: string; effect?: string; enabled?: string; priority?: string }) => {
     const params = new URLSearchParams();
     if (includeArchived) params.set("includeArchived", "true");
@@ -167,14 +192,14 @@ export const Api = {
     if (filters?.enabled && filters.enabled !== "all") params.set("status", filters.enabled);
     if (filters?.priority && filters.priority !== "all") params.set("priority", filters.priority);
     const search = params.toString() ? `?${params.toString()}` : "";
-    return fetchJSON<{ data: Policy[]; total: number; page: number; limit: number; totalPages: number }>(`/api/policies${search}`);
+    return fetchJSON<{ data: Policy[]; total: number; page: number; limit: number; totalPages: number }>(`/api/policies${search}`, { requireAuth: true });
   },
-  getPolicy: (id: string) => fetchJSON<Policy & { condition?: Record<string, unknown>; stopOnMatch?: boolean; actionMessage?: string; webhookUrl?: string; webhookMethod?: "GET" | "POST" | "PUT" }>(`/api/policies/${id}`),
-  createPolicy: (policy: Partial<Policy> & { scopeTarget?: string } | Record<string, unknown>) => postJSON<Policy>("/api/policies", policy),
-  updatePolicy: (id: string, policy: Partial<Policy> & { scopeTarget?: string } | Record<string, unknown>) => putJSON<Policy>(`/api/policies/${id}`, policy),
-  deletePolicy: (id: string) => deleteJSON(`/api/policies/${id}`),
-  archivePolicy: (id: string) => postJSON<{ success: boolean }>(`/api/policies/${id}/archive`, {}),
-  restorePolicy: (id: string) => postJSON<{ success: boolean }>(`/api/policies/${id}/restore`, {}),
+  getPolicy: (id: string) => fetchJSON<Policy & { condition?: Record<string, unknown>; stopOnMatch?: boolean; actionMessage?: string; webhookUrl?: string; webhookMethod?: "GET" | "POST" | "PUT" }>(`/api/policies/${id}`, { requireAuth: true }),
+  createPolicy: (policy: Partial<Policy> & { scopeTarget?: string } | Record<string, unknown>) => postJSON<Policy>("/api/policies", policy, true),
+  updatePolicy: (id: string, policy: Partial<Policy> & { scopeTarget?: string } | Record<string, unknown>) => putJSON<Policy>(`/api/policies/${id}`, policy, true),
+  deletePolicy: (id: string) => deleteJSON(`/api/policies/${id}`, true),
+  archivePolicy: (id: string) => postJSON<{ success: boolean }>(`/api/policies/${id}/archive`, {}, true),
+  restorePolicy: (id: string) => postJSON<{ success: boolean }>(`/api/policies/${id}/restore`, {}, true),
   getEvents: (params?: { q?: string; page?: number; limit?: number; decision?: string[]; provider?: string; agent?: string; tool?: string; risk?: string[] }) => {
     const urlParams = new URLSearchParams();
     if (params?.q) urlParams.set("q", params.q);
@@ -186,9 +211,9 @@ export const Api = {
     if (params?.tool) urlParams.set("tool", params.tool);
     if (params?.risk && params.risk.length > 0) urlParams.set("risk", params.risk.join(","));
     const search = urlParams.toString() ? `?${urlParams.toString()}` : "";
-    return fetchJSON<{ data: GatewayEvent[]; total: number; page: number; limit: number; totalPages: number }>(`/api/events${search}`);
+    return fetchJSON<{ data: GatewayEvent[]; total: number; page: number; limit: number; totalPages: number }>(`/api/events${search}`, { requireAuth: true });
   },
-  getEventFilterOptions: () => fetchJSON<{ decisions: string[]; providers: string[]; agents: string[]; tools: string[]; riskLevels: string[] }>("/api/events?filterOptions=true"),
+  getEventFilterOptions: () => fetchJSON<{ decisions: string[]; providers: string[]; agents: string[]; tools: string[]; riskLevels: string[] }>("/api/events?filterOptions=true", { requireAuth: true }),
   register: async (data: { name?: string; email: string; password: string }) => {
     const res = await fetch(`${BASE_URL}/api/auth/register`, {
       method: "POST",

@@ -40,7 +40,8 @@ async function main() {
     const agentId = "cursor-agent";
     const agentRole = "coder_bot";
     const env = process.env.AGENT_ENV || "dev";
-    return { agentId, agentRole, env };
+    const tenantId = process.env.TENANT_ID || undefined;
+    return { agentId, agentRole, env, tenantId };
   }
 
   // Configure which categories to enable
@@ -99,6 +100,8 @@ async function initialize() {
         await addProviderConfigsTable();
         const { addOwnerColumnToAgents } = await import("./db/migrations/addOwnerToAgents.js");
         await addOwnerColumnToAgents();
+        const { addTenantSupport } = await import("./db/migrations/addTenantSupport.js");
+        await addTenantSupport();
       } catch (error) {
         logger.warn("[DB] Migration failed (non-critical):", error);
         // Continue anyway - migration failures shouldn't block startup

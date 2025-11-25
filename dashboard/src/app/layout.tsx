@@ -8,9 +8,9 @@ import { cn } from "@/lib/utils";
 
 import { QueryClientProvider } from "@/components/query-client-provider";
 import { ThemeProvider } from "@/components/theme-provider";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Sidebar } from "@/components/sidebar";
 import { TelemetryProvider } from "@/components/telemetry-provider";
+import { AuthGuard } from "@/components/auth-guard";
 
 export const metadata: Metadata = {
   title: "Hakuna",
@@ -33,26 +33,17 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         >
           <TelemetryProvider />
           <QueryClientProvider>
+            <AuthGuard>
             <div className="min-h-screen flex">
-              {/* Sidebar */}
-              <Sidebar />
+            {/* Sidebar */}
+            <Sidebar />
 
-              {/* Main content */}
-              <div className="flex-1 flex flex-col min-h-screen">
-                <header className="sticky top-0 z-50 h-14 border-b border-border flex items-center justify-between px-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full bg-emerald-400" />
-                    <span className="text-sm text-muted-foreground">
-                      Gateway status: <span className="font-semibold text-foreground">Connected</span>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <ThemeToggle />
-                  </div>
-                </header>
+            {/* Main content */}
+            <div className="flex-1 flex flex-col min-h-screen">
                 <main className="flex-1 p-4 md:p-6 overflow-y-auto">{children}</main>
               </div>
             </div>
+            </AuthGuard>
           </QueryClientProvider>
         </ThemeProvider>
       </body>

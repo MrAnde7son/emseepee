@@ -11,7 +11,7 @@ export class AuthMiddleware {
     return verifyToken(token);
   }
 
-  static requireAuth(req: IncomingMessage): { userId: number; email: string; role: string } | null {
+  static requireAuth(req: IncomingMessage): { userId: number; email: string; role: string; tenantId?: string | null } | null {
     const token = AuthMiddleware.extractToken(req);
     if (!token) {
       return null;
@@ -26,6 +26,7 @@ export class AuthMiddleware {
       userId: payload.userId,
       email: payload.email,
       role: payload.role,
+      tenantId: payload.tenantId,
     };
   }
 }

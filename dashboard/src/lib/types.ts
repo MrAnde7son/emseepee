@@ -53,6 +53,7 @@ export interface Policy {
 
 export interface GatewayEvent {
   id: string;
+  tenantId?: string;
   timestamp: string; // ISO
   provider: string;
   agentId: string;

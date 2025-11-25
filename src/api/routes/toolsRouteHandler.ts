@@ -43,11 +43,17 @@ export class ToolsRouteHandler extends BaseRouteHandler {
 
   private async handleGetTools(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
       const url = new URL(req.url || "/", `http://${req.headers.host}`);
       const page = parseInt(url.searchParams.get("page") || "1", 10);
       const limit = parseInt(url.searchParams.get("limit") || "50", 10);
       const searchQuery = url.searchParams.get("q") || undefined;
-      const tools = await this.getTools(page, limit, searchQuery);
+      const tools = await this.getTools(page, limit, searchQuery, auth.tenantId || undefined);
       this.sendJSON(res, 200, tools);
     } catch (error) {
       this.sendError(res, 500, error instanceof Error ? error.message : "Failed to get tools");
@@ -56,7 +62,13 @@ export class ToolsRouteHandler extends BaseRouteHandler {
 
   private async handleGetToolSchema(req: IncomingMessage, res: ServerResponse, toolId: string): Promise<void> {
     try {
-      const toolSchema = await this.getToolInputSchema(toolId);
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const toolSchema = await this.getToolInputSchema(toolId, auth.tenantId || undefined);
       this.sendJSON(res, 200, { inputSchema: toolSchema });
     } catch (error) {
       this.sendError(res, 404, error instanceof Error ? error.message : "Tool not found");
@@ -65,7 +77,13 @@ export class ToolsRouteHandler extends BaseRouteHandler {
 
   private async handleEnableTool(req: IncomingMessage, res: ServerResponse, toolId: string): Promise<void> {
     try {
-      const result = await this.enableTool(toolId);
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const result = await this.enableTool(toolId, auth.tenantId || undefined);
       if (result.success) {
         this.sendJSON(res, 200, { success: true });
       } else {
@@ -78,7 +96,13 @@ export class ToolsRouteHandler extends BaseRouteHandler {
 
   private async handleDisableTool(req: IncomingMessage, res: ServerResponse, toolId: string): Promise<void> {
     try {
-      const result = await this.disableTool(toolId);
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const result = await this.disableTool(toolId, auth.tenantId || undefined);
       if (result.success) {
         this.sendJSON(res, 200, { success: true });
       } else {
@@ -93,11 +117,12 @@ export class ToolsRouteHandler extends BaseRouteHandler {
   private async getTools(
     page: number = 1,
     limit: number = 50,
-    searchQuery?: string
+    searchQuery?: string,
+    tenantId?: string
   ): Promise<PaginatedResponse<Tool>> {
     const tools: Tool[] = [];
     
-    const toolRegistry = await getToolRegistry();
+    const toolRegistry = await getToolRegistry(tenantId);
     
     for (const [category, categoryTools] of Object.entries(toolRegistry)) {
       for (const [toolName, toolConfig] of Object.entries(categoryTools)) {
@@ -112,7 +137,7 @@ export class ToolsRouteHandler extends BaseRouteHandler {
       }
     }
     
-    const mcpProxies = await getMcpServerProxies();
+    const mcpProxies = await getMcpServerProxies(tenantId);
     for (const [proxyName, proxyConfig] of Object.entries(mcpProxies)) {
       if (proxyConfig.enabled !== true) {
         tools.push({
@@ -134,7 +159,7 @@ export class ToolsRouteHandler extends BaseRouteHandler {
         const proxyManager = new McpServerProxyManager();
         
         // Reload config to get latest headers
-        const freshConfig = await getMcpServerProxies();
+        const freshConfig = await getMcpServerProxies(tenantId);
         const freshProxyConfig = freshConfig[proxyName];
         if (!freshProxyConfig) {
           throw new Error(`MCP server proxy ${proxyName} not found`);
@@ -212,8 +237,8 @@ export class ToolsRouteHandler extends BaseRouteHandler {
     return { data: paginatedTools, total, page, limit, totalPages };
   }
 
-  private async getToolInputSchema(toolId: string): Promise<Record<string, { type: string; description?: string; required?: boolean }>> {
-    const toolRegistry = await getToolRegistry();
+  private async getToolInputSchema(toolId: string, tenantId?: string): Promise<Record<string, { type: string; description?: string; required?: boolean }>> {
+    const toolRegistry = await getToolRegistry(tenantId);
     
     for (const [category, categoryTools] of Object.entries(toolRegistry)) {
       if (categoryTools[toolId]) {
@@ -270,7 +295,7 @@ export class ToolsRouteHandler extends BaseRouteHandler {
     
     // Clear config cache and reload to ensure we have latest headers
     clearConfigCache();
-    const mcpProxies = await getMcpServerProxies();
+    const mcpProxies = await getMcpServerProxies(tenantId);
     for (const [proxyName, proxyConfig] of Object.entries(mcpProxies)) {
       if (proxyConfig.enabled === true) {
         try {
@@ -311,11 +336,11 @@ export class ToolsRouteHandler extends BaseRouteHandler {
     throw new Error(`Tool not found: ${toolId}`);
   }
 
-  private async enableTool(toolId: string): Promise<{ success: boolean; error?: string }> {
+  private async enableTool(toolId: string, tenantId?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const { getMcpServerProxiesFromDb, getToolsProxiesFromDb, saveMcpServerProxiesToDb, saveToolsProxiesToDb } = await import("../../db/services/configService.js");
-      const mcpProxies = await getMcpServerProxiesFromDb();
-      const toolsProxies = await getToolsProxiesFromDb();
+      const mcpProxies = await getMcpServerProxiesFromDb(tenantId);
+      const toolsProxies = await getToolsProxiesFromDb(tenantId);
       
       if (toolId.includes(":")) {
         const [mcpName, toolName] = toolId.split(":", 2);
@@ -332,17 +357,17 @@ export class ToolsRouteHandler extends BaseRouteHandler {
         }
         
         mcpConfig.enabled = true;
-        await saveMcpServerProxiesToDb(mcpProxies);
+        await saveMcpServerProxiesToDb(mcpProxies, tenantId);
       } else {
         if (toolsProxies[toolId]) {
           toolsProxies[toolId].enabled = true;
-          await saveToolsProxiesToDb(toolsProxies);
+          await saveToolsProxiesToDb(toolsProxies, tenantId);
         } else {
           return { success: false, error: `Tool ${toolId} not found` };
         }
       }
       
-      clearConfigCache();
+      clearConfigCache(tenantId);
       return { success: true };
     } catch (error) {
       return {
@@ -352,11 +377,11 @@ export class ToolsRouteHandler extends BaseRouteHandler {
     }
   }
 
-  private async disableTool(toolId: string): Promise<{ success: boolean; error?: string }> {
+  private async disableTool(toolId: string, tenantId?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const { getMcpServerProxiesFromDb, getToolsProxiesFromDb, saveMcpServerProxiesToDb, saveToolsProxiesToDb } = await import("../../db/services/configService.js");
-      const mcpProxies = await getMcpServerProxiesFromDb();
-      const toolsProxies = await getToolsProxiesFromDb();
+      const mcpProxies = await getMcpServerProxiesFromDb(tenantId);
+      const toolsProxies = await getToolsProxiesFromDb(tenantId);
       
       if (toolId.includes(":")) {
         const [mcpName, toolName] = toolId.split(":", 2);
@@ -371,17 +396,17 @@ export class ToolsRouteHandler extends BaseRouteHandler {
         if (!mcpConfig.disabledTools.includes(toolName)) {
           mcpConfig.disabledTools.push(toolName);
         }
-        await saveMcpServerProxiesToDb(mcpProxies);
+        await saveMcpServerProxiesToDb(mcpProxies, tenantId);
       } else {
         if (toolsProxies[toolId]) {
           toolsProxies[toolId].enabled = false;
-          await saveToolsProxiesToDb(toolsProxies);
+          await saveToolsProxiesToDb(toolsProxies, tenantId);
         } else {
           return { success: false, error: `Tool ${toolId} not found` };
         }
       }
       
-      clearConfigCache();
+      clearConfigCache(tenantId);
       return { success: true };
     } catch (error) {
       return {

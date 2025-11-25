@@ -10,6 +10,7 @@
  */
 interface GatewayEvent {
   id: string;
+  tenantId?: string;
   timestamp: string;
   provider: string;
   agentId: string;
@@ -80,7 +81,21 @@ export const logger = {
   logEvent: async (event: Omit<GatewayEvent, "id" | "timestamp">) => {
     try {
       const { saveEvent } = await import("./db/services/eventService.js");
-      await saveEvent(event);
+      let tenantAwareEvent = event;
+
+      if (!tenantAwareEvent.tenantId && event.agentId) {
+        try {
+          const { getAgentFromDb } = await import("./db/services/agentService.js");
+          const agent = await getAgentFromDb(event.agentId);
+          if (agent?.tenantId) {
+            tenantAwareEvent = { ...event, tenantId: agent.tenantId };
+          }
+        } catch (agentLookupError) {
+          logger.warn("[EVENT-LOG] Failed to resolve tenant for agent", agentLookupError);
+        }
+      }
+
+      await saveEvent(tenantAwareEvent);
       console.error(`[EVENT-LOG] Stored event: ${event.toolName} by ${event.agentId} - ${event.decision}`);
       
       // Track telemetry event (non-blocking)

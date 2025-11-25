@@ -3,7 +3,7 @@ import { ResponseHelper } from "../middleware/response.js";
 import { AuthMiddleware } from "../middleware/auth.js";
 
 export abstract class BaseRouteHandler {
-  protected requireAuth(req: IncomingMessage): { userId: number; email: string; role: string } | null {
+  protected requireAuth(req: IncomingMessage): { userId: number; email: string; role: string; tenantId?: string | null } | null {
     return AuthMiddleware.requireAuth(req);
   }
 

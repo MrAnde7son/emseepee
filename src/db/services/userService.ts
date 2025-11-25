@@ -7,6 +7,7 @@ export interface User {
   name: string | null;
   passwordHash: string;
   role: string;
+  tenantId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -16,12 +17,14 @@ export interface CreateUserInput {
   name?: string;
   password: string;
   role?: string;
+  tenantId?: string;
 }
 
 export interface UpdateUserInput {
   name?: string;
   password?: string;
   role?: string;
+  tenantId?: string | null;
 }
 
 /**
@@ -38,13 +41,14 @@ export async function createUser(input: CreateUserInput): Promise<User> {
   const passwordHash = hashPassword(input.password);
   const role = input.role || "user";
   const config = getDatabaseConfig();
+  const tenantId = input.tenantId ?? null;
 
   if (config.type === "postgres") {
-    const result = await executeQuery<{ id: number; email: string; name: string | null; password_hash: string; role: string; created_at: string; updated_at: string }>(
-      `INSERT INTO users (email, name, password_hash, role)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, email, name, password_hash as password_hash, role, created_at, updated_at`,
-      [input.email, input.name || null, passwordHash, role]
+    const result = await executeQuery<{ id: number; email: string; name: string | null; password_hash: string; role: string; tenant_id: string | null; created_at: string; updated_at: string }>(
+      `INSERT INTO users (email, name, password_hash, role, tenant_id)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, email, name, password_hash as password_hash, role, tenant_id, created_at, updated_at`,
+      [input.email, input.name || null, passwordHash, role, tenantId]
     );
     const row = result[0];
     return {
@@ -53,14 +57,15 @@ export async function createUser(input: CreateUserInput): Promise<User> {
       name: row.name,
       passwordHash: row.password_hash,
       role: row.role,
+      tenantId: row.tenant_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
   } else {
     const result = await executeUpdate(
-      `INSERT INTO users (email, name, password_hash, role)
-       VALUES (?, ?, ?, ?)`,
-      [input.email, input.name || null, passwordHash, role]
+      `INSERT INTO users (email, name, password_hash, role, tenant_id)
+       VALUES (?, ?, ?, ?, ?)`,
+      [input.email, input.name || null, passwordHash, role, tenantId]
     );
     
     const user = await getUserByEmail(input.email);
@@ -79,10 +84,10 @@ export async function getUserByEmail(email: string): Promise<User | null> {
   
   let query: string;
   if (config.type === "postgres") {
-    query = `SELECT id, email, name, password_hash as "passwordHash", role, created_at as "createdAt", updated_at as "updatedAt"
+    query = `SELECT id, email, name, password_hash as "passwordHash", role, tenant_id as "tenantId", created_at as "createdAt", updated_at as "updatedAt"
             FROM users WHERE email = $1`;
   } else {
-    query = `SELECT id, email, name, password_hash as passwordHash, role, created_at as createdAt, updated_at as updatedAt
+    query = `SELECT id, email, name, password_hash as passwordHash, role, tenant_id as tenantId, created_at as createdAt, updated_at as updatedAt
             FROM users WHERE email = ?`;
   }
 
@@ -92,6 +97,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
     name: string | null;
     passwordHash: string;
     role: string;
+    tenantId: string | null;
     createdAt: string;
     updatedAt: string;
   }>(query, [email]);
@@ -106,6 +112,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
     name: result.name,
     passwordHash: result.passwordHash,
     role: result.role,
+    tenantId: result.tenantId ?? null,
     createdAt: result.createdAt,
     updatedAt: result.updatedAt,
   };
@@ -119,10 +126,10 @@ export async function getUserById(id: number): Promise<User | null> {
   
   let query: string;
   if (config.type === "postgres") {
-    query = `SELECT id, email, name, password_hash as "passwordHash", role, created_at as "createdAt", updated_at as "updatedAt"
+    query = `SELECT id, email, name, password_hash as "passwordHash", role, tenant_id as "tenantId", created_at as "createdAt", updated_at as "updatedAt"
             FROM users WHERE id = $1`;
   } else {
-    query = `SELECT id, email, name, password_hash as passwordHash, role, created_at as createdAt, updated_at as updatedAt
+    query = `SELECT id, email, name, password_hash as passwordHash, role, tenant_id as tenantId, created_at as createdAt, updated_at as updatedAt
             FROM users WHERE id = ?`;
   }
 
@@ -132,6 +139,7 @@ export async function getUserById(id: number): Promise<User | null> {
     name: string | null;
     passwordHash: string;
     role: string;
+    tenantId: string | null;
     createdAt: string;
     updatedAt: string;
   }>(query, [id]);
@@ -146,6 +154,7 @@ export async function getUserById(id: number): Promise<User | null> {
     name: result.name,
     passwordHash: result.passwordHash,
     role: result.role,
+    tenantId: result.tenantId ?? null,
     createdAt: result.createdAt,
     updatedAt: result.updatedAt,
   };
@@ -190,6 +199,11 @@ export async function updateUser(id: number, input: UpdateUserInput): Promise<Us
   if (input.role !== undefined) {
     updates.push(config.type === "postgres" ? "role = $" : "role = ?");
     params.push(input.role);
+  }
+
+  if (input.tenantId !== undefined) {
+    updates.push(config.type === "postgres" ? "tenant_id = $" : "tenant_id = ?");
+    params.push(input.tenantId);
   }
 
   if (updates.length === 0) {
@@ -246,10 +260,10 @@ export async function listUsers(): Promise<User[]> {
   
   let query: string;
   if (config.type === "postgres") {
-    query = `SELECT id, email, name, password_hash as "passwordHash", role, created_at as "createdAt", updated_at as "updatedAt"
+    query = `SELECT id, email, name, password_hash as "passwordHash", role, tenant_id as "tenantId", created_at as "createdAt", updated_at as "updatedAt"
             FROM users ORDER BY created_at DESC`;
   } else {
-    query = `SELECT id, email, name, password_hash as passwordHash, role, created_at as createdAt, updated_at as updatedAt
+    query = `SELECT id, email, name, password_hash as passwordHash, role, tenant_id as tenantId, created_at as createdAt, updated_at as updatedAt
             FROM users ORDER BY created_at DESC`;
   }
 
@@ -259,6 +273,7 @@ export async function listUsers(): Promise<User[]> {
     name: string | null;
     passwordHash: string;
     role: string;
+    tenantId: string | null;
     createdAt: string;
     updatedAt: string;
   }>(query);
@@ -269,8 +284,8 @@ export async function listUsers(): Promise<User[]> {
     name: row.name,
     passwordHash: row.passwordHash,
     role: row.role,
+    tenantId: row.tenantId ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }));
 }
-

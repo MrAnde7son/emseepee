@@ -29,7 +29,13 @@ export class ProvidersRouteHandler extends BaseRouteHandler {
 
   private async handleGetProviders(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
-      const providers = await this.providerService.getProviders();
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const providers = await this.providerService.getProviders(auth.tenantId || undefined);
       this.sendJSON(res, 200, providers);
     } catch (error) {
       ErrorHandler.handle(error, res, "Get providers error");
@@ -48,7 +54,7 @@ export class ProvidersRouteHandler extends BaseRouteHandler {
       const body = await RequestParser.parseBody(req) as Record<string, unknown> | undefined;
       const config = body || {};
 
-      await this.providerService.installProvider(providerId, config);
+      await this.providerService.installProvider(providerId, config, auth.tenantId || undefined);
       this.sendJSON(res, 200, { success: true });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to install provider";
@@ -73,7 +79,7 @@ export class ProvidersRouteHandler extends BaseRouteHandler {
       const providerId = path.replace("/api/providers/", "").replace("/uninstall", "");
       logger.info(`[API] Uninstall provider request: ${providerId}`);
 
-      await this.providerService.uninstallProvider(providerId);
+      await this.providerService.uninstallProvider(providerId, auth.tenantId || undefined);
       this.sendJSON(res, 200, { success: true });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to uninstall provider";
