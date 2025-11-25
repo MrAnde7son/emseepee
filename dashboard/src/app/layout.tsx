@@ -10,6 +10,7 @@ import { QueryClientProvider } from "@/components/query-client-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Sidebar } from "@/components/sidebar";
 import { TelemetryProvider } from "@/components/telemetry-provider";
+import { AuthGuard } from "@/components/auth-guard";
 
 export const metadata: Metadata = {
   title: "Hakuna",
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         >
           <TelemetryProvider />
           <QueryClientProvider>
+            <AuthGuard>
             <div className="min-h-screen flex">
             {/* Sidebar */}
             <Sidebar />
@@ -41,6 +43,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 <main className="flex-1 p-4 md:p-6 overflow-y-auto">{children}</main>
               </div>
             </div>
+            </AuthGuard>
           </QueryClientProvider>
         </ThemeProvider>
       </body>
