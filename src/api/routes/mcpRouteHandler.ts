@@ -52,7 +52,13 @@ export class McpRouteHandler extends BaseRouteHandler {
 
   private async handleEnableMcpServer(req: IncomingMessage, res: ServerResponse, mcpId: string): Promise<void> {
     try {
-      const result = await this.enableMcpServer(mcpId);
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const result = await this.enableMcpServer(mcpId, auth.tenantId || undefined);
       if (result.success) {
         this.sendJSON(res, 200, { success: true });
       } else {
@@ -65,7 +71,13 @@ export class McpRouteHandler extends BaseRouteHandler {
 
   private async handleDisableMcpServer(req: IncomingMessage, res: ServerResponse, mcpId: string): Promise<void> {
     try {
-      const result = await this.disableMcpServer(mcpId);
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const result = await this.disableMcpServer(mcpId, auth.tenantId || undefined);
       if (result.success) {
         this.sendJSON(res, 200, { success: true });
       } else {
@@ -78,7 +90,13 @@ export class McpRouteHandler extends BaseRouteHandler {
 
   private async handleGetMcpServer(req: IncomingMessage, res: ServerResponse, mcpId: string): Promise<void> {
     try {
-      const mcpDetails = await this.getMcpServerDetails(mcpId);
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const mcpDetails = await this.getMcpServerDetails(mcpId, auth.tenantId || undefined);
       if (mcpDetails) {
         this.sendJSON(res, 200, mcpDetails);
       } else {
@@ -91,6 +109,12 @@ export class McpRouteHandler extends BaseRouteHandler {
 
   private async handleUpdateMcpServer(req: IncomingMessage, res: ServerResponse, mcpId: string): Promise<void> {
     try {
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
       const body = await RequestParser.parseBody(req) as Partial<{
         name: string;
         description?: string;
@@ -109,7 +133,7 @@ export class McpRouteHandler extends BaseRouteHandler {
         };
         disabledTools?: string[];
       }>;
-      const updated = await this.updateMcpServerConfig(mcpId, body);
+      const updated = await this.updateMcpServerConfig(mcpId, body, auth.tenantId || undefined);
       this.sendJSON(res, 200, updated);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update MCP server configuration";
@@ -121,18 +145,18 @@ export class McpRouteHandler extends BaseRouteHandler {
     }
   }
 
-  private async enableMcpServer(mcpId: string): Promise<{ success: boolean; error?: string }> {
+  private async enableMcpServer(mcpId: string, tenantId?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const { getMcpServerProxiesFromDb, saveMcpServerProxiesToDb } = await import("../../db/services/configService.js");
-      const mcpProxies = await getMcpServerProxiesFromDb();
+      const mcpProxies = await getMcpServerProxiesFromDb(tenantId);
       
       if (!mcpProxies[mcpId]) {
         return { success: false, error: `MCP server ${mcpId} not found` };
       }
       
       mcpProxies[mcpId].enabled = true;
-      await saveMcpServerProxiesToDb(mcpProxies);
-      clearConfigCache();
+      await saveMcpServerProxiesToDb(mcpProxies, tenantId);
+      clearConfigCache(tenantId);
       
       return { success: true };
     } catch (error) {
@@ -143,18 +167,18 @@ export class McpRouteHandler extends BaseRouteHandler {
     }
   }
 
-  private async disableMcpServer(mcpId: string): Promise<{ success: boolean; error?: string }> {
+  private async disableMcpServer(mcpId: string, tenantId?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const { getMcpServerProxiesFromDb, saveMcpServerProxiesToDb } = await import("../../db/services/configService.js");
-      const mcpProxies = await getMcpServerProxiesFromDb();
+      const mcpProxies = await getMcpServerProxiesFromDb(tenantId);
       
       if (!mcpProxies[mcpId]) {
         return { success: false, error: `MCP server ${mcpId} not found` };
       }
       
       mcpProxies[mcpId].enabled = false;
-      await saveMcpServerProxiesToDb(mcpProxies);
-      clearConfigCache();
+      await saveMcpServerProxiesToDb(mcpProxies, tenantId);
+      clearConfigCache(tenantId);
       
       return { success: true };
     } catch (error) {
@@ -165,7 +189,7 @@ export class McpRouteHandler extends BaseRouteHandler {
     }
   }
 
-  private async getMcpServerDetails(mcpId: string): Promise<{
+  private async getMcpServerDetails(mcpId: string, tenantId?: string): Promise<{
     id: string;
     name: string;
     description?: string;
@@ -193,7 +217,7 @@ export class McpRouteHandler extends BaseRouteHandler {
     };
     disabledTools?: string[];
   } | null> {
-    const mcpProxies = await getMcpServerProxies();
+    const mcpProxies = await getMcpServerProxies(tenantId);
     const proxyConfig = mcpProxies[mcpId];
     
     if (!proxyConfig) {
@@ -258,7 +282,8 @@ export class McpRouteHandler extends BaseRouteHandler {
         sensitivity: Sensitivity;
       };
       disabledTools?: string[];
-    }>
+    }>,
+    tenantId?: string
   ): Promise<{
     id: string;
     name: string;
@@ -279,7 +304,7 @@ export class McpRouteHandler extends BaseRouteHandler {
     disabledTools?: string[];
   }> {
     const { getMcpServerProxiesFromDb, saveMcpServerProxiesToDb } = await import("../../db/services/configService.js");
-    const mcpProxies = await getMcpServerProxiesFromDb();
+    const mcpProxies = await getMcpServerProxiesFromDb(tenantId);
     
     if (!mcpProxies[mcpId]) {
       throw new Error(`MCP server ${mcpId} not found`);
@@ -303,8 +328,8 @@ export class McpRouteHandler extends BaseRouteHandler {
     if (updates.defaultPolicy !== undefined) existingConfig.defaultPolicy = updates.defaultPolicy;
     if (updates.disabledTools !== undefined) existingConfig.disabledTools = updates.disabledTools;
     
-    await saveMcpServerProxiesToDb(mcpProxies);
-    clearConfigCache();
+    await saveMcpServerProxiesToDb(mcpProxies, tenantId);
+    clearConfigCache(tenantId);
     
     return {
       id: mcpId,
@@ -327,4 +352,3 @@ export class McpRouteHandler extends BaseRouteHandler {
     };
   }
 }
-

@@ -186,24 +186,34 @@ export interface McpServerProxyRegistry {
  * Loaded dynamically from config.json file
  * Use loadConfig() to get the actual configuration
  */
-let _mcpServerProxies: McpServerProxyRegistry | null = null;
-let _toolsProxies: Record<string, ToolPolicyConfig | ThirdPartyToolConfig> | null = null;
-let _policyRules: PolicyRule[] | null = null;
+type CachedConfig = {
+  mcpServerProxies: McpServerProxyRegistry;
+  toolsProxies: Record<string, ToolPolicyConfig | ThirdPartyToolConfig>;
+  policyRules: PolicyRule[];
+};
+
+const CONFIG_CACHE = new Map<string, CachedConfig>();
+const GLOBAL_CACHE_KEY = "__global__";
+
+function getCacheKey(tenantId?: string): string {
+  return tenantId ?? GLOBAL_CACHE_KEY;
+}
 
 /**
  * Load configuration from database (lazy loading, async)
  * Falls back to file if database is not available
  */
-export async function loadConfig(): Promise<{
+export async function loadConfig(tenantId?: string): Promise<{
   mcpServerProxies: McpServerProxyRegistry;
   toolsProxies: Record<string, ToolPolicyConfig | ThirdPartyToolConfig>;
   policyRules: PolicyRule[];
 }> {
-  if (_mcpServerProxies === null || _toolsProxies === null || _policyRules === null) {
+  const cacheKey = getCacheKey(tenantId);
+  if (!CONFIG_CACHE.has(cacheKey)) {
     try {
       // Try to load from database first
       const { getAllConfigFromDb } = await import("./db/services/configService.js");
-      const config = await getAllConfigFromDb();
+      const config = await getAllConfigFromDb(tenantId);
       
       // If database is empty, try to load from file and migrate
       if (Object.keys(config.mcpServerProxies).length === 0 && 
@@ -212,46 +222,57 @@ export async function loadConfig(): Promise<{
         // Fallback to file
         const { loadConfigFromFile } = await import("./configLoader.js");
         const fileConfig = loadConfigFromFile();
-        _mcpServerProxies = fileConfig.mcpServerProxies;
-        _toolsProxies = fileConfig.toolsProxies;
-        _policyRules = fileConfig.policyRules;
+        const cached = {
+          mcpServerProxies: fileConfig.mcpServerProxies,
+          toolsProxies: fileConfig.toolsProxies,
+          policyRules: fileConfig.policyRules,
+        };
+        CONFIG_CACHE.set(cacheKey, cached);
         
-        // Migrate to database
-        const { saveMcpServerProxiesToDb, saveToolsProxiesToDb, savePolicyRulesToDb } = await import("./db/services/configService.js");
-        await saveMcpServerProxiesToDb(_mcpServerProxies);
-        await saveToolsProxiesToDb(_toolsProxies);
-        await savePolicyRulesToDb(_policyRules);
-        logger.info("[CONFIG] Migrated configuration from file to database");
+        // Migrate to database only for global tenant to avoid overwriting tenant-specific data
+        if (!tenantId) {
+          const { saveMcpServerProxiesToDb, saveToolsProxiesToDb, savePolicyRulesToDb } = await import("./db/services/configService.js");
+          await saveMcpServerProxiesToDb(fileConfig.mcpServerProxies);
+          await saveToolsProxiesToDb(fileConfig.toolsProxies);
+          await savePolicyRulesToDb(fileConfig.policyRules);
+          logger.info("[CONFIG] Migrated configuration from file to database");
+        }
       } else {
-        _mcpServerProxies = config.mcpServerProxies;
-        _toolsProxies = config.toolsProxies;
-        _policyRules = config.policyRules;
+        CONFIG_CACHE.set(cacheKey, {
+          mcpServerProxies: config.mcpServerProxies,
+          toolsProxies: config.toolsProxies,
+          policyRules: config.policyRules,
+        });
       }
     } catch (error) {
       // If database fails, fallback to file
       logger.warn("[CONFIG] Database not available, falling back to file:", error);
       const { loadConfigFromFile } = await import("./configLoader.js");
       const config = loadConfigFromFile();
-      _mcpServerProxies = config.mcpServerProxies;
-      _toolsProxies = config.toolsProxies;
-      _policyRules = config.policyRules;
+      CONFIG_CACHE.set(cacheKey, {
+        mcpServerProxies: config.mcpServerProxies,
+        toolsProxies: config.toolsProxies,
+        policyRules: config.policyRules,
+      });
     }
   }
   // At this point, we know they're not null due to the check above
   return {
-    mcpServerProxies: _mcpServerProxies!,
-    toolsProxies: _toolsProxies!,
-    policyRules: _policyRules!,
+    ...CONFIG_CACHE.get(cacheKey)!,
   };
 }
 
 /**
  * Clear the config cache (useful after modifying config.json)
  */
-export function clearConfigCache(): void {
-  _mcpServerProxies = null;
-  _toolsProxies = null;
-  _policyRules = null;
+export function clearConfigCache(tenantId?: string): void {
+  if (tenantId === undefined) {
+    CONFIG_CACHE.clear();
+    TOOL_REGISTRY_SYNC_CACHE.clear();
+  } else {
+    CONFIG_CACHE.delete(getCacheKey(tenantId));
+    TOOL_REGISTRY_SYNC_CACHE.delete(getCacheKey(tenantId));
+  }
   logger.info("[CONFIG] Configuration cache cleared - config will be reloaded on next access");
 }
 
@@ -269,16 +290,16 @@ export function startConfigWatcher(): void {
 /**
  * Get policy rules (loaded from config.json)
  */
-export async function getPolicyRules(): Promise<PolicyRule[]> {
-  const config = await loadConfig();
+export async function getPolicyRules(tenantId?: string): Promise<PolicyRule[]> {
+  const config = await loadConfig(tenantId);
   return config.policyRules;
 }
 
 /**
  * Get MCP server proxies (loaded from config.json)
  */
-export async function getMcpServerProxies(): Promise<McpServerProxyRegistry> {
-  const config = await loadConfig();
+export async function getMcpServerProxies(tenantId?: string): Promise<McpServerProxyRegistry> {
+  const config = await loadConfig(tenantId);
   return config.mcpServerProxies;
 }
 
@@ -335,8 +356,8 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
  * Get the complete tool registry (built-in + dynamically loaded)
  * Built-in tools can be customized via config.json, but defaults are always available
  */
-export async function getToolRegistry(): Promise<ToolCategoryRegistry> {
-  const config = await loadConfig();
+export async function getToolRegistry(tenantId?: string): Promise<ToolCategoryRegistry> {
+  const config = await loadConfig(tenantId);
   const { toolsProxies } = config;
   
   // Separate tools by category
@@ -389,12 +410,13 @@ export async function getToolRegistry(): Promise<ToolCategoryRegistry> {
  * @deprecated Use getToolRegistry() instead
  * Note: This will be initialized asynchronously, use getToolRegistry() for proper async handling
  */
-let _toolRegistry: ToolCategoryRegistry | null = null;
-export async function getToolRegistrySync(): Promise<ToolCategoryRegistry> {
-  if (_toolRegistry === null) {
-    _toolRegistry = await getToolRegistry();
+const TOOL_REGISTRY_SYNC_CACHE = new Map<string, ToolCategoryRegistry>();
+export async function getToolRegistrySync(tenantId?: string): Promise<ToolCategoryRegistry> {
+  const cacheKey = getCacheKey(tenantId);
+  if (!TOOL_REGISTRY_SYNC_CACHE.has(cacheKey)) {
+    TOOL_REGISTRY_SYNC_CACHE.set(cacheKey, await getToolRegistry(tenantId));
   }
-  return _toolRegistry;
+  return TOOL_REGISTRY_SYNC_CACHE.get(cacheKey)!;
 }
 
 /**

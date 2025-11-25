@@ -13,10 +13,17 @@ const CONFIG_KEYS = {
   POLICY_RULES: "policyRules",
 } as const;
 
+function normalizeTenantId(tenantId?: string): string | null {
+  if (tenantId === undefined || tenantId === null || tenantId === "") {
+    return null;
+  }
+  return tenantId;
+}
+
 /**
  * Get config value from database
  */
-export async function getConfigValue<T>(key: string): Promise<T | null> {
+export async function getConfigValue<T>(key: string, tenantId?: string): Promise<T | null> {
   // Check if database is initialized before trying to use it
   if (!isDatabaseInitialized()) {
     return null;
@@ -24,14 +31,18 @@ export async function getConfigValue<T>(key: string): Promise<T | null> {
 
   try {
     const config = getDatabaseConfig();
+    const tenantParam = normalizeTenantId(tenantId);
     const result = await executeQueryOne<{ value: string | unknown }>(
       config.type === "postgres"
-        ? `SELECT value FROM config WHERE key = $1`
-        : `SELECT value FROM config WHERE key = ?`,
-      [key]
+        ? `SELECT value FROM config WHERE key = $1 AND tenant_id IS NOT DISTINCT FROM $2`
+        : `SELECT value FROM config WHERE key = ? AND ((tenant_id IS NULL AND ? IS NULL) OR tenant_id = ?)`,
+      config.type === "postgres" ? [key, tenantParam] : [key, tenantParam, tenantParam]
     );
 
     if (!result) {
+      if (tenantParam) {
+        return getConfigValue<T>(key, undefined);
+      }
       return null;
     }
 
@@ -53,7 +64,7 @@ export async function getConfigValue<T>(key: string): Promise<T | null> {
 /**
  * Set config value in database
  */
-export async function setConfigValue<T>(key: string, value: T): Promise<void> {
+export async function setConfigValue<T>(key: string, value: T, tenantId?: string): Promise<void> {
   // Check if database is initialized before trying to use it
   if (!isDatabaseInitialized()) {
     // Silently fail if database is not available - fall back to file storage
@@ -63,6 +74,7 @@ export async function setConfigValue<T>(key: string, value: T): Promise<void> {
 
   try {
     const config = getDatabaseConfig();
+    const tenantParam = normalizeTenantId(tenantId);
     
     // Serialize value to JSON string
     const serialized = JSON.stringify(value);
@@ -70,35 +82,35 @@ export async function setConfigValue<T>(key: string, value: T): Promise<void> {
     // Check if exists
     const existing = await executeQueryOne<{ id: number }>(
       config.type === "postgres" 
-        ? `SELECT id FROM config WHERE key = $1`
-        : `SELECT id FROM config WHERE key = ?`,
-      [key]
+        ? `SELECT id FROM config WHERE key = $1 AND tenant_id IS NOT DISTINCT FROM $2`
+        : `SELECT id FROM config WHERE key = ? AND ((tenant_id IS NULL AND ? IS NULL) OR tenant_id = ?)`,
+      config.type === "postgres" ? [key, tenantParam] : [key, tenantParam, tenantParam]
     );
 
     if (existing) {
       // Update
       if (config.type === "postgres") {
         await executeUpdate(
-          `UPDATE config SET value = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE key = $2`,
-          [serialized, key]
+          `UPDATE config SET value = $1::jsonb, updated_at = CURRENT_TIMESTAMP WHERE key = $2 AND tenant_id IS NOT DISTINCT FROM $3`,
+          [serialized, key, tenantParam]
         );
       } else {
         await executeUpdate(
-          `UPDATE config SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?`,
-          [serialized, key]
+          `UPDATE config SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ? AND ((tenant_id IS NULL AND ? IS NULL) OR tenant_id = ?)`,
+          [serialized, key, tenantParam, tenantParam]
         );
       }
     } else {
       // Insert
       if (config.type === "postgres") {
         await executeUpdate(
-          `INSERT INTO config (key, value) VALUES ($1, $2::jsonb)`,
-          [key, serialized]
+          `INSERT INTO config (key, tenant_id, value) VALUES ($1, $2, $3::jsonb)`,
+          [key, tenantParam, serialized]
         );
       } else {
         await executeUpdate(
-          `INSERT INTO config (key, value) VALUES (?, ?)`,
-          [key, serialized]
+          `INSERT INTO config (key, tenant_id, value) VALUES (?, ?, ?)`,
+          [key, tenantParam, serialized]
         );
       }
     }
@@ -111,16 +123,16 @@ export async function setConfigValue<T>(key: string, value: T): Promise<void> {
 /**
  * Get MCP server proxies from database
  */
-export async function getMcpServerProxiesFromDb(): Promise<McpServerProxyRegistry> {
-  const result = await getConfigValue<McpServerProxyRegistry>(CONFIG_KEYS.MCP_SERVER_PROXIES);
+export async function getMcpServerProxiesFromDb(tenantId?: string): Promise<McpServerProxyRegistry> {
+  const result = await getConfigValue<McpServerProxyRegistry>(CONFIG_KEYS.MCP_SERVER_PROXIES, tenantId);
   return result || {};
 }
 
 /**
  * Save MCP server proxies to database
  */
-export async function saveMcpServerProxiesToDb(proxies: McpServerProxyRegistry): Promise<void> {
-  await setConfigValue(CONFIG_KEYS.MCP_SERVER_PROXIES, proxies);
+export async function saveMcpServerProxiesToDb(proxies: McpServerProxyRegistry, tenantId?: string): Promise<void> {
+  await setConfigValue(CONFIG_KEYS.MCP_SERVER_PROXIES, proxies, tenantId);
   if (isDatabaseInitialized()) {
     logger.info("[CONFIG] MCP server proxies saved to database");
   }
@@ -129,9 +141,10 @@ export async function saveMcpServerProxiesToDb(proxies: McpServerProxyRegistry):
 /**
  * Get tools proxies from database
  */
-export async function getToolsProxiesFromDb(): Promise<Record<string, ToolPolicyConfig | ThirdPartyToolConfig>> {
+export async function getToolsProxiesFromDb(tenantId?: string): Promise<Record<string, ToolPolicyConfig | ThirdPartyToolConfig>> {
   const result = await getConfigValue<Record<string, ToolPolicyConfig | ThirdPartyToolConfig>>(
-    CONFIG_KEYS.TOOLS_PROXIES
+    CONFIG_KEYS.TOOLS_PROXIES,
+    tenantId
   );
   return result || {};
 }
@@ -140,9 +153,10 @@ export async function getToolsProxiesFromDb(): Promise<Record<string, ToolPolicy
  * Save tools proxies to database
  */
 export async function saveToolsProxiesToDb(
-  tools: Record<string, ToolPolicyConfig | ThirdPartyToolConfig>
+  tools: Record<string, ToolPolicyConfig | ThirdPartyToolConfig>,
+  tenantId?: string
 ): Promise<void> {
-  await setConfigValue(CONFIG_KEYS.TOOLS_PROXIES, tools);
+  await setConfigValue(CONFIG_KEYS.TOOLS_PROXIES, tools, tenantId);
   if (isDatabaseInitialized()) {
     logger.info("[CONFIG] Tools proxies saved to database");
   }
@@ -151,16 +165,16 @@ export async function saveToolsProxiesToDb(
 /**
  * Get policy rules from database
  */
-export async function getPolicyRulesFromDb(): Promise<PolicyRule[]> {
-  const result = await getConfigValue<PolicyRule[]>(CONFIG_KEYS.POLICY_RULES);
+export async function getPolicyRulesFromDb(tenantId?: string): Promise<PolicyRule[]> {
+  const result = await getConfigValue<PolicyRule[]>(CONFIG_KEYS.POLICY_RULES, tenantId);
   return result || [];
 }
 
 /**
  * Save policy rules to database
  */
-export async function savePolicyRulesToDb(rules: PolicyRule[]): Promise<void> {
-  await setConfigValue(CONFIG_KEYS.POLICY_RULES, rules);
+export async function savePolicyRulesToDb(rules: PolicyRule[], tenantId?: string): Promise<void> {
+  await setConfigValue(CONFIG_KEYS.POLICY_RULES, rules, tenantId);
   if (isDatabaseInitialized()) {
     logger.info("[CONFIG] Policy rules saved to database");
   }
@@ -169,15 +183,15 @@ export async function savePolicyRulesToDb(rules: PolicyRule[]): Promise<void> {
 /**
  * Get all config from database
  */
-export async function getAllConfigFromDb(): Promise<{
+export async function getAllConfigFromDb(tenantId?: string): Promise<{
   mcpServerProxies: McpServerProxyRegistry;
   toolsProxies: Record<string, ToolPolicyConfig | ThirdPartyToolConfig>;
   policyRules: PolicyRule[];
 }> {
   const [mcpServerProxies, toolsProxies, policyRules] = await Promise.all([
-    getMcpServerProxiesFromDb(),
-    getToolsProxiesFromDb(),
-    getPolicyRulesFromDb(),
+    getMcpServerProxiesFromDb(tenantId),
+    getToolsProxiesFromDb(tenantId),
+    getPolicyRulesFromDb(tenantId),
   ]);
 
   return {

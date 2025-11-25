@@ -30,6 +30,7 @@ export interface JWTPayload {
   userId: number;
   email: string;
   role: string;
+  tenantId?: string | null;
   iat: number;
   exp: number;
 }
@@ -37,12 +38,13 @@ export interface JWTPayload {
 /**
  * Generate a JWT token
  */
-export function generateToken(userId: number, email: string, role: string): string {
+export function generateToken(userId: number, email: string, role: string, tenantId?: string | null): string {
   const now = Date.now();
   const payload: JWTPayload = {
     userId,
     email,
     role,
+    tenantId,
     iat: Math.floor(now / 1000),
     exp: Math.floor((now + JWT_EXPIRY) / 1000),
   };

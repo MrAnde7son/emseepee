@@ -24,13 +24,13 @@ export class ProviderService {
     }
   }
 
-  async getProviders(): Promise<Provider[]> {
+  async getProviders(tenantId?: string): Promise<Provider[]> {
     const { AdapterFactory } = await import("../../agents/factory.js");
     
     let installedProviders: Set<string> = new Set();
     try {
       const { getAllProviderConfigs } = await import("../../db/services/providerService.js");
-      const configs = await getAllProviderConfigs();
+      const configs = await getAllProviderConfigs(tenantId);
       configs.forEach((cfg) => {
         installedProviders.add(cfg.providerId);
       });
@@ -156,14 +156,14 @@ export class ProviderService {
     }
   }
 
-  async installProvider(providerId: string, config: Record<string, unknown>): Promise<void> {
+  async installProvider(providerId: string, config: Record<string, unknown>, tenantId?: string): Promise<void> {
     if (providerId === "cursor") {
       const result = await this.installCursorProvider();
       if (!result.success) {
         throw new Error(result.error);
       }
       const { saveProviderConfig } = await import("../../db/services/providerService.js");
-      await saveProviderConfig(providerId, {});
+      await saveProviderConfig(providerId, {}, tenantId);
     } else if (providerId === "openai") {
       if (!config || !config.apiKey || typeof config.apiKey !== "string") {
         throw new Error("OpenAI provider requires 'apiKey' in configuration");
@@ -174,7 +174,7 @@ export class ProviderService {
       }
 
       const { saveProviderConfig } = await import("../../db/services/providerService.js");
-      await saveProviderConfig(providerId, config);
+      await saveProviderConfig(providerId, config, tenantId);
 
       try {
         const { AdapterFactory } = await import("../../agents/factory.js");
@@ -198,7 +198,7 @@ export class ProviderService {
       }
 
       const { saveProviderConfig } = await import("../../db/services/providerService.js");
-      await saveProviderConfig(providerId, config);
+      await saveProviderConfig(providerId, config, tenantId);
     }
 
     try {
@@ -260,7 +260,7 @@ export class ProviderService {
     }
   }
 
-  async uninstallProvider(providerId: string): Promise<void> {
+  async uninstallProvider(providerId: string, tenantId?: string): Promise<void> {
     // Handle Cursor provider specially since it uses file-based installation
     if (providerId === "cursor") {
       const result = await this.uninstallCursorProvider();
@@ -271,9 +271,9 @@ export class ProviderService {
       // Try to delete DB config if it exists (optional cleanup)
       try {
         const { getProviderConfig, deleteProviderConfig } = await import("../../db/services/providerService.js");
-        const providerConfig = await getProviderConfig(providerId);
+        const providerConfig = await getProviderConfig(providerId, tenantId);
         if (providerConfig) {
-          await deleteProviderConfig(providerId);
+          await deleteProviderConfig(providerId, tenantId);
           logger.info(`[ProviderService] Deleted provider configuration for: ${providerId}`);
         }
       } catch (error) {
@@ -293,13 +293,13 @@ export class ProviderService {
 
     // For other providers, check database config
     const { getProviderConfig, deleteProviderConfig } = await import("../../db/services/providerService.js");
-    const providerConfig = await getProviderConfig(providerId);
+    const providerConfig = await getProviderConfig(providerId, tenantId);
     
     if (!providerConfig) {
       throw new Error(`Provider ${providerId} is not installed`);
     }
 
-    await deleteProviderConfig(providerId);
+    await deleteProviderConfig(providerId, tenantId);
     logger.info(`[ProviderService] Deleted provider configuration for: ${providerId}`);
 
     try {

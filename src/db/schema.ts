@@ -13,10 +13,12 @@ export async function createSchema(): Promise<void> {
     await executeUpdate(`
       CREATE TABLE IF NOT EXISTS config (
         id SERIAL PRIMARY KEY,
-        key VARCHAR(255) UNIQUE NOT NULL,
+        key VARCHAR(255) NOT NULL,
+        tenant_id VARCHAR(255),
         value JSONB NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (key, tenant_id)
       )
     `);
 
@@ -24,6 +26,7 @@ export async function createSchema(): Promise<void> {
       CREATE TABLE IF NOT EXISTS events (
         id SERIAL PRIMARY KEY,
         event_id VARCHAR(255) UNIQUE NOT NULL,
+        tenant_id VARCHAR(255),
         timestamp TIMESTAMP NOT NULL,
         provider VARCHAR(255) NOT NULL,
         agent_id VARCHAR(255) NOT NULL,
@@ -42,6 +45,7 @@ export async function createSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_events_agent_id ON events(agent_id);
       CREATE INDEX IF NOT EXISTS idx_events_tool_name ON events(tool_name);
       CREATE INDEX IF NOT EXISTS idx_events_provider ON events(provider);
+      CREATE INDEX IF NOT EXISTS idx_events_tenant_id ON events(tenant_id);
     `);
 
     await executeUpdate(`
@@ -51,6 +55,7 @@ export async function createSchema(): Promise<void> {
         name VARCHAR(255),
         password_hash VARCHAR(255) NOT NULL,
         role VARCHAR(50) DEFAULT 'user',
+        tenant_id VARCHAR(255),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -90,16 +95,19 @@ export async function createSchema(): Promise<void> {
     await executeUpdate(`
       CREATE TABLE IF NOT EXISTS provider_configs (
         id SERIAL PRIMARY KEY,
-        provider_id VARCHAR(255) UNIQUE NOT NULL,
+        provider_id VARCHAR(255) NOT NULL,
+        tenant_id VARCHAR(255),
         config JSONB NOT NULL,
         enabled BOOLEAN DEFAULT true,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (provider_id, tenant_id)
       )
     `);
 
     await executeUpdate(`
       CREATE INDEX IF NOT EXISTS idx_provider_configs_provider_id ON provider_configs(provider_id);
+      CREATE INDEX IF NOT EXISTS idx_provider_configs_tenant_id ON provider_configs(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_provider_configs_enabled ON provider_configs(enabled);
     `);
   } else {
@@ -107,10 +115,12 @@ export async function createSchema(): Promise<void> {
     await executeUpdate(`
       CREATE TABLE IF NOT EXISTS config (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        key TEXT UNIQUE NOT NULL,
+        key TEXT NOT NULL,
+        tenant_id TEXT,
         value TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (key, tenant_id)
       )
     `);
 
@@ -118,6 +128,7 @@ export async function createSchema(): Promise<void> {
       CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         event_id TEXT UNIQUE NOT NULL,
+        tenant_id TEXT,
         timestamp DATETIME NOT NULL,
         provider TEXT NOT NULL,
         agent_id TEXT NOT NULL,
@@ -136,6 +147,7 @@ export async function createSchema(): Promise<void> {
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_events_agent_id ON events(agent_id)`);
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_events_tool_name ON events(tool_name)`);
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_events_provider ON events(provider)`);
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_events_tenant_id ON events(tenant_id)`);
 
     await executeUpdate(`
       CREATE TABLE IF NOT EXISTS users (
@@ -144,6 +156,7 @@ export async function createSchema(): Promise<void> {
         name TEXT,
         password_hash TEXT NOT NULL,
         role TEXT DEFAULT 'user',
+        tenant_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -181,15 +194,18 @@ export async function createSchema(): Promise<void> {
     await executeUpdate(`
       CREATE TABLE IF NOT EXISTS provider_configs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        provider_id TEXT UNIQUE NOT NULL,
+        provider_id TEXT NOT NULL,
+        tenant_id TEXT,
         config TEXT NOT NULL,
         enabled INTEGER DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (provider_id, tenant_id)
       )
     `);
 
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_provider_configs_provider_id ON provider_configs(provider_id)`);
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_provider_configs_tenant_id ON provider_configs(tenant_id)`);
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_provider_configs_enabled ON provider_configs(enabled)`);
   }
 

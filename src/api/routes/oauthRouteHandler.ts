@@ -10,7 +10,7 @@ import { randomBytes } from "crypto";
  * OAuth state storage (in-memory, should be moved to database/redis in production)
  * Maps state token to { mcpId, expiresAt }
  */
-const oauthStates = new Map<string, { mcpId: string; expiresAt: number }>();
+const oauthStates = new Map<string, { mcpId: string; tenantId?: string; expiresAt: number }>();
 
 /**
  * OAuth tokens storage (in-memory, should be moved to database in production)
@@ -22,6 +22,10 @@ const oauthTokens = new Map<string, {
   expiresAt?: number;
   tokenType?: string;
 }>();
+
+function getTenantScopedKey(tenantId: string | undefined, resourceId: string): string {
+  return `${tenantId ?? "global"}:${resourceId}`;
+}
 
 export class OAuthRouteHandler extends BaseRouteHandler {
   async handle(req: IncomingMessage, res: ServerResponse, path: string, method: string): Promise<boolean> {
@@ -70,8 +74,14 @@ export class OAuthRouteHandler extends BaseRouteHandler {
    */
   private async handleAuthorize(req: IncomingMessage, res: ServerResponse, mcpId: string): Promise<void> {
     try {
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
       const { getMcpServerProxies } = await import("../../config.js");
-      const mcpProxies = await getMcpServerProxies();
+      const mcpProxies = await getMcpServerProxies(auth.tenantId || undefined);
       const mcpConfig = mcpProxies[mcpId];
       
       if (!mcpConfig) {
@@ -89,7 +99,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       // Generate state token for CSRF protection
       const state = randomBytes(32).toString("hex");
       const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
-      oauthStates.set(state, { mcpId, expiresAt });
+      oauthStates.set(state, { mcpId, tenantId: auth.tenantId || undefined, expiresAt });
       
       // Build authorization URL
       const redirectUri = oauthConfig.redirectUri || 
@@ -166,12 +176,12 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         return;
       }
       
-      const { mcpId } = stateData;
+      const { mcpId, tenantId } = stateData;
       oauthStates.delete(state); // Clean up used state
       
       // Get MCP config
       const { getMcpServerProxies } = await import("../../config.js");
-      const mcpProxies = await getMcpServerProxies();
+      const mcpProxies = await getMcpServerProxies(tenantId);
       const mcpConfig = mcpProxies[mcpId];
       
       if (!mcpConfig || !mcpConfig.oauth) {
@@ -259,7 +269,8 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         ? Date.now() + tokenData.expires_in * 1000 
         : undefined;
       
-      oauthTokens.set(mcpId, {
+      const tokenKey = getTenantScopedKey(tenantId, mcpId);
+      oauthTokens.set(tokenKey, {
         accessToken: tokenData.access_token,
         refreshToken: tokenData.refresh_token,
         expiresAt,
@@ -268,7 +279,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       
       // Update MCP config headers with the token
       const { getMcpServerProxiesFromDb, saveMcpServerProxiesToDb } = await import("../../db/services/configService.js");
-      const mcpProxiesDb = await getMcpServerProxiesFromDb();
+      const mcpProxiesDb = await getMcpServerProxiesFromDb(tenantId);
       if (mcpProxiesDb[mcpId]) {
         // Normalize token_type to "Bearer" (capitalized) per OAuth 2.0 spec
         // Some providers return lowercase "bearer", but the spec requires "Bearer"
@@ -289,12 +300,12 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         };
         
         // Save to database and wait for it to complete
-        await saveMcpServerProxiesToDb(mcpProxiesDb);
+        await saveMcpServerProxiesToDb(mcpProxiesDb, tenantId);
         logger.info(`[OAUTH] Headers saved to database for ${mcpId}`);
         
         // Verify the save by reading back
         const { getMcpServerProxiesFromDb } = await import("../../db/services/configService.js");
-        const verifyConfig = await getMcpServerProxiesFromDb();
+        const verifyConfig = await getMcpServerProxiesFromDb(tenantId);
         if (verifyConfig[mcpId]?.headers?.Authorization) {
           logger.info(`[OAUTH] Verified Authorization header saved: "${verifyConfig[mcpId].headers.Authorization.substring(0, 20)}..."`);
         } else {
@@ -303,7 +314,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         
         // Clear config cache to ensure new headers are loaded
         const { clearConfigCache } = await import("../../config.js");
-        clearConfigCache();
+        clearConfigCache(tenantId);
         logger.info(`[OAUTH] Configuration cache cleared for ${mcpId}`);
         
         // Disconnect existing MCP client to force reconnection with new token
@@ -338,9 +349,16 @@ export class OAuthRouteHandler extends BaseRouteHandler {
    */
   private async handleStatus(req: IncomingMessage, res: ServerResponse, mcpId: string): Promise<void> {
     try {
-      const tokens = oauthTokens.get(mcpId);
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const tenantId = auth.tenantId || undefined;
+      const tokens = oauthTokens.get(getTenantScopedKey(tenantId, mcpId));
       const { getMcpServerProxies } = await import("../../config.js");
-      const mcpProxies = await getMcpServerProxies();
+      const mcpProxies = await getMcpServerProxies(tenantId);
       const mcpConfig = mcpProxies[mcpId];
       
       const isConfigured = !!(mcpConfig?.oauth);
@@ -362,14 +380,21 @@ export class OAuthRouteHandler extends BaseRouteHandler {
    */
   private async handleRevoke(req: IncomingMessage, res: ServerResponse, mcpId: string): Promise<void> {
     try {
-      oauthTokens.delete(mcpId);
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const tenantId = auth.tenantId || undefined;
+      oauthTokens.delete(getTenantScopedKey(tenantId, mcpId));
       
       // Remove Authorization header from MCP config
       const { getMcpServerProxiesFromDb, saveMcpServerProxiesToDb } = await import("../../db/services/configService.js");
-      const mcpProxiesDb = await getMcpServerProxiesFromDb();
+      const mcpProxiesDb = await getMcpServerProxiesFromDb(tenantId);
       if (mcpProxiesDb[mcpId] && mcpProxiesDb[mcpId].headers) {
         delete mcpProxiesDb[mcpId].headers?.Authorization;
-        await saveMcpServerProxiesToDb(mcpProxiesDb);
+        await saveMcpServerProxiesToDb(mcpProxiesDb, tenantId);
       }
       
       logger.info(`[OAUTH] OAuth tokens revoked for ${mcpId}`);

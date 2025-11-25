@@ -7,6 +7,7 @@ export interface AgentContext {
   agentId: string;
   agentRole: string;
   env: string;
+  tenantId?: string;
 }
 
 export interface ToolExecutionResult {
@@ -63,6 +64,7 @@ export abstract class BaseGatewayHandler {
       args,
       intent, // Pass intent to policy engine
       providerId: provider, // Pass provider ID for provider-scoped policies
+      tenantId: agentContext.tenantId,
     });
 
     if (decision.decision === "deny") {
@@ -137,6 +139,7 @@ export abstract class BaseGatewayHandler {
       decision: eventDecision,
       riskLevel: intent?.inferredIntent.riskLevel,
       latencyMs,
+      tenantId: agentContext.tenantId,
     });
   }
 

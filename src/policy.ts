@@ -35,6 +35,7 @@ export interface PolicyInput {
   intent?: AgentIntent;
   // Optional: provider ID for provider-scoped policies
   providerId?: string;
+  tenantId?: string;
 }
 
 /**
@@ -314,7 +315,7 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
       resources: intent.inferredIntent.resources,
     });
   }
-  const policyRules = await getPolicyRules();
+  const policyRules = await getPolicyRules(input.tenantId);
 
   // Filter out archived policies
   const activeRules = policyRules.filter((rule) => !rule.archived);

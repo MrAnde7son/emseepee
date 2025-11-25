@@ -65,6 +65,12 @@ export class PoliciesRouteHandler extends BaseRouteHandler {
 
   private async handleGetPolicies(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
       const url = new URL(req.url || "/", `http://${req.headers.host}`);
       const includeArchived = url.searchParams.get("includeArchived") === "true";
       const page = parseInt(url.searchParams.get("page") || "1", 10);
@@ -76,7 +82,7 @@ export class PoliciesRouteHandler extends BaseRouteHandler {
         enabled: url.searchParams.get("status") || undefined,
         priority: url.searchParams.get("priority") || undefined,
       };
-      const policies = await getPolicies(includeArchived, page, limit, filters);
+      const policies = await getPolicies(includeArchived, page, limit, filters, auth.tenantId || undefined);
       this.sendJSON(res, 200, policies);
     } catch (error) {
       this.sendError(res, 500, error instanceof Error ? error.message : "Failed to get policies");
@@ -85,7 +91,13 @@ export class PoliciesRouteHandler extends BaseRouteHandler {
 
   private async handleGetPolicy(req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
     try {
-      const rules = await getPolicyRules();
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const rules = await getPolicyRules(auth.tenantId || undefined);
       const index = parseInt(id.replace("policy-", ""), 10);
       if (isNaN(index) || index < 0 || index >= rules.length) {
         this.sendError(res, 404, "Policy not found");
@@ -118,6 +130,12 @@ export class PoliciesRouteHandler extends BaseRouteHandler {
 
   private async handleCreatePolicy(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
       const body = await RequestParser.parseBody(req) as Partial<PolicyRule> | Partial<Policy> & { scopeTarget?: string };
       const isPolicyFormat = "effect" in body || "scope" in body || "enabled" in body;
       
@@ -135,7 +153,7 @@ export class PoliciesRouteHandler extends BaseRouteHandler {
         }
       }
       
-      const policy = await addPolicy(body);
+      const policy = await addPolicy(body, auth.tenantId || undefined);
       this.sendJSON(res, 201, policy);
     } catch (error) {
       this.sendError(res, 500, error instanceof Error ? error.message : "Failed to create policy");
@@ -144,13 +162,19 @@ export class PoliciesRouteHandler extends BaseRouteHandler {
 
   private async handleUpdatePolicy(req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
     try {
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
       const body = await RequestParser.parseBody(req) as Partial<PolicyRule> | Partial<Policy>;
       const isPolicyRuleUpdate = "condition" in body || "action" in body;
       if (isPolicyRuleUpdate && (!body.condition || !body.action)) {
         this.sendError(res, 400, "Missing required fields: condition and action");
         return;
       }
-      const policy = await updatePolicy(id, body);
+      const policy = await updatePolicy(id, body, auth.tenantId || undefined);
       this.sendJSON(res, 200, policy);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to update policy";
@@ -164,7 +188,13 @@ export class PoliciesRouteHandler extends BaseRouteHandler {
 
   private async handleArchivePolicy(req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
     try {
-      await archivePolicy(id);
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      await archivePolicy(id, auth.tenantId || undefined);
       this.sendJSON(res, 200, { success: true });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to archive policy";
@@ -178,7 +208,13 @@ export class PoliciesRouteHandler extends BaseRouteHandler {
 
   private async handleRestorePolicy(req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
     try {
-      await restorePolicy(id);
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      await restorePolicy(id, auth.tenantId || undefined);
       this.sendJSON(res, 200, { success: true });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to restore policy";
@@ -192,7 +228,13 @@ export class PoliciesRouteHandler extends BaseRouteHandler {
 
   private async handleDeletePolicy(req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
     try {
-      await deletePolicy(id);
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      await deletePolicy(id, auth.tenantId || undefined);
       this.sendJSON(res, 204, {});
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to delete policy";
