@@ -1,62 +1,12 @@
 services:
-  # Backend API Service
   - type: web
-    name: hakuna-backend
+    name: hakuna
     env: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm run build
-    startCommand: pnpm run start
+    buildCommand: pnpm install --frozen-lockfile
+    startCommand: pnpm dev:all
     envVars:
       - key: NODE_ENV
         value: production
       - key: GATEWAY_API_PORT
         value: 8000
-      # Database configuration (PostgreSQL recommended for production)
-      - key: POSTGRES_HOST
-        fromDatabase:
-          name: hakuna-db
-          property: host
-      - key: POSTGRES_PORT
-        fromDatabase:
-          name: hakuna-db
-          property: port
-      - key: POSTGRES_DATABASE
-        fromDatabase:
-          name: hakuna-db
-          property: database
-      - key: POSTGRES_USER
-        fromDatabase:
-          name: hakuna-db
-          property: user
-      - key: POSTGRES_PASSWORD
-        fromDatabase:
-          name: hakuna-db
-          property: password
-      # Add your JWT secret and other environment variables
-      # - key: JWT_SECRET
-      #   sync: false
-      # Add any API keys needed for MCP servers
-      # - key: GITHUB_TOKEN
-      #   sync: false
-
-  # Frontend Dashboard Service
-  - type: web
-    name: hakuna-frontend
-    env: node
-    buildCommand: cd dashboard && pnpm install --frozen-lockfile && pnpm run build
-    startCommand: cd dashboard && pnpm run start
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: NEXT_PUBLIC_GATEWAY_URL
-        fromService:
-          type: web
-          name: hakuna-backend
-          property: host
-
-databases:
-  # PostgreSQL Database
-  - name: hakuna-db
-    databaseName: hakuna
-    user: hakuna_user
-    plan: free  # Change to 'starter' or higher for production
 
