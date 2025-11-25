@@ -14,27 +14,25 @@ Hakuna Gateway is a minimal MCP server that normalizes tool usage through an int
 - **Dashboard** to manage tools, policies, and providers visually.
 
 ## Quick start
-1. **Prerequisites:** Node.js 20+, [pnpm](https://pnpm.io/).
-2. **Install & build:**
+1. **Prerequisites:** Node.js 20+, [pnpm](https://pnpm.io/), Command Line Tools/Xcode (for Mac users).
+2. **Install & build (root backend):**
    ```bash
    pnpm install --frozen-lockfile
    pnpm run build
    ```
-3. **Run the MCP gateway:**
+3. **Run backend & frontend together:**
+   ```bash
+   pnpm dev:all
+   ```
+   This concurrently runs `pnpm run dev:backend` (MCP server on stdio) and `pnpm run dev:frontend` (Next.js dashboard on port 1337).
+4. **Run the MCP gateway only (no dashboard):**
    ```bash
    pnpm start
    ```
    You should see `Hakuna MCP Gateway server starting...` and the server will wait for MCP messages on stdio.
-4. **Hello world:**
+5. **Hello world:**
    - Copy `.env.example` to `.env`, set `JWT_SECRET`, and add any API keys you need.
    - Use the default `config.json` (built-in tools are available immediately) and connect an MCP client such as Cursor to call a file read/write tool.
-5. **Dashboard (optional):**
-   ```bash
-   cd dashboard
-   pnpm install --frozen-lockfile
-   pnpm run dev
-   ```
-   Visit http://localhost:1337 to manage tools and policies.
 
 ## Screenshot
 ![Dashboard library view](docs/images/dashboard-tools.png)
