@@ -456,7 +456,7 @@ export async function getEnabledCategories(): Promise<ToolCategory[]> {
     const categoryTools = registry[category];
     // Check if at least one tool in this category is enabled (must be explicitly true)
     return Object.values(categoryTools).some(
-      (tool) => tool.enabled === true
+      (tool) => tool.enabled !== false
     );
   }) as ToolCategory[];
 }

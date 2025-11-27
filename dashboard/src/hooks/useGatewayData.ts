@@ -39,3 +39,10 @@ export function useAgents(filters?: { providerId?: string; role?: string; tenant
   });
 }
 
+export function useUsers() {
+  return useQuery({
+    queryKey: ["users"],
+    queryFn: () => Api.getUsers(),
+  });
+}
+

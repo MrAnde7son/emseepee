@@ -1,4 +1,4 @@
-import { Provider, Tool, Policy, GatewayEvent, Agent } from "./types";
+import { Provider, Tool, Policy, GatewayEvent, Agent, HumanUser } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8000";
 
@@ -361,6 +361,25 @@ export const Api = {
       throw new Error(error.error || `Request failed: ${res.status}`);
     }
     return res.json() as Promise<Agent>;
+  },
+  getUsers: async () => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+
+    const res = await fetch(`${BASE_URL}/api/users`, {
+      headers: {
+        "Authorization": `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      throw new Error(`Request failed: ${res.status}`);
+    }
+
+    return res.json() as Promise<HumanUser[]>;
   },
   deleteAgent: async (agentId: string) => {
     const token = localStorage.getItem("auth_token");

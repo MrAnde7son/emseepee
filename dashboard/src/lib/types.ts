@@ -81,3 +81,13 @@ export interface Agent {
   lastSeenAt?: string;
 }
 
+export interface HumanUser {
+  id: number;
+  email: string;
+  name?: string | null;
+  role: string;
+  tenantId?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
