@@ -1,17 +1,18 @@
-# Hakuna Gateway
+# Hakuna
 
 [![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue)](.github/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > AI tools gateway to centralize and secure Model Context Protocol (MCP) access for agents like Cursor, n8n, and custom clients.
 
-Hakuna Gateway is a minimal MCP server that normalizes tool usage through an intent layer, applies policy controls, and routes requests to built-in or proxied tools with full auditing.
+Hakuna acts as an agent and MCP gateway and normalizes tool usage through an intent layer, applies policy controls, and routes requests to built-in or proxied tools with full auditing.
 
-## Why Hakuna Gateway?
+## Why Hakuna?
 - **Centralize tool access** so every agent call flows through one auditable control point.
 - **Intent-aware policies** to block risky actions (e.g., deleting prod resources) rather than brittle tool name checks.
-- **Zero-rebuild config** via `config.json` and environment variables for quick experimentation.
 - **Dashboard** to manage tools, policies, and providers visually.
+- **Policy Engine** to manage agents and tools access.
+
 
 ## Quick start
 1. **Prerequisites:** Node.js 20+, [pnpm](https://pnpm.io/), Command Line Tools/Xcode (for Mac users).
