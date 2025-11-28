@@ -153,6 +153,22 @@ describe("Config Functions", () => {
       expect(isThirdPartyToolConfig(tool)).toBe(true);
     });
 
+    it("should return true for OpenAPI third-party tool config", () => {
+      const tool = {
+        name: "eks",
+        description: "EKS OpenAPI tools",
+        allowedRoles: ["coder_bot"],
+        sensitivity: "medium",
+        category: "third_party" as const,
+        execution: {
+          type: "openapi" as const,
+          openApiUrl: "https://example.com/openapi.json",
+        },
+      };
+
+      expect(isThirdPartyToolConfig(tool)).toBe(true);
+    });
+
     it("should return false for regular tool config", () => {
       const tool: ToolPolicyConfig = {
         name: "test_tool",
