@@ -2,7 +2,7 @@ import { logger } from "./logger.js";
 
 export type Sensitivity = "low" | "medium" | "high";
 export type ToolCategory = "file" | "web" | "terminal" | "third_party";
-export type ToolExecutionType = "http" | "command" | "custom";
+export type ToolExecutionType = "http" | "command" | "custom" | "a2a";
 export type PolicyOperation = "allow" | "log" | "block" | "webhook" | "custom";
 export type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "bedrock" | "copilot" | "langchain" | "custom";
 
@@ -141,6 +141,29 @@ export interface CustomExecutionConfig {
 }
 
 /**
+ * Authentication configuration for A2A execution
+ */
+export interface A2aAuthConfig {
+  type: "bearer";
+  envVar: string; // Environment variable containing the token
+  headerName?: string; // Header to place the token in (default: Authorization)
+  scheme?: string; // Authentication scheme prefix (default: Bearer)
+}
+
+/**
+ * Agent-to-Agent (A2A) execution configuration
+ */
+export interface A2aExecutionConfig {
+  type: "a2a";
+  endpoint: string; // Remote agent endpoint
+  protocol?: string; // Protocol version/identifier
+  providerId?: string; // Target provider identifier
+  auth?: A2aAuthConfig; // Authentication for the remote agent
+  timeoutMs?: number; // Request timeout in milliseconds
+  metadata?: Record<string, unknown>; // Additional metadata to send alongside the call
+}
+
+/**
  * Base policy configuration (for built-in tools)
  */
 export interface ToolPolicyConfig {
@@ -170,7 +193,7 @@ export interface ToolInputSchema {
  */
 export interface ThirdPartyToolConfig extends ToolPolicyConfig {
   category: "third_party";
-  execution: HttpExecutionConfig | CommandExecutionConfig | CustomExecutionConfig;
+  execution: HttpExecutionConfig | CommandExecutionConfig | CustomExecutionConfig | A2aExecutionConfig;
   inputSchema: ToolInputSchema;
 }
 

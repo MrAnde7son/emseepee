@@ -1,4 +1,10 @@
-import type { ThirdPartyToolConfig, HttpExecutionConfig, CommandExecutionConfig } from "../../config.js";
+import type {
+  ThirdPartyToolConfig,
+  HttpExecutionConfig,
+  CommandExecutionConfig,
+  A2aExecutionConfig,
+  A2aAuthConfig,
+} from "../../config.js";
 import { BaseGatewayHandler, type AgentContext, type ToolExecutionResult } from "./BaseGatewayHandler.js";
 import { logger } from "../../logger.js";
 
@@ -41,6 +47,13 @@ export class GenericToolHandler extends BaseGatewayHandler {
           break;
         case "custom":
           result = await this.executeCustom(this.toolConfig.execution, args);
+          break;
+        case "a2a":
+          result = await this.executeA2a(
+            this.toolConfig.execution,
+            args,
+            agentContext
+          );
           break;
         default:
           throw new Error(`Unsupported execution type: ${(this.toolConfig.execution as { type: string }).type}`);
@@ -189,6 +202,88 @@ export class GenericToolHandler extends BaseGatewayHandler {
     // This can be extended to support custom handlers
     // For now, throw an error indicating it's not implemented
     throw new Error(`Custom handler '${config.handler}' is not yet implemented. Extend GenericToolHandler to add custom handlers.`);
+  }
+
+  /**
+   * Execute an agent-to-agent tool using the configured A2A transport
+   */
+  private async executeA2a(
+    config: A2aExecutionConfig,
+    args: Record<string, unknown>,
+    agentContext: AgentContext
+  ): Promise<string> {
+    const headers = this.buildA2aHeaders(config.auth);
+    const payload = {
+      protocol: config.protocol ?? "A2A",
+      tool: this.getToolName(),
+      providerId: config.providerId,
+      caller: {
+        agentId: agentContext.agentId,
+        agentRole: agentContext.agentRole,
+        env: agentContext.env,
+        tenantId: agentContext.tenantId,
+      },
+      params: args,
+      metadata: config.metadata,
+    };
+
+    const controller = new AbortController();
+    const timeoutMs = config.timeoutMs ?? 30000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(config.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...headers,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`A2A request failed: ${response.status} ${response.statusText}`);
+      }
+
+      const responseData = await response.json();
+      return typeof responseData === "string"
+        ? responseData
+        : JSON.stringify(responseData, null, 2);
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(`A2A request timed out after ${timeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /**
+   * Build authentication headers for A2A calls
+   */
+  private buildA2aHeaders(auth?: A2aAuthConfig): Record<string, string> {
+    if (!auth) {
+      return {};
+    }
+
+    switch (auth.type) {
+      case "bearer": {
+        const token = process.env[auth.envVar];
+        if (!token) {
+          throw new Error(`Missing bearer token in environment variable ${auth.envVar}`);
+        }
+
+        const headerName = auth.headerName ?? "Authorization";
+        const scheme = auth.scheme ?? "Bearer";
+        return {
+          [headerName]: `${scheme} ${token}`,
+        };
+      }
+      default:
+        return {};
+    }
   }
 
   /**
