@@ -5,6 +5,9 @@ import type { McpServerProxyConfig } from "../../config.js";
 import { BaseGatewayHandler, type AgentContext, type ToolExecutionResult } from "./BaseGatewayHandler.js";
 import { logger } from "../../logger.js";
 import type { ToolPolicyConfig } from "../../config.js";
+import https from "https";
+import http from "http";
+import { Agent as HttpsAgent } from "https";
 
 /**
  * Handler for proxying tool calls to an upstream MCP server
@@ -103,6 +106,113 @@ export class McpServerProxyHandler extends BaseGatewayHandler {
  *    - Supports custom headers via proxy config
  *    - Follows agentgateway patterns for SSE proxy implementation
  */
+// Lazy singleton for an insecure HTTPS agent (used only when explicitly allowed)
+let insecureAgent: HttpsAgent | null = null;
+function getInsecureAgent(): HttpsAgent {
+  if (!insecureAgent) {
+    insecureAgent = new HttpsAgent({ rejectUnauthorized: false });
+  }
+  return insecureAgent;
+}
+
+/**
+ * Custom fetch that supports insecure TLS for development
+ * Returns a Response-compatible object
+ */
+async function fetchWithCustomTLS(
+  url: string | URL,
+  init?: RequestInit & { allowInsecureTLS?: boolean }
+): Promise<Response> {
+  const urlObj = typeof url === "string" ? new URL(url) : url;
+  const isHttps = urlObj.protocol === "https:";
+  const client = isHttps ? https : http;
+  
+  const allowInsecureTLS = init?.allowInsecureTLS || 
+    process.env.MCP_ALLOW_INSECURE === "true" || 
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0";
+  
+  // Convert headers to plain object
+  let headersObj: Record<string, string> = {};
+  if (init?.headers) {
+    if (init.headers instanceof Headers) {
+      init.headers.forEach((value, key) => {
+        headersObj[key] = value;
+      });
+    } else if (Array.isArray(init.headers)) {
+      headersObj = Object.fromEntries(init.headers);
+    } else {
+      headersObj = init.headers as Record<string, string>;
+    }
+  }
+  
+  const requestOptions: https.RequestOptions = {
+    hostname: urlObj.hostname,
+    port: urlObj.port || (isHttps ? 443 : 80),
+    path: urlObj.pathname + urlObj.search,
+    method: init?.method || "GET",
+    headers: headersObj,
+  };
+
+  // Use insecure agent if allowed
+  if (isHttps && allowInsecureTLS) {
+    requestOptions.agent = getInsecureAgent();
+  }
+
+  const timeout = 30000; // 30 second timeout for MCP connections
+  let timeoutId: NodeJS.Timeout | null = null;
+
+  return new Promise((resolve, reject) => {
+    const req = client.request(requestOptions, (res) => {
+      const chunks: Buffer[] = [];
+      
+      res.on("data", (chunk) => {
+        chunks.push(chunk);
+      });
+      
+      res.on("end", () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        const body = Buffer.concat(chunks);
+        
+        // Create a Response-like object
+        const response = new Response(body, {
+          status: res.statusCode || 0,
+          statusText: res.statusMessage || "",
+          headers: res.headers as HeadersInit,
+        });
+        
+        resolve(response);
+      });
+    });
+
+    req.on("error", (error) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      reject(error);
+    });
+
+    timeoutId = setTimeout(() => {
+      req.destroy();
+      reject(new Error(`Request timeout after ${timeout}ms while fetching ${urlObj.toString()}`));
+    }, timeout);
+
+    // Write body if present
+    if (init?.body) {
+      if (typeof init.body === "string") {
+        req.write(init.body);
+      } else if (init.body instanceof URLSearchParams) {
+        req.write(init.body.toString());
+      } else if (init.body instanceof FormData) {
+        // FormData handling would need additional logic
+        req.write(init.body);
+      } else {
+        // Assume it's a stream or buffer
+        req.write(init.body);
+      }
+    }
+
+    req.end();
+  });
+}
+
 export class McpServerProxyManager {
   private clients: Map<string, Client> = new Map();
   private transports: Map<string, StdioClientTransport | unknown> = new Map();
@@ -268,9 +378,14 @@ export class McpServerProxyManager {
             logger.info(`[MCP-GATEWAY] Request headers: ${JSON.stringify(headerNames)}`);
             logger.info(`[MCP-GATEWAY] Request body present: ${!!init?.body}`);
             
-            const response = await fetch(url, {
+            // Use custom fetch that supports insecure TLS
+            const allowInsecure = process.env.MCP_ALLOW_INSECURE === "true" || 
+                                 process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0";
+            
+            const response = await fetchWithCustomTLS(url, {
               ...init,
               headers: mergedHeaders,
+              allowInsecureTLS: allowInsecure,
             });
             
             logger.info(`[MCP-GATEWAY] Response status: ${response.status} ${response.statusText}`);
