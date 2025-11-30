@@ -1,12 +1,12 @@
 import { IncomingMessage, ServerResponse } from "http";
 import { URL } from "url";
 import { BaseRouteHandler } from "./baseRouteHandler.js";
-import { RequestParser } from "../middleware/requestParser.js";
 import { ErrorHandler } from "../middleware/errorHandler.js";
 import { logger } from "../../logger.js";
 import { randomBytes, createHash } from "crypto";
 import { discoverMcpOAuthMetadata } from "../../oauth/metadataDiscovery.js";
 import { getOrRegisterClientForMcp } from "../../oauth/clientRegistrationService.js";
+import { Agent as HttpsAgent } from "https";
 
 /**
  * OAuth state storage (in-memory, should be moved to database/redis in production)
@@ -33,6 +33,15 @@ const oauthTokens = new Map<string, {
 
 function getTenantScopedKey(tenantId: string | undefined, resourceId: string): string {
   return `${tenantId ?? "global"}:${resourceId}`;
+}
+
+// Lazy singleton for an insecure HTTPS agent (used only when explicitly allowed)
+let insecureAgent: HttpsAgent | null = null;
+function getInsecureAgent(): HttpsAgent {
+  if (!insecureAgent) {
+    insecureAgent = new HttpsAgent({ rejectUnauthorized: false });
+  }
+  return insecureAgent;
 }
 
 export class OAuthRouteHandler extends BaseRouteHandler {
@@ -157,15 +166,21 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         authUrl.searchParams.set("scope", scopes.join(" "));
       }
 
+      // Add PKCE challenge if code verifier is present
       if (codeVerifier) {
         const challenge = createHash("sha256").update(codeVerifier).digest("base64url");
         authUrl.searchParams.set("code_challenge", challenge);
         authUrl.searchParams.set("code_challenge_method", "S256");
       }
 
-      // For Notion specifically, add additional params
-      if (oauthConfig?.provider === "notion") {
-        authUrl.searchParams.set("owner", "user");
+      // Apply any provider-specific authorization params from config
+      const authParams = { ...(oauthConfig?.authorizationParams || {}) };
+      if (oauthConfig?.provider === "notion" && !authParams.owner) {
+        // Maintain backwards compatibility with Notion requiring owner=user
+        authParams.owner = "user";
+      }
+      for (const [key, value] of Object.entries(authParams)) {
+        authUrl.searchParams.set(key, value);
       }
 
       logger.info(`[OAUTH] Initiating OAuth flow for ${mcpId}, redirecting to ${authUrl.toString()}`);
@@ -276,45 +291,76 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         res.end();
         return;
       }
-
+      
       // Build token request
+      const tokenGrantType = oauthConfig?.tokenGrantType || "authorization_code";
+      const tokenRequestContentType = oauthConfig?.tokenRequestContentType || "form";
+      const tokenAuthMethod = oauthConfig?.tokenAuthMethod || (oauthConfig?.provider === "notion" ? "basic" : "body");
       const tokenRequestHeaders: HeadersInit = {
         "Accept": "application/json",
       };
 
       let tokenRequestBody: string | URLSearchParams;
-
-      if (provider === "notion" && clientSecret) {
+      
+      const tokenParams: Record<string, string> = {
+        grant_type: tokenGrantType,
+        code,
+        redirect_uri: redirectUri,
+      };
+      
+      // Add code verifier for PKCE if present
+      if (codeVerifier) {
+        tokenParams.code_verifier = codeVerifier;
+      }
+      
+      if (tokenAuthMethod === "basic" && clientSecret) {
         const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
         tokenRequestHeaders["Authorization"] = `Basic ${basicAuth}`;
-        tokenRequestHeaders["Content-Type"] = "application/x-www-form-urlencoded";
-
-        const params = new URLSearchParams();
-        params.set("grant_type", "authorization_code");
-        params.set("code", code);
-        params.set("redirect_uri", redirectUri);
-        tokenRequestBody = params;
+      } else if (clientSecret) {
+        tokenParams.client_id = clientId;
+        tokenParams.client_secret = clientSecret;
+      } else if (!useDynamicClient) {
+        // Only add client_id if we have no secret and it's not a dynamic client
+        tokenParams.client_id = clientId;
+      }
+      
+      if (tokenRequestContentType === "json") {
+        tokenRequestHeaders["Content-Type"] = "application/json";
+        tokenRequestBody = JSON.stringify(tokenParams);
       } else {
         tokenRequestHeaders["Content-Type"] = "application/x-www-form-urlencoded";
         const params = new URLSearchParams();
-        params.set("grant_type", "authorization_code");
-        params.set("code", code);
-        params.set("redirect_uri", redirectUri);
-        params.set("client_id", clientId);
-        if (clientSecret) {
-          params.set("client_secret", clientSecret);
-        }
-        if (codeVerifier) {
-          params.set("code_verifier", codeVerifier);
-        }
+        Object.entries(tokenParams).forEach(([key, value]) => params.set(key, value));
         tokenRequestBody = params;
       }
-
-      const tokenResponse = await fetch(tokenUrl, {
+      
+      // Perform token request with richer error logging (helps diagnose network/TLS/proxy failures)
+      const tokenRequestInit: RequestInit & { agent?: HttpsAgent } = {
         method: "POST",
         headers: tokenRequestHeaders,
         body: tokenRequestBody,
-      });
+      };
+
+      // Allow opting into insecure TLS for environments with MITM/self-signed proxies (dev only)
+      if (process.env.OAUTH_ALLOW_INSECURE_TLS === "true" || process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0") {
+        tokenRequestInit.agent = getInsecureAgent();
+        logger.warn("[OAUTH] Using insecure TLS (rejectUnauthorized=false) for token exchange; DO NOT use in production");
+      }
+      
+      let tokenResponse: Response;
+      try {
+        logger.info(`[OAUTH] Exchanging code for token at ${tokenUrl} (provider=${provider}, grant_type=${tokenParams.grant_type}, auth_method=${tokenAuthMethod}, content_type=${tokenRequestHeaders["Content-Type"]})`);
+        tokenResponse = await fetch(tokenUrl, tokenRequestInit);
+      } catch (fetchError) {
+        const reason = fetchError instanceof Error ? `${fetchError.message}${fetchError.cause ? `; cause=${fetchError.cause}` : ""}` : String(fetchError);
+        logger.error(`[OAUTH] Token request failed for ${mcpId}: ${reason}`);
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
+        res.writeHead(302, {
+          Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent("Failed to reach token endpoint. Check network connectivity and OAuth settings.")}`,
+        });
+        res.end();
+        return;
+      }
       
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
@@ -476,4 +522,3 @@ export class OAuthRouteHandler extends BaseRouteHandler {
     }
   }
 }
-

@@ -10,19 +10,72 @@
 
 import { initializeDatabase, closeDatabase } from "./connection.js";
 import { createSchema, schemaExists } from "./schema.js";
-import { 
-  saveMcpServerProxiesToDb, 
-  saveToolsProxiesToDb, 
+import {
+  saveMcpServerProxiesToDb,
+  saveToolsProxiesToDb,
   savePolicyRulesToDb,
-  getAllConfigFromDb 
+  getAllConfigFromDb,
+  getDistinctTenantIds,
 } from "./services/configService.js";
 import { loadConfigFromFile } from "../configLoader.js";
 import { logger } from "../logger.js";
 
-async function migrate(force = false) {
-  try {
-    logger.info("[MIGRATE] Starting migration from config.json to database...");
+function resolveTenantId(args: string[]): string | undefined {
+  const tenantFlagIndex = args.findIndex((arg) => arg === "--tenant" || arg === "-t");
 
+  if (tenantFlagIndex !== -1) {
+    const value = args[tenantFlagIndex + 1];
+    if (value && !value.startsWith("-")) {
+      return value;
+    }
+    logger.warn("[MIGRATE] --tenant flag provided without a value. Falling back to all tenants.");
+  }
+
+  return undefined;
+}
+
+async function resolveTenantsForMigration(explicitTenantId?: string): Promise<(string | undefined)[]> {
+  if (explicitTenantId) {
+    return [explicitTenantId];
+  }
+
+  const tenantIds = await getDistinctTenantIds();
+  const normalizedTenants = Array.from(new Set(tenantIds.map((tenant) => tenant ?? undefined)));
+
+  if (normalizedTenants.length === 0) {
+    logger.info("[MIGRATE] No tenants found in database. Defaulting to global tenant.");
+    return [undefined];
+  }
+
+  logger.info(
+    `[MIGRATE] Running migration for tenants: ${normalizedTenants.map((tenant) => tenant ?? "global").join(", ")}`,
+  );
+  return normalizedTenants;
+}
+
+async function migrate(force = false, tenantId?: string) {
+  let fileConfig: ReturnType<typeof loadConfigFromFile> | null = null;
+  let configLoadAttempted = false;
+
+  const getFileConfig = () => {
+    if (configLoadAttempted) {
+      return fileConfig;
+    }
+
+    configLoadAttempted = true;
+    try {
+      fileConfig = loadConfigFromFile();
+      logger.info("[MIGRATE] Loaded configuration from config.json");
+    } catch (error) {
+      logger.error("[MIGRATE] Failed to load config.json:", error);
+      logger.info("[MIGRATE] No existing config.json found. Database will start empty.");
+      fileConfig = null;
+    }
+
+    return fileConfig;
+  };
+
+  try {
     // Initialize database
     await initializeDatabase();
     const exists = await schemaExists();
@@ -31,47 +84,52 @@ async function migrate(force = false) {
       logger.info("[MIGRATE] Database schema created");
     }
 
-    // Check if database already has data
-    const existingConfig = await getAllConfigFromDb();
-    const hasData = Object.keys(existingConfig.mcpServerProxies).length > 0 ||
-                    Object.keys(existingConfig.toolsProxies).length > 0 ||
-                    existingConfig.policyRules.length > 0;
+    const tenants = await resolveTenantsForMigration(tenantId);
 
-    if (hasData && !force) {
-      logger.warn("[MIGRATE] Database already contains configuration. Skipping migration.");
-      logger.info("[MIGRATE] If you want to overwrite, run with --force flag: node dist/db/migrate.js --force");
-      return;
-    }
+    for (const tenant of tenants) {
+      logger.info(`[MIGRATE] Starting migration from config.json to database for tenant: ${tenant ?? "global"}...`);
 
-    if (hasData && force) {
-      logger.warn("[MIGRATE] Database contains existing configuration. Overwriting with config.json...");
-    }
+      // Check if database already has data
+      const existingConfig = await getAllConfigFromDb(tenant);
+      const hasData =
+        Object.keys(existingConfig.mcpServerProxies).length > 0 ||
+        Object.keys(existingConfig.toolsProxies).length > 0 ||
+        existingConfig.policyRules.length > 0;
 
-    // Load from file
-    let fileConfig;
-    try {
-      fileConfig = loadConfigFromFile();
-      logger.info("[MIGRATE] Loaded configuration from config.json");
-    } catch (error) {
-      logger.error("[MIGRATE] Failed to load config.json:", error);
-      logger.info("[MIGRATE] No existing config.json found. Database will start empty.");
-      return;
-    }
+      if (hasData && !force) {
+        logger.warn(`[MIGRATE] Database already contains configuration for tenant ${tenant ?? "global"}. Skipping.`);
+        logger.info(
+          "[MIGRATE] If you want to overwrite, run with --force flag: node dist/db/migrate.js --force",
+        );
+        continue;
+      }
 
-    // Migrate to database
-    if (Object.keys(fileConfig.mcpServerProxies).length > 0) {
-      await saveMcpServerProxiesToDb(fileConfig.mcpServerProxies);
-      logger.info(`[MIGRATE] Migrated ${Object.keys(fileConfig.mcpServerProxies).length} MCP server proxies`);
-    }
+      if (hasData && force) {
+        logger.warn(
+          `[MIGRATE] Database contains existing configuration for tenant ${tenant ?? "global"}. Overwriting with config.json...`,
+        );
+      }
 
-    if (Object.keys(fileConfig.toolsProxies).length > 0) {
-      await saveToolsProxiesToDb(fileConfig.toolsProxies);
-      logger.info(`[MIGRATE] Migrated ${Object.keys(fileConfig.toolsProxies).length} tool proxies`);
-    }
+      const loadedConfig = getFileConfig();
+      if (!loadedConfig) {
+        return;
+      }
 
-    if (fileConfig.policyRules.length > 0) {
-      await savePolicyRulesToDb(fileConfig.policyRules);
-      logger.info(`[MIGRATE] Migrated ${fileConfig.policyRules.length} policy rules`);
+      // Migrate to database
+      if (Object.keys(loadedConfig.mcpServerProxies).length > 0) {
+        await saveMcpServerProxiesToDb(loadedConfig.mcpServerProxies, tenant);
+        logger.info(`[MIGRATE] Migrated ${Object.keys(loadedConfig.mcpServerProxies).length} MCP server proxies`);
+      }
+
+      if (Object.keys(loadedConfig.toolsProxies).length > 0) {
+        await saveToolsProxiesToDb(loadedConfig.toolsProxies, tenant);
+        logger.info(`[MIGRATE] Migrated ${Object.keys(loadedConfig.toolsProxies).length} tool proxies`);
+      }
+
+      if (loadedConfig.policyRules.length > 0) {
+        await savePolicyRulesToDb(loadedConfig.policyRules, tenant);
+        logger.info(`[MIGRATE] Migrated ${loadedConfig.policyRules.length} policy rules`);
+      }
     }
 
     logger.info("[MIGRATE] Migration completed successfully!");
@@ -89,8 +147,9 @@ async function migrate(force = false) {
 // Run migration if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   const force = process.argv.includes("--force") || process.argv.includes("-f");
-  migrate(force);
+  const tenantId = resolveTenantId(process.argv.slice(2));
+  migrate(force, tenantId);
 }
 
-export { migrate };
+export { migrate, resolveTenantId, resolveTenantsForMigration };
 

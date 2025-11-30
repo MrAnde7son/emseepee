@@ -78,6 +78,10 @@ export interface OAuthConfig {
   redirectUri?: string; // OAuth redirect URI (defaults to gateway callback URL)
   clientIdHelpUrl?: string; // URL where users can get their OAuth client ID
   clientIdHelpText?: string; // Custom help text for obtaining the OAuth client ID (supports {link} placeholder)
+  authorizationParams?: Record<string, string>; // Extra query params to send to authorization endpoint
+  tokenRequestContentType?: "json" | "form"; // How to encode the token exchange request body (defaults to "form")
+  tokenAuthMethod?: "basic" | "body"; // Whether to send client credentials via Basic auth header or in the body (defaults to "body")
+  tokenGrantType?: string; // Override grant_type (defaults to "authorization_code")
 }
 
 export interface McpServerProxyConfig {
