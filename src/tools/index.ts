@@ -19,6 +19,7 @@ import { OpenApiToolGenerator, OpenApiToolHandler } from "./handlers/OpenApiTool
 import { McpServerProxyHandler, McpServerProxyManager } from "./handlers/McpServerProxyHandler.js";
 import { convertInputSchemaToZod } from "./schemaConverter.js";
 import type { AgentContext } from "./handlers/BaseGatewayHandler.js";
+import { toolCache } from "./toolCache.js";
 
 // Global singleton manager instance
 let globalProxyManager: McpServerProxyManager | null = null;
@@ -263,6 +264,21 @@ export async function registerMcpServerProxies(
 
       // Connect and discover tools
       const discoveredTools = await proxyManager.connectAndDiscoverTools(proxyConfig);
+
+      // Cache discovered tools (tenant-aware)
+      // At startup, we don't have a tenant context, so use undefined
+      // Tools will be cached per-tenant when fetched via API
+      const tenantId = undefined; // Startup registration is global
+      toolCache.setTools(
+        proxyName,
+        discoveredTools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+        })),
+        proxyConfig,
+        tenantId
+      );
 
       // Register each discovered tool
       for (const tool of discoveredTools) {

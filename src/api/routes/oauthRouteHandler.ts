@@ -556,6 +556,16 @@ export class OAuthRouteHandler extends BaseRouteHandler {
           logger.warn(`[OAUTH] Failed to disconnect MCP client for ${mcpId}:`, disconnectError);
           // Non-fatal - connection will be re-established on next tool discovery
         }
+        
+        // Invalidate tool cache so tools are re-fetched with new token
+        try {
+          const { toolCache } = await import("../../tools/toolCache.js");
+          toolCache.invalidate(mcpId, tenantId);
+          logger.info(`[OAUTH] Invalidated tool cache for ${mcpId} to force tool re-discovery with new token`);
+        } catch (cacheError) {
+          logger.warn(`[OAUTH] Failed to invalidate tool cache for ${mcpId}:`, cacheError);
+          // Non-fatal - cache will expire or be refreshed on next request
+        }
       }
       
       // Redirect to frontend with success
@@ -625,6 +635,15 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       if (mcpProxiesDb[mcpId] && mcpProxiesDb[mcpId].headers) {
         delete mcpProxiesDb[mcpId].headers?.Authorization;
         await saveMcpServerProxiesToDb(mcpProxiesDb, tenantId);
+      }
+      
+      // Invalidate tool cache when tokens are revoked
+      try {
+        const { toolCache } = await import("../../tools/toolCache.js");
+        toolCache.invalidate(mcpId, tenantId);
+        logger.info(`[OAUTH] Invalidated tool cache for ${mcpId} after token revocation`);
+      } catch (cacheError) {
+        logger.warn(`[OAUTH] Failed to invalidate tool cache for ${mcpId}:`, cacheError);
       }
       
       logger.info(`[OAUTH] OAuth tokens revoked for ${mcpId}`);
