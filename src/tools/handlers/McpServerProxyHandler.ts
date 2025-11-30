@@ -529,7 +529,6 @@ export class McpServerProxyManager {
               errorMessage = fetchError.message || "";
               errorCode = (fetchError as any).code || "";
               
-              // Node.js fetch (undici) errors often have a 'cause' property with the underlying error
               if ((fetchError as any).cause instanceof Error) {
                 underlyingError = (fetchError as any).cause;
                 errorCode = (underlyingError as any).code || errorCode;

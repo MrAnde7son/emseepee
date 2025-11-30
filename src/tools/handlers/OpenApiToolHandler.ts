@@ -4,7 +4,6 @@ import type {
   ToolPolicyConfig,
   OpenApiAuthConfig,
 } from "../../config.js";
-import type { Response } from "undici";
 import { BaseGatewayHandler, type AgentContext, type ToolExecutionResult } from "./BaseGatewayHandler.js";
 import { logger } from "../../logger.js";
 
@@ -69,6 +68,19 @@ export interface GeneratedOpenApiTool {
   description: string;
   inputSchema: z.ZodObject<Record<string, z.ZodTypeAny>>;
   operation: OpenApiOperationDescriptor;
+}
+
+function isZodPrimitive(value: unknown): value is z.Primitive {
+  const type = typeof value;
+  return (
+    type === "string" ||
+    type === "number" ||
+    type === "boolean" ||
+    type === "bigint" ||
+    type === "symbol" ||
+    value === null ||
+    value === undefined
+  );
 }
 
 const SPEC_CACHE = new Map<string, Promise<GeneratedOpenApiTool[]>>();
@@ -204,7 +216,12 @@ export class OpenApiToolGenerator {
 
   private convertSchemaToZod(schema: OpenApiSchema): z.ZodTypeAny {
     if (schema.enum && schema.enum.length > 0) {
-      const literals = schema.enum.map((value) => z.literal(value));
+      const primitiveValues = schema.enum.filter(isZodPrimitive);
+      if (primitiveValues.length === 0) {
+        return z.unknown();
+      }
+
+      const literals = primitiveValues.map((value) => z.literal(value));
       if (literals.length === 1) {
         return literals[0];
       }
