@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { ThirdPartyToolConfig } from "../src/config.js";
+import type { ThirdPartyToolConfig, A2aExecutionConfig } from "../src/config.js";
 import type { AgentContext } from "../src/tools/handlers/BaseGatewayHandler.js";
 import { GenericToolHandler } from "../src/tools/handlers/GenericToolHandler.js";
 
@@ -48,8 +48,9 @@ describe("GenericToolHandler - A2A execution", () => {
     category: "third_party",
     execution: {
       type: "a2a",
-      endpoint: "https://support.agents.company.com/a2a",
-      protocol: "A2A-v1",
+      endpoint: "https://support.agents.company.com", // Base URL - agent card at /.well-known/agent.json
+      messageEndpoint: "/", // Messages sent to base URL root (default)
+      protocol: "0.2.5", // A2A protocol version
       providerId: "support-cluster",
       auth: {
         type: "bearer",
@@ -98,7 +99,7 @@ describe("GenericToolHandler - A2A execution", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, request] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://support.agents.company.com/a2a");
+    expect(url).toBe("https://support.agents.company.com/"); // Base URL with message endpoint
     expect(request.method).toBe("POST");
 
     const headers = request.headers as Record<string, string>;
@@ -112,7 +113,7 @@ describe("GenericToolHandler - A2A execution", () => {
       tenantId: agentContext.tenantId,
     });
     expect(body.params).toEqual({ ticketId: "TCK-1" });
-    expect(body.protocol).toBe("A2A-v1");
+    expect(body.protocol).toBe("0.2.5");
     expect(body.metadata).toEqual({ escalation: true });
 
     expect(result.content[0].text).toContain("\"ok\": true");
@@ -128,5 +129,59 @@ describe("GenericToolHandler - A2A execution", () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("Missing bearer token");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses custom messageEndpoint when provided", async () => {
+    const customConfig: ThirdPartyToolConfig = {
+      ...toolConfig,
+      execution: {
+        ...toolConfig.execution,
+        type: "a2a",
+        endpoint: "https://agent.example.com",
+        messageEndpoint: "/message/stream", // Custom message endpoint
+      } as A2aExecutionConfig,
+    };
+
+    const handler = new GenericToolHandler(customConfig);
+    const mockResponse = {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: vi.fn().mockResolvedValue({ response: "streaming response" }),
+    } as const;
+    fetchMock.mockResolvedValue(mockResponse);
+
+    await handler.execute(agentContext, { ticketId: "TCK-3" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://agent.example.com/message/stream");
+  });
+
+  it("handles base URL with trailing slash correctly", async () => {
+    const trailingSlashConfig: ThirdPartyToolConfig = {
+      ...toolConfig,
+      execution: {
+        ...toolConfig.execution,
+        type: "a2a",
+        endpoint: "https://agent.example.com/",
+        messageEndpoint: "/",
+      } as A2aExecutionConfig,
+    };
+
+    const handler = new GenericToolHandler(trailingSlashConfig);
+    const mockResponse = {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: vi.fn().mockResolvedValue({ response: "success" }),
+    } as const;
+    fetchMock.mockResolvedValue(mockResponse);
+
+    await handler.execute(agentContext, { ticketId: "TCK-4" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://agent.example.com/"); // Should not have double slashes
   });
 });

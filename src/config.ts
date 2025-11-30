@@ -165,12 +165,30 @@ export interface A2aAuthConfig {
 }
 
 /**
+ * Authentication configuration for A2A execution
+ */
+export interface A2aAuthConfig {
+  type: "bearer";
+  envVar: string; // Environment variable containing the token
+  headerName?: string; // Header to place the token in (default: Authorization)
+  scheme?: string; // Authentication scheme prefix (default: Bearer)
+}
+
+/**
  * Agent-to-Agent (A2A) execution configuration
+ * 
+ * The endpoint should be the base URL of the A2A agent (e.g., https://agent.example.com).
+ * The implementation will construct the proper A2A message endpoint automatically.
+ * 
+ * According to A2A protocol:
+ * - Agent card is available at /.well-known/agent.json
+ * - Messages are sent via POST to the base URL or /message endpoint
  */
 export interface A2aExecutionConfig {
   type: "a2a";
-  endpoint: string; // Remote agent endpoint
-  protocol?: string; // Protocol version/identifier
+  endpoint: string; // Base URL of the remote A2A agent (e.g., https://agent.example.com)
+  messageEndpoint?: string; // Optional: custom message endpoint path (default: "/" or "/message")
+  protocol?: string; // Protocol version/identifier (e.g., "0.2.5")
   providerId?: string; // Target provider identifier
   auth?: A2aAuthConfig; // Authentication for the remote agent
   timeoutMs?: number; // Request timeout in milliseconds

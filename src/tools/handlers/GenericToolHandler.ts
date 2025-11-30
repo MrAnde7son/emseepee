@@ -206,6 +206,11 @@ export class GenericToolHandler extends BaseGatewayHandler {
 
   /**
    * Execute an agent-to-agent tool using the configured A2A transport
+   * 
+   * Follows A2A protocol specification:
+   * - Base URL should point to the agent (e.g., https://agent.example.com)
+   * - Messages are sent via POST to the base URL or /message endpoint
+   * - Payload follows A2A message format with caller context
    */
   private async executeA2a(
     config: A2aExecutionConfig,
@@ -213,6 +218,17 @@ export class GenericToolHandler extends BaseGatewayHandler {
     agentContext: AgentContext
   ): Promise<string> {
     const headers = this.buildA2aHeaders(config.auth);
+    
+    // Construct the message endpoint URL
+    // Default to base URL root, or use custom messageEndpoint path
+    const baseUrl = config.endpoint.replace(/\/$/, ""); // Remove trailing slash
+    const messagePath = config.messageEndpoint ?? "/";
+    const messageUrl = messagePath.startsWith("/")
+      ? `${baseUrl}${messagePath}`
+      : `${baseUrl}/${messagePath}`;
+
+    // Build A2A message payload following protocol structure
+    // The A2A protocol sends messages with caller context and parameters
     const payload = {
       protocol: config.protocol ?? "A2A",
       tool: this.getToolName(),
@@ -232,7 +248,7 @@ export class GenericToolHandler extends BaseGatewayHandler {
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(config.endpoint, {
+      const response = await fetch(messageUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
