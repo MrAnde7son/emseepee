@@ -2,15 +2,25 @@ import { createHmac, randomBytes } from "crypto";
 import { logger } from "../logger.js";
 
 /**
- * Generate a JWT secret lazily at runtime.
- * This keeps secrets out of env/files and ensures a fresh key per process start.
+ * Resolve the JWT secret lazily.
+ * Prefer a stable secret from the environment so tokens survive restarts.
+ * If none is provided, fall back to an in-memory secret (dev only) and warn.
  */
 let JWT_SECRET: string | null = null;
 function getJwtSecret(): string {
-  if (!JWT_SECRET) {
-    JWT_SECRET = randomBytes(64).toString("hex");
-    logger.info("[Auth] Generated new in-memory JWT secret");
+  if (JWT_SECRET) {
+    return JWT_SECRET;
   }
+
+  const envSecret = process.env.JWT_SECRET?.trim();
+  if (envSecret) {
+    JWT_SECRET = envSecret;
+    logger.info("[Auth] Using JWT secret from environment");
+    return JWT_SECRET;
+  }
+
+  JWT_SECRET = randomBytes(64).toString("hex");
+  logger.warn("[Auth] JWT_SECRET not set; generated ephemeral secret (tokens will break on restart)");
   return JWT_SECRET;
 }
 const JWT_EXPIRY = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
