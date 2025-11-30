@@ -7,6 +7,8 @@ import { randomBytes, createHash } from "crypto";
 import { discoverMcpOAuthMetadata } from "../../oauth/metadataDiscovery.js";
 import { getOrRegisterClientForMcp } from "../../oauth/clientRegistrationService.js";
 import { Agent as HttpsAgent } from "https";
+import https from "https";
+import http from "http";
 
 /**
  * OAuth state storage (in-memory, should be moved to database/redis in production)
@@ -42,6 +44,91 @@ function getInsecureAgent(): HttpsAgent {
     insecureAgent = new HttpsAgent({ rejectUnauthorized: false });
   }
   return insecureAgent;
+}
+
+/**
+ * Fetch using Node's https/http modules with support for insecure TLS
+ */
+async function fetchWithCustomTLS(
+  url: string,
+  options: { method?: string; headers?: Record<string, string>; body?: string | URLSearchParams; timeout?: number; allowInsecureTLS?: boolean } = {}
+): Promise<{ status: number; statusText: string; body: string; headers: Record<string, string> }> {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const isHttps = urlObj.protocol === "https:";
+    const client = isHttps ? https : http;
+    
+    const requestOptions: https.RequestOptions = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || (isHttps ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      method: options.method || "GET",
+      headers: {
+        "User-Agent": "hakuna-mcp-gateway/1.0",
+        ...options.headers,
+      },
+    };
+
+    // Use insecure agent if allowed
+    if (isHttps && options.allowInsecureTLS) {
+      requestOptions.agent = getInsecureAgent();
+    }
+
+    const timeout = options.timeout || 10000;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    const req = client.request(requestOptions, (res) => {
+      const chunks: Buffer[] = [];
+      
+      res.on("data", (chunk) => {
+        chunks.push(chunk);
+      });
+      
+      res.on("end", () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        const body = Buffer.concat(chunks).toString();
+        const headers: Record<string, string> = {};
+        
+        // Handle headers (support both headersDistinct and headers for compatibility)
+        if (res.headersDistinct) {
+          Object.keys(res.headersDistinct).forEach((key) => {
+            const values = res.headersDistinct![key];
+            headers[key] = Array.isArray(values) ? values.join(", ") : values || "";
+          });
+        } else if (res.headers) {
+          Object.keys(res.headers).forEach((key) => {
+            const value = res.headers[key];
+            headers[key] = Array.isArray(value) ? value.join(", ") : value || "";
+          });
+        }
+        
+        resolve({
+          status: res.statusCode || 0,
+          statusText: res.statusMessage || "",
+          body,
+          headers,
+        });
+      });
+    });
+
+    req.on("error", (error) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      reject(error);
+    });
+
+    timeoutId = setTimeout(() => {
+      req.destroy();
+      reject(new Error(`Request timeout after ${timeout}ms while fetching ${url}`));
+    }, timeout);
+
+    // Write body if present
+    if (options.body) {
+      const bodyString = options.body instanceof URLSearchParams ? options.body.toString() : options.body;
+      req.write(bodyString);
+    }
+
+    req.end();
+  });
 }
 
 export class OAuthRouteHandler extends BaseRouteHandler {
@@ -324,6 +411,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         tokenParams.client_id = clientId;
       }
       
+      // Prepare body
       if (tokenRequestContentType === "json") {
         tokenRequestHeaders["Content-Type"] = "application/json";
         tokenRequestBody = JSON.stringify(tokenParams);
@@ -334,23 +422,22 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         tokenRequestBody = params;
       }
       
-      // Perform token request with richer error logging (helps diagnose network/TLS/proxy failures)
-      const tokenRequestInit: RequestInit & { agent?: HttpsAgent } = {
-        method: "POST",
-        headers: tokenRequestHeaders,
-        body: tokenRequestBody,
-      };
-
-      // Allow opting into insecure TLS for environments with MITM/self-signed proxies (dev only)
-      if (process.env.OAUTH_ALLOW_INSECURE_TLS === "true" || process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0") {
-        tokenRequestInit.agent = getInsecureAgent();
+      // Check if insecure TLS is allowed
+      const allowInsecureTLS = process.env.OAUTH_ALLOW_INSECURE_TLS === "true" || process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0";
+      if (allowInsecureTLS) {
         logger.warn("[OAUTH] Using insecure TLS (rejectUnauthorized=false) for token exchange; DO NOT use in production");
       }
       
-      let tokenResponse: Response;
+      let tokenResponse: { status: number; statusText: string; body: string; headers: Record<string, string> };
       try {
         logger.info(`[OAUTH] Exchanging code for token at ${tokenUrl} (provider=${provider}, grant_type=${tokenParams.grant_type}, auth_method=${tokenAuthMethod}, content_type=${tokenRequestHeaders["Content-Type"]})`);
-        tokenResponse = await fetch(tokenUrl, tokenRequestInit);
+        tokenResponse = await fetchWithCustomTLS(tokenUrl, {
+          method: "POST",
+          headers: tokenRequestHeaders as Record<string, string>,
+          body: tokenRequestBody,
+          timeout: 10000,
+          allowInsecureTLS,
+        });
       } catch (fetchError) {
         const reason = fetchError instanceof Error ? `${fetchError.message}${fetchError.cause ? `; cause=${fetchError.cause}` : ""}` : String(fetchError);
         logger.error(`[OAUTH] Token request failed for ${mcpId}: ${reason}`);
@@ -362,9 +449,8 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         return;
       }
       
-      if (!tokenResponse.ok) {
-        const errorText = await tokenResponse.text();
-        logger.error(`[OAUTH] Token exchange failed: ${tokenResponse.status} ${errorText}`);
+      if (tokenResponse.status < 200 || tokenResponse.status >= 300) {
+        logger.error(`[OAUTH] Token exchange failed: ${tokenResponse.status} ${tokenResponse.statusText} - ${tokenResponse.body.substring(0, 500)}`);
         const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
         res.writeHead(302, {
           Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent("Failed to exchange authorization code")}`,
@@ -373,12 +459,29 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         return;
       }
       
-      const tokenData = await tokenResponse.json() as {
+      let tokenData: {
         access_token: string;
         refresh_token?: string;
         expires_in?: number;
         token_type?: string;
       };
+      try {
+        tokenData = JSON.parse(tokenResponse.body) as {
+          access_token: string;
+          refresh_token?: string;
+          expires_in?: number;
+          token_type?: string;
+        };
+      } catch (parseError) {
+        logger.error(`[OAUTH] Failed to parse token response JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+        logger.info(`[OAUTH] Response body: ${tokenResponse.body.substring(0, 500)}`);
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
+        res.writeHead(302, {
+          Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent("Invalid token response from OAuth provider")}`,
+        });
+        res.end();
+        return;
+      }
       
       logger.info(`[OAUTH] Token exchange successful for ${mcpId}. Token type: ${tokenData.token_type || "Bearer"}, Token length: ${tokenData.access_token?.length || 0}, Token prefix: ${tokenData.access_token?.substring(0, 10) || "none"}...`);
       
