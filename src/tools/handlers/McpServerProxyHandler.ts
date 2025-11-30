@@ -497,11 +497,23 @@ export class McpServerProxyManager {
                 );
               }
               if (response.status === 405) {
-                throw new Error(
-                  `Method not allowed (405). ` +
-                  `The server does not accept ${method} requests. ` +
-                  `MCP over HTTP typically uses POST for JSON-RPC messages.`
-                );
+                // For GET requests (typically SSE), some servers don't support GET
+                // Log a warning but don't fail - POST requests may still work
+                if (method === "GET") {
+                  logger.warn(
+                    `[MCP-GATEWAY] Server does not accept GET requests for ${url}. ` +
+                    `This may affect SSE streaming, but POST-based communication may still work.`
+                  );
+                  // Return the error response instead of throwing - let the SDK handle it
+                  // Some MCP servers work with POST-only communication
+                  return response;
+                } else {
+                  throw new Error(
+                    `Method not allowed (405). ` +
+                    `The server does not accept ${method} requests. ` +
+                    `MCP over HTTP typically uses POST for JSON-RPC messages.`
+                  );
+                }
               }
             }
             
@@ -707,14 +719,40 @@ export class McpServerProxyManager {
     // Connect - transport handles the connection automatically
     // Client.connect accepts both StdioClientTransport and StreamableHTTPClientTransport
     // Using 'as any' to work around TypeScript's strict type checking for union types
-    await client.connect(transport as any);
+    try {
+      await client.connect(transport as any);
+    } catch (connectError) {
+      // Some servers may have issues with SSE GET requests but still work for POST
+      // Log the error but continue - we can still try to discover tools
+      logger.warn(
+        `[MCP-GATEWAY] Connection warning for ${proxyConfig.name} (may still work):`,
+        connectError instanceof Error ? connectError.message : String(connectError)
+      );
+      // Continue anyway - listTools might still work
+    }
 
     // Store references
     this.transports.set(proxyConfig.name, transport);
     this.clients.set(proxyConfig.name, client);
 
     // Discover tools
-    const toolsList = await client.listTools();
+    // Use a timeout for listTools in case the connection has issues
+    const listToolsTimeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("listTools timeout")), 15000);
+    });
+    
+    let toolsList;
+    try {
+      toolsList = await Promise.race([
+        client.listTools(),
+        listToolsTimeout,
+      ]);
+    } catch (listError) {
+      // If listTools fails, try to disconnect and rethrow
+      logger.error(`[MCP-GATEWAY] Failed to list tools for ${proxyConfig.name}:`, listError);
+      throw listError;
+    }
+    
     const tools = toolsList.tools.map((tool) => ({
       name: tool.name,
       description: tool.description || "",

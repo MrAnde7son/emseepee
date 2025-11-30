@@ -165,12 +165,16 @@ export class ToolsRouteHandler extends BaseRouteHandler {
           throw new Error(`MCP server proxy ${proxyName} not found`);
         }
         
+        let discoveredTools: Array<{ name: string; description: string; inputSchema: unknown }> = [];
         try {
+          // Use a longer timeout for SSE connections (30 seconds)
+          // For stdio connections, this should be faster, but we use the same timeout
+          const timeoutMs = 30000;
           const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error("Connection timeout")), 5000);
+            setTimeout(() => reject(new Error(`Connection timeout after ${timeoutMs}ms`)), timeoutMs);
           });
           
-          const discoveredTools = await Promise.race([
+          discoveredTools = await Promise.race([
             proxyManager.connectAndDiscoverTools(freshProxyConfig),
             timeoutPromise,
           ]);
@@ -190,19 +194,55 @@ export class ToolsRouteHandler extends BaseRouteHandler {
               installed: isInstalled,
             });
           }
-          
-          await proxyManager.cleanup();
         } catch (error) {
           logger.warn(`[ToolsRouteHandler] Could not discover tools from MCP proxy ${proxyName}:`, error);
-          tools.push({
-            id: `mcp-${proxyName}`,
-            name: proxyName,
-            source: "mcp",
-            providerId: proxyName,
-            category: "mcp",
-            riskLevel: proxyConfig.defaultPolicy.sensitivity === "high" ? "high" : proxyConfig.defaultPolicy.sensitivity === "medium" ? "medium" : "low",
-            installed: true,
-          });
+          // If we discovered tools before timeout, still add them
+          if (discoveredTools.length > 0) {
+            for (const tool of discoveredTools) {
+              const sensitivity = proxyConfig.defaultPolicy.sensitivity;
+              const isToolDisabled = proxyConfig.disabledTools?.includes(tool.name) ?? false;
+              const isInstalled = !isToolDisabled;
+              
+              tools.push({
+                id: `${proxyName}:${tool.name}`,
+                name: tool.name,
+                source: "mcp",
+                providerId: proxyName,
+                category: "mcp",
+                riskLevel: sensitivity === "high" ? "high" : sensitivity === "medium" ? "medium" : "low",
+                installed: isInstalled,
+              });
+            }
+          } else {
+            // No tools discovered, add placeholder
+            tools.push({
+              id: `mcp-${proxyName}`,
+              name: proxyName,
+              source: "mcp",
+              providerId: proxyName,
+              category: "mcp",
+              riskLevel: proxyConfig.defaultPolicy.sensitivity === "high" ? "high" : proxyConfig.defaultPolicy.sensitivity === "medium" ? "medium" : "low",
+              installed: true,
+            });
+          }
+        } finally {
+          // Always disconnect the specific proxy, even if there was an error or timeout
+          // Use disconnect instead of cleanup to only close this specific connection
+          try {
+            const disconnectTimeout = new Promise<void>((resolve) => {
+              setTimeout(() => {
+                logger.warn(`[ToolsRouteHandler] Disconnect timeout for ${proxyName}, connection may remain open`);
+                resolve();
+              }, 3000);
+            });
+            
+            await Promise.race([
+              proxyManager.disconnect(proxyName),
+              disconnectTimeout,
+            ]);
+          } catch (disconnectError) {
+            logger.warn(`[ToolsRouteHandler] Error during disconnect for ${proxyName}:`, disconnectError);
+          }
         }
       } catch (error) {
         logger.warn(`[ToolsRouteHandler] Error loading MCP proxy ${proxyName}:`, error);
