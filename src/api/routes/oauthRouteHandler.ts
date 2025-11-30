@@ -381,7 +381,12 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       
       // Build token request
       const tokenGrantType = oauthConfig?.tokenGrantType || "authorization_code";
-      const tokenRequestContentType = oauthConfig?.tokenRequestContentType || "form";
+      // For dynamic OAuth, default to form encoding (OAuth 2.0 standard)
+      // For manual OAuth, use config value or default to form
+      // Notion's MCP server requires form encoding regardless of config
+      const tokenRequestContentType = useDynamicClient 
+        ? "form"  // Dynamic OAuth always uses form encoding
+        : (oauthConfig?.tokenRequestContentType || "form");
       const tokenAuthMethod = oauthConfig?.tokenAuthMethod || (oauthConfig?.provider === "notion" ? "basic" : "body");
       const tokenRequestHeaders: HeadersInit = {
         "Accept": "application/json",
@@ -403,12 +408,16 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       if (tokenAuthMethod === "basic" && clientSecret) {
         const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
         tokenRequestHeaders["Authorization"] = `Basic ${basicAuth}`;
+        // Some OAuth servers require client_id in body even with Basic auth
+        tokenParams.client_id = clientId;
       } else if (clientSecret) {
         tokenParams.client_id = clientId;
         tokenParams.client_secret = clientSecret;
-      } else if (!useDynamicClient) {
-        // Only add client_id if we have no secret and it's not a dynamic client
-        tokenParams.client_id = clientId;
+      } else {
+        // Always include client_id if we have it (for dynamic clients or when no secret)
+        if (clientId) {
+          tokenParams.client_id = clientId;
+        }
       }
       
       // Prepare body
