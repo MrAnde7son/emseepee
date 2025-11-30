@@ -1,11 +1,21 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getToolsByCategory, isThirdPartyToolConfig, getMcpServerProxies, type ToolCategory, type ThirdPartyToolConfig, type ToolPolicyConfig } from "../config.js";
+import {
+  getToolsByCategory,
+  isThirdPartyToolConfig,
+  getMcpServerProxies,
+  isOpenApiToolConfig,
+  isDeclarativeThirdPartyToolConfig,
+  type ToolCategory,
+  type ThirdPartyToolConfig,
+  type ToolPolicyConfig,
+} from "../config.js";
 import { logger } from "../logger.js";
 import { FileOperationsHandler } from "./handlers/FileOperationsHandler.js";
 import { WebOperationsHandler } from "./handlers/WebOperationsHandler.js";
 import { TerminalCommandsHandler } from "./handlers/TerminalCommandsHandler.js";
 import { GenericToolHandler } from "./handlers/GenericToolHandler.js";
+import { OpenApiToolGenerator, OpenApiToolHandler } from "./handlers/OpenApiToolHandler.js";
 import { McpServerProxyHandler, McpServerProxyManager } from "./handlers/McpServerProxyHandler.js";
 import { convertInputSchemaToZod } from "./schemaConverter.js";
 import type { AgentContext } from "./handlers/BaseGatewayHandler.js";
@@ -170,6 +180,31 @@ export async function registerThirdPartyTools(context: ToolRegistrationContext):
     // Skip if tool is not enabled (must be explicitly true)
     if (toolConfig.enabled !== true) {
       logger.info(`[MCP-GATEWAY] Skipping disabled third-party tool: ${toolName}`);
+      continue;
+    }
+
+    if (isOpenApiToolConfig(toolConfig)) {
+      const generator = new OpenApiToolGenerator(toolConfig);
+      const operations = await generator.getGeneratedTools();
+
+      for (const operation of operations) {
+        const handler = new OpenApiToolHandler(operation, toolConfig);
+        server.registerTool(
+          operation.name,
+          {
+            description: operation.description,
+            inputSchema: operation.inputSchema,
+          },
+          async (args) => handler.execute(getAgentContext(), args)
+        );
+
+        logger.info(`[MCP-GATEWAY] Registered OpenAPI tool: ${operation.name}`);
+      }
+      continue;
+    }
+
+    if (!isDeclarativeThirdPartyToolConfig(toolConfig)) {
+      logger.warn(`[MCP-GATEWAY] Tool ${toolName} has unsupported third-party configuration`);
       continue;
     }
 

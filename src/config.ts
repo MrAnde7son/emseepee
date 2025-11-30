@@ -2,7 +2,7 @@ import { logger } from "./logger.js";
 
 export type Sensitivity = "low" | "medium" | "high";
 export type ToolCategory = "file" | "web" | "terminal" | "third_party";
-export type ToolExecutionType = "http" | "command" | "custom";
+export type ToolExecutionType = "http" | "command" | "custom" | "openapi";
 export type PolicyOperation = "allow" | "log" | "block" | "webhook" | "custom";
 export type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "bedrock" | "copilot" | "langchain" | "custom";
 
@@ -140,6 +140,20 @@ export interface CustomExecutionConfig {
   config: Record<string, unknown>;
 }
 
+export interface OpenApiAuthConfig {
+  type: "oauth2" | "bearer" | "apiKey";
+  headerName?: string;
+  oauthProvider?: string;
+  token?: string;
+  tokenEnvVar?: string;
+}
+
+export interface OpenApiExecutionConfig {
+  type: "openapi";
+  openApiUrl: string;
+  auth?: OpenApiAuthConfig;
+}
+
 /**
  * Base policy configuration (for built-in tools)
  */
@@ -168,11 +182,18 @@ export interface ToolInputSchema {
 /**
  * Extended configuration for third-party tools with execution details
  */
-export interface ThirdPartyToolConfig extends ToolPolicyConfig {
+export interface DeclarativeThirdPartyToolConfig extends ToolPolicyConfig {
   category: "third_party";
   execution: HttpExecutionConfig | CommandExecutionConfig | CustomExecutionConfig;
   inputSchema: ToolInputSchema;
 }
+
+export interface OpenApiToolConfig extends ToolPolicyConfig {
+  category: "third_party";
+  execution: OpenApiExecutionConfig;
+}
+
+export type ThirdPartyToolConfig = DeclarativeThirdPartyToolConfig | OpenApiToolConfig;
 
 export interface ToolCategoryRegistry {
   [category: string]: Record<string, ToolPolicyConfig | ThirdPartyToolConfig>;
@@ -434,8 +455,31 @@ export async function getToolsByCategory(category: ToolCategory): Promise<Record
 /**
  * Type guard to check if a tool config is a third-party tool
  */
-export function isThirdPartyToolConfig(tool: ToolPolicyConfig | ThirdPartyToolConfig): tool is ThirdPartyToolConfig {
-  return tool.category === "third_party" && "execution" in tool && "inputSchema" in tool;
+export function isOpenApiToolConfig(
+  tool: ToolPolicyConfig | ThirdPartyToolConfig
+): tool is OpenApiToolConfig {
+  return (
+    (tool as ThirdPartyToolConfig).category === "third_party" &&
+    "execution" in tool &&
+    (tool as ThirdPartyToolConfig).execution?.type === "openapi"
+  );
+}
+
+export function isDeclarativeThirdPartyToolConfig(
+  tool: ToolPolicyConfig | ThirdPartyToolConfig
+): tool is DeclarativeThirdPartyToolConfig {
+  return (
+    (tool as ThirdPartyToolConfig).category === "third_party" &&
+    "execution" in tool &&
+    (tool as ThirdPartyToolConfig).execution?.type !== "openapi" &&
+    "inputSchema" in tool
+  );
+}
+
+export function isThirdPartyToolConfig(
+  tool: ToolPolicyConfig | ThirdPartyToolConfig
+): tool is ThirdPartyToolConfig {
+  return isOpenApiToolConfig(tool) || isDeclarativeThirdPartyToolConfig(tool);
 }
 
 /**

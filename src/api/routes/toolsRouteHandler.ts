@@ -1,7 +1,13 @@
 import { IncomingMessage, ServerResponse } from "http";
 import { URL } from "url";
 import { BaseRouteHandler } from "./baseRouteHandler.js";
-import { getToolRegistry, getMcpServerProxies, isThirdPartyToolConfig, clearConfigCache } from "../../config.js";
+import {
+  getToolRegistry,
+  getMcpServerProxies,
+  isThirdPartyToolConfig,
+  clearConfigCache,
+  isDeclarativeThirdPartyToolConfig,
+} from "../../config.js";
 import type { ToolInputSchema } from "../../config.js";
 import { logger } from "../../logger.js";
 import type { Tool, PaginatedResponse } from "../types.js";
@@ -284,10 +290,9 @@ export class ToolsRouteHandler extends BaseRouteHandler {
       if (categoryTools[toolId]) {
         const toolConfig = categoryTools[toolId];
         
-        if (category === "third_party" && isThirdPartyToolConfig(toolConfig) && toolConfig.inputSchema) {
+        if (category === "third_party" && isDeclarativeThirdPartyToolConfig(toolConfig)) {
           const schema: Record<string, { type: string; description?: string; required?: boolean }> = {};
-          const inputSchema = toolConfig.inputSchema as ToolInputSchema;
-          for (const [key, field] of Object.entries(inputSchema)) {
+          for (const [key, field] of Object.entries(toolConfig.inputSchema)) {
             schema[key] = {
               type: field.type,
               description: field.description,
