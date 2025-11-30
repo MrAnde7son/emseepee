@@ -30,7 +30,7 @@ Hakuna acts as an agent and MCP gateway and normalizes tool usage through an int
    ```bash
    pnpm start
    ```
-   You should see `Hakuna MCP Gateway server starting...` and the server will wait for MCP messages on stdio.
+   You should see `Hakuna Gateway server starting...` and the server will wait for MCP messages on stdio.
 5. **Hello world:**
    - Copy `.env.example` to `.env`, set `JWT_SECRET`, and add any API keys you need.
    - Use the default `config.json` (built-in tools are available immediately) and connect an MCP client such as Cursor to call a file read/write tool.

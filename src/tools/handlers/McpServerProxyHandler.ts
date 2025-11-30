@@ -5,6 +5,9 @@ import type { McpServerProxyConfig } from "../../config.js";
 import { BaseGatewayHandler, type AgentContext, type ToolExecutionResult } from "./BaseGatewayHandler.js";
 import { logger } from "../../logger.js";
 import type { ToolPolicyConfig } from "../../config.js";
+import https from "https";
+import http from "http";
+import { Agent as HttpsAgent } from "https";
 
 /**
  * Handler for proxying tool calls to an upstream MCP server
@@ -103,6 +106,158 @@ export class McpServerProxyHandler extends BaseGatewayHandler {
  *    - Supports custom headers via proxy config
  *    - Follows agentgateway patterns for SSE proxy implementation
  */
+// Lazy singleton for an insecure HTTPS agent (used only when explicitly allowed)
+let insecureAgent: HttpsAgent | null = null;
+function getInsecureAgent(): HttpsAgent {
+  if (!insecureAgent) {
+    insecureAgent = new HttpsAgent({ rejectUnauthorized: false });
+  }
+  return insecureAgent;
+}
+
+/**
+ * Custom fetch that supports insecure TLS for development
+ * Returns a Response-compatible object
+ */
+async function fetchWithCustomTLS(
+  url: string | URL,
+  init?: RequestInit & { allowInsecureTLS?: boolean }
+): Promise<Response> {
+  const urlObj = typeof url === "string" ? new URL(url) : url;
+  const isHttps = urlObj.protocol === "https:";
+  const client = isHttps ? https : http;
+  
+  const allowInsecureTLS = init?.allowInsecureTLS || 
+    process.env.MCP_ALLOW_INSECURE === "true" || 
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0";
+  
+  // Convert headers to plain object
+  let headersObj: Record<string, string> = {};
+  if (init?.headers) {
+    if (init.headers instanceof Headers) {
+      init.headers.forEach((value, key) => {
+        headersObj[key] = value;
+      });
+    } else if (Array.isArray(init.headers)) {
+      headersObj = Object.fromEntries(init.headers);
+    } else {
+      headersObj = init.headers as Record<string, string>;
+    }
+  }
+  
+  const requestOptions: https.RequestOptions = {
+    hostname: urlObj.hostname,
+    port: urlObj.port || (isHttps ? 443 : 80),
+    path: urlObj.pathname + urlObj.search,
+    method: init?.method || "GET",
+    headers: headersObj,
+  };
+
+  // Use insecure agent if allowed
+  if (isHttps && allowInsecureTLS) {
+    requestOptions.agent = getInsecureAgent();
+  }
+
+  const timeout = 30000; // 30 second timeout for MCP connections
+  let timeoutId: NodeJS.Timeout | null = null;
+
+  return new Promise((resolve, reject) => {
+    const req = client.request(requestOptions, (res) => {
+      // Check if this is an SSE stream (text/event-stream)
+      const contentType = res.headers["content-type"] || "";
+      const isSSEStream = contentType.includes("text/event-stream");
+      
+      if (isSSEStream) {
+        // For SSE streams, create a ReadableStream from the response
+        // Don't clear timeout for SSE - let it run until stream ends
+        const stream = new ReadableStream({
+          start(controller) {
+            res.on("data", (chunk: Buffer) => {
+              // Convert Buffer to Uint8Array for ReadableStream
+              controller.enqueue(new Uint8Array(chunk));
+            });
+            
+            res.on("end", () => {
+              if (timeoutId) clearTimeout(timeoutId);
+              controller.close();
+            });
+            
+            res.on("error", (error) => {
+              if (timeoutId) clearTimeout(timeoutId);
+              controller.error(error);
+            });
+          },
+          cancel() {
+            if (timeoutId) clearTimeout(timeoutId);
+            res.destroy();
+          },
+        });
+        
+        const response = new Response(stream, {
+          status: res.statusCode || 0,
+          statusText: res.statusMessage || "",
+          headers: res.headers as HeadersInit,
+        });
+        
+        resolve(response);
+      } else {
+        // For non-streaming responses, buffer the entire body
+        const chunks: Buffer[] = [];
+        
+        res.on("data", (chunk) => {
+          chunks.push(chunk);
+        });
+        
+        res.on("end", () => {
+          if (timeoutId) clearTimeout(timeoutId);
+          const body = Buffer.concat(chunks);
+          
+          // Create a Response object
+          const response = new Response(body, {
+            status: res.statusCode || 0,
+            statusText: res.statusMessage || "",
+            headers: res.headers as HeadersInit,
+          });
+          
+          resolve(response);
+        });
+        
+        res.on("error", (error) => {
+          if (timeoutId) clearTimeout(timeoutId);
+          reject(error);
+        });
+      }
+    });
+
+    req.on("error", (error) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      reject(error);
+    });
+
+    timeoutId = setTimeout(() => {
+      req.destroy();
+      reject(new Error(`Request timeout after ${timeout}ms while fetching ${urlObj.toString()}`));
+    }, timeout);
+
+    // Write body if present
+    if (init?.body) {
+      if (typeof init.body === "string") {
+        req.write(init.body);
+      } else if (init.body instanceof URLSearchParams) {
+        req.write(init.body.toString());
+      } else if (init.body instanceof FormData) {
+        // FormData handling would need additional logic
+        req.write(init.body);
+      } else {
+        // Assume it's a stream or buffer
+        req.write(init.body);
+      }
+    }
+
+    req.end();
+  });
+}
+
 export class McpServerProxyManager {
   private clients: Map<string, Client> = new Map();
   private transports: Map<string, StdioClientTransport | unknown> = new Map();
@@ -268,9 +423,14 @@ export class McpServerProxyManager {
             logger.info(`[MCP-GATEWAY] Request headers: ${JSON.stringify(headerNames)}`);
             logger.info(`[MCP-GATEWAY] Request body present: ${!!init?.body}`);
             
-            const response = await fetch(url, {
+            // Use custom fetch that supports insecure TLS
+            const allowInsecure = process.env.MCP_ALLOW_INSECURE === "true" || 
+                                 process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0";
+            
+            const response = await fetchWithCustomTLS(url, {
               ...init,
               headers: mergedHeaders,
+              allowInsecureTLS: allowInsecure,
             });
             
             logger.info(`[MCP-GATEWAY] Response status: ${response.status} ${response.statusText}`);
@@ -337,11 +497,23 @@ export class McpServerProxyManager {
                 );
               }
               if (response.status === 405) {
-                throw new Error(
-                  `Method not allowed (405). ` +
-                  `The server does not accept ${method} requests. ` +
-                  `MCP over HTTP typically uses POST for JSON-RPC messages.`
-                );
+                // For GET requests (typically SSE), some servers don't support GET
+                // Log a warning but don't fail - POST requests may still work
+                if (method === "GET") {
+                  logger.warn(
+                    `[MCP-GATEWAY] Server does not accept GET requests for ${url}. ` +
+                    `This may affect SSE streaming, but POST-based communication may still work.`
+                  );
+                  // Return the error response instead of throwing - let the SDK handle it
+                  // Some MCP servers work with POST-only communication
+                  return response;
+                } else {
+                  throw new Error(
+                    `Method not allowed (405). ` +
+                    `The server does not accept ${method} requests. ` +
+                    `MCP over HTTP typically uses POST for JSON-RPC messages.`
+                  );
+                }
               }
             }
             
@@ -357,7 +529,6 @@ export class McpServerProxyManager {
               errorMessage = fetchError.message || "";
               errorCode = (fetchError as any).code || "";
               
-              // Node.js fetch (undici) errors often have a 'cause' property with the underlying error
               if ((fetchError as any).cause instanceof Error) {
                 underlyingError = (fetchError as any).cause;
                 errorCode = (underlyingError as any).code || errorCode;
@@ -547,14 +718,40 @@ export class McpServerProxyManager {
     // Connect - transport handles the connection automatically
     // Client.connect accepts both StdioClientTransport and StreamableHTTPClientTransport
     // Using 'as any' to work around TypeScript's strict type checking for union types
-    await client.connect(transport as any);
+    try {
+      await client.connect(transport as any);
+    } catch (connectError) {
+      // Some servers may have issues with SSE GET requests but still work for POST
+      // Log the error but continue - we can still try to discover tools
+      logger.warn(
+        `[MCP-GATEWAY] Connection warning for ${proxyConfig.name} (may still work):`,
+        connectError instanceof Error ? connectError.message : String(connectError)
+      );
+      // Continue anyway - listTools might still work
+    }
 
     // Store references
     this.transports.set(proxyConfig.name, transport);
     this.clients.set(proxyConfig.name, client);
 
     // Discover tools
-    const toolsList = await client.listTools();
+    // Use a timeout for listTools in case the connection has issues
+    const listToolsTimeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("listTools timeout")), 15000);
+    });
+    
+    let toolsList;
+    try {
+      toolsList = await Promise.race([
+        client.listTools(),
+        listToolsTimeout,
+      ]);
+    } catch (listError) {
+      // If listTools fails, try to disconnect and rethrow
+      logger.error(`[MCP-GATEWAY] Failed to list tools for ${proxyConfig.name}:`, listError);
+      throw listError;
+    }
+    
     const tools = toolsList.tools.map((tool) => ({
       name: tool.name,
       description: tool.description || "",

@@ -1,14 +1,25 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { getToolsByCategory, isThirdPartyToolConfig, getMcpServerProxies, type ToolCategory, type ThirdPartyToolConfig, type ToolPolicyConfig } from "../config.js";
+import {
+  getToolsByCategory,
+  isThirdPartyToolConfig,
+  getMcpServerProxies,
+  isOpenApiToolConfig,
+  isDeclarativeThirdPartyToolConfig,
+  type ToolCategory,
+  type ThirdPartyToolConfig,
+  type ToolPolicyConfig,
+} from "../config.js";
 import { logger } from "../logger.js";
 import { FileOperationsHandler } from "./handlers/FileOperationsHandler.js";
 import { WebOperationsHandler } from "./handlers/WebOperationsHandler.js";
 import { TerminalCommandsHandler } from "./handlers/TerminalCommandsHandler.js";
 import { GenericToolHandler } from "./handlers/GenericToolHandler.js";
+import { OpenApiToolGenerator, OpenApiToolHandler } from "./handlers/OpenApiToolHandler.js";
 import { McpServerProxyHandler, McpServerProxyManager } from "./handlers/McpServerProxyHandler.js";
 import { convertInputSchemaToZod } from "./schemaConverter.js";
 import type { AgentContext } from "./handlers/BaseGatewayHandler.js";
+import { toolCache } from "./toolCache.js";
 
 // Global singleton manager instance
 let globalProxyManager: McpServerProxyManager | null = null;
@@ -173,6 +184,31 @@ export async function registerThirdPartyTools(context: ToolRegistrationContext):
       continue;
     }
 
+    if (isOpenApiToolConfig(toolConfig)) {
+      const generator = new OpenApiToolGenerator(toolConfig);
+      const operations = await generator.getGeneratedTools();
+
+      for (const operation of operations) {
+        const handler = new OpenApiToolHandler(operation, toolConfig);
+        server.registerTool(
+          operation.name,
+          {
+            description: operation.description,
+            inputSchema: operation.inputSchema,
+          },
+          async (args) => handler.execute(getAgentContext(), args)
+        );
+
+        logger.info(`[MCP-GATEWAY] Registered OpenAPI tool: ${operation.name}`);
+      }
+      continue;
+    }
+
+    if (!isDeclarativeThirdPartyToolConfig(toolConfig)) {
+      logger.warn(`[MCP-GATEWAY] Tool ${toolName} has unsupported third-party configuration`);
+      continue;
+    }
+
     // Create handler for this tool
     const handler = new GenericToolHandler(toolConfig);
 
@@ -228,6 +264,21 @@ export async function registerMcpServerProxies(
 
       // Connect and discover tools
       const discoveredTools = await proxyManager.connectAndDiscoverTools(proxyConfig);
+
+      // Cache discovered tools (tenant-aware)
+      // At startup, we don't have a tenant context, so use undefined
+      // Tools will be cached per-tenant when fetched via API
+      const tenantId = undefined; // Startup registration is global
+      toolCache.setTools(
+        proxyName,
+        discoveredTools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+        })),
+        proxyConfig,
+        tenantId
+      );
 
       // Register each discovered tool
       for (const tool of discoveredTools) {

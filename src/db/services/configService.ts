@@ -171,6 +171,27 @@ export async function getPolicyRulesFromDb(tenantId?: string): Promise<PolicyRul
 }
 
 /**
+ * Returns the distinct tenant IDs present across configuration-related tables.
+ * This is useful for operations that need to run for every tenant.
+ */
+export async function getDistinctTenantIds(): Promise<(string | null)[]> {
+  const query = `
+    SELECT DISTINCT tenant_id as "tenantId" FROM (
+      SELECT tenant_id FROM config
+      UNION
+      SELECT tenant_id FROM users
+      UNION
+      SELECT tenant_id FROM provider_configs
+      UNION
+      SELECT tenant_id FROM agents
+    ) t
+  `;
+
+  const results = await executeQuery<{ tenantId: string | null }>(query);
+  return results.map((row) => row.tenantId);
+}
+
+/**
  * Save policy rules to database
  */
 export async function savePolicyRulesToDb(rules: PolicyRule[], tenantId?: string): Promise<void> {

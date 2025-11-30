@@ -1,10 +1,17 @@
 import { IncomingMessage, ServerResponse } from "http";
 import { URL } from "url";
 import { BaseRouteHandler } from "./baseRouteHandler.js";
-import { getToolRegistry, getMcpServerProxies, isThirdPartyToolConfig, clearConfigCache } from "../../config.js";
+import {
+  getToolRegistry,
+  getMcpServerProxies,
+  isThirdPartyToolConfig,
+  clearConfigCache,
+  isDeclarativeThirdPartyToolConfig,
+} from "../../config.js";
 import type { ToolInputSchema } from "../../config.js";
 import { logger } from "../../logger.js";
 import type { Tool, PaginatedResponse } from "../types.js";
+import { toolCache } from "../../tools/toolCache.js";
 
 export class ToolsRouteHandler extends BaseRouteHandler {
   async handle(req: IncomingMessage, res: ServerResponse, path: string, method: string): Promise<boolean> {
@@ -153,28 +160,83 @@ export class ToolsRouteHandler extends BaseRouteHandler {
       }
       
       try {
-        // Clear config cache to ensure we have the latest headers (especially after OAuth)
-        clearConfigCache();
-        const { McpServerProxyManager } = await import("../../tools/handlers/McpServerProxyHandler.js");
-        const proxyManager = new McpServerProxyManager();
+        // Try to get cached tools first
+        let discoveredTools = toolCache.getTools(proxyName, tenantId);
         
-        // Reload config to get latest headers
-        const freshConfig = await getMcpServerProxies(tenantId);
-        const freshProxyConfig = freshConfig[proxyName];
-        if (!freshProxyConfig) {
-          throw new Error(`MCP server proxy ${proxyName} not found`);
+        if (!discoveredTools) {
+          // Cache miss - fetch tools and cache them
+          // This should rarely happen if tools were fetched at startup
+          logger.info(`[ToolsRouteHandler] Cache miss for ${proxyName}, fetching tools...`);
+          
+          // Clear config cache to ensure we have the latest headers (especially after OAuth)
+          clearConfigCache();
+          const { McpServerProxyManager } = await import("../../tools/handlers/McpServerProxyHandler.js");
+          const proxyManager = new McpServerProxyManager();
+          
+          // Reload config to get latest headers
+          const freshConfig = await getMcpServerProxies(tenantId);
+          const freshProxyConfig = freshConfig[proxyName];
+          if (!freshProxyConfig) {
+            throw new Error(`MCP server proxy ${proxyName} not found`);
+          }
+          
+          try {
+            // Use a longer timeout for SSE connections (30 seconds)
+            // For stdio connections, this should be faster, but we use the same timeout
+            const timeoutMs = 30000;
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new Error(`Connection timeout after ${timeoutMs}ms`)), timeoutMs);
+            });
+            
+            const fetchedTools = await Promise.race([
+              proxyManager.connectAndDiscoverTools(freshProxyConfig),
+              timeoutPromise,
+            ]);
+            
+            // Cache the discovered tools
+            toolCache.setTools(
+              proxyName,
+              fetchedTools.map((tool) => ({
+                name: tool.name,
+                description: tool.description,
+                inputSchema: tool.inputSchema,
+              })),
+              freshProxyConfig,
+              tenantId
+            );
+            
+            discoveredTools = fetchedTools.map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              inputSchema: tool.inputSchema,
+            }));
+          } catch (error) {
+            logger.warn(`[ToolsRouteHandler] Could not discover tools from MCP proxy ${proxyName}:`, error);
+            discoveredTools = [];
+          } finally {
+            // Always disconnect the specific proxy, even if there was an error or timeout
+            try {
+              const disconnectTimeout = new Promise<void>((resolve) => {
+                setTimeout(() => {
+                  logger.warn(`[ToolsRouteHandler] Disconnect timeout for ${proxyName}, connection may remain open`);
+                  resolve();
+                }, 3000);
+              });
+              
+              await Promise.race([
+                proxyManager.disconnect(proxyName),
+                disconnectTimeout,
+              ]);
+            } catch (disconnectError) {
+              logger.warn(`[ToolsRouteHandler] Error during disconnect for ${proxyName}:`, disconnectError);
+            }
+          }
+        } else {
+          logger.info(`[ToolsRouteHandler] Using cached tools for ${proxyName} (${discoveredTools.length} tools)`);
         }
         
-        try {
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error("Connection timeout")), 5000);
-          });
-          
-          const discoveredTools = await Promise.race([
-            proxyManager.connectAndDiscoverTools(freshProxyConfig),
-            timeoutPromise,
-          ]);
-          
+        // Add tools to the list
+        if (discoveredTools.length > 0) {
           for (const tool of discoveredTools) {
             const sensitivity = proxyConfig.defaultPolicy.sensitivity;
             const isToolDisabled = proxyConfig.disabledTools?.includes(tool.name) ?? false;
@@ -190,10 +252,8 @@ export class ToolsRouteHandler extends BaseRouteHandler {
               installed: isInstalled,
             });
           }
-          
-          await proxyManager.cleanup();
-        } catch (error) {
-          logger.warn(`[ToolsRouteHandler] Could not discover tools from MCP proxy ${proxyName}:`, error);
+        } else {
+          // No tools discovered, add placeholder
           tools.push({
             id: `mcp-${proxyName}`,
             name: proxyName,
@@ -244,10 +304,9 @@ export class ToolsRouteHandler extends BaseRouteHandler {
       if (categoryTools[toolId]) {
         const toolConfig = categoryTools[toolId];
         
-        if (category === "third_party" && isThirdPartyToolConfig(toolConfig) && toolConfig.inputSchema) {
+        if (category === "third_party" && isDeclarativeThirdPartyToolConfig(toolConfig)) {
           const schema: Record<string, { type: string; description?: string; required?: boolean }> = {};
-          const inputSchema = toolConfig.inputSchema as ToolInputSchema;
-          for (const [key, field] of Object.entries(inputSchema)) {
+          for (const [key, field] of Object.entries(toolConfig.inputSchema)) {
             schema[key] = {
               type: field.type,
               description: field.description,
@@ -293,17 +352,15 @@ export class ToolsRouteHandler extends BaseRouteHandler {
       }
     }
     
-    // Clear config cache and reload to ensure we have latest headers
-    clearConfigCache();
+    // Try to get schema from cache first
     const mcpProxies = await getMcpServerProxies(tenantId);
     for (const [proxyName, proxyConfig] of Object.entries(mcpProxies)) {
       if (proxyConfig.enabled === true) {
-        try {
-          const { McpServerProxyManager } = await import("../../tools/handlers/McpServerProxyHandler.js");
-          const proxyManager = new McpServerProxyManager();
-          const discoveredTools = await proxyManager.connectAndDiscoverTools(proxyConfig);
-          
-          for (const tool of discoveredTools) {
+        // Try cache first
+        const cachedTools = toolCache.getTools(proxyName, tenantId);
+        
+        if (cachedTools) {
+          for (const tool of cachedTools) {
             if (tool.name === toolId || `${proxyName}:${tool.name}` === toolId) {
               const schema: Record<string, { type: string; description?: string; required?: boolean }> = {};
               
@@ -321,14 +378,58 @@ export class ToolsRouteHandler extends BaseRouteHandler {
                 }
               }
               
-              await proxyManager.cleanup();
               return schema;
             }
           }
-          
-          await proxyManager.cleanup();
-        } catch (error) {
-          // Continue to next proxy
+        } else {
+          // Cache miss - fetch tools (should rarely happen)
+          logger.info(`[ToolsRouteHandler] Cache miss for ${proxyName} in getToolInputSchema, fetching...`);
+          try {
+            clearConfigCache();
+            const { McpServerProxyManager } = await import("../../tools/handlers/McpServerProxyHandler.js");
+            const proxyManager = new McpServerProxyManager();
+            const discoveredTools = await proxyManager.connectAndDiscoverTools(proxyConfig);
+            
+            // Cache the tools
+            toolCache.setTools(
+              proxyName,
+              discoveredTools.map((tool) => ({
+                name: tool.name,
+                description: tool.description,
+                inputSchema: tool.inputSchema,
+              })),
+              proxyConfig,
+              tenantId
+            );
+            
+            for (const tool of discoveredTools) {
+              if (tool.name === toolId || `${proxyName}:${tool.name}` === toolId) {
+                const schema: Record<string, { type: string; description?: string; required?: boolean }> = {};
+                
+                if (tool.inputSchema && typeof tool.inputSchema === "object" && "properties" in tool.inputSchema) {
+                  const properties = (tool.inputSchema as any).properties || {};
+                  const required = (tool.inputSchema as any).required || [];
+                  
+                  for (const [key, prop] of Object.entries(properties)) {
+                    const propObj = prop as any;
+                    schema[key] = {
+                      type: propObj.type || "string",
+                      description: propObj.description,
+                      required: required.includes(key),
+                    };
+                  }
+                }
+                
+                await proxyManager.cleanup();
+                return schema;
+              }
+            }
+            
+            await proxyManager.cleanup();
+          } catch (error) {
+            // Continue to next proxy
+            logger.warn(`[ToolsRouteHandler] Error fetching tools for ${proxyName}:`, error);
+          }
         }
       }
     }
