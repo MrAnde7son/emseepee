@@ -2,7 +2,7 @@ import { logger } from "./logger.js";
 
 export type Sensitivity = "low" | "medium" | "high";
 export type ToolCategory = "file" | "web" | "terminal" | "third_party";
-export type ToolExecutionType = "http" | "command" | "custom" | "openapi";
+export type ToolExecutionType = "http" | "command" | "custom" | "openapi" | "a2a";
 export type PolicyOperation = "allow" | "log" | "block" | "webhook" | "custom";
 export type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "bedrock" | "copilot" | "langchain" | "custom";
 
@@ -155,6 +155,47 @@ export interface OpenApiExecutionConfig {
 }
 
 /**
+ * Authentication configuration for A2A execution
+ */
+export interface A2aAuthConfig {
+  type: "bearer";
+  envVar: string; // Environment variable containing the token
+  headerName?: string; // Header to place the token in (default: Authorization)
+  scheme?: string; // Authentication scheme prefix (default: Bearer)
+}
+
+/**
+ * Authentication configuration for A2A execution
+ */
+export interface A2aAuthConfig {
+  type: "bearer";
+  envVar: string; // Environment variable containing the token
+  headerName?: string; // Header to place the token in (default: Authorization)
+  scheme?: string; // Authentication scheme prefix (default: Bearer)
+}
+
+/**
+ * Agent-to-Agent (A2A) execution configuration
+ * 
+ * The endpoint should be the base URL of the A2A agent (e.g., https://agent.example.com).
+ * The implementation will construct the proper A2A message endpoint automatically.
+ * 
+ * According to A2A protocol:
+ * - Agent card is available at /.well-known/agent.json
+ * - Messages are sent via POST to the base URL or /message endpoint
+ */
+export interface A2aExecutionConfig {
+  type: "a2a";
+  endpoint: string; // Base URL of the remote A2A agent (e.g., https://agent.example.com)
+  messageEndpoint?: string; // Optional: custom message endpoint path (default: "/" or "/message")
+  protocol?: string; // Protocol version/identifier (e.g., "0.2.5")
+  providerId?: string; // Target provider identifier
+  auth?: A2aAuthConfig; // Authentication for the remote agent
+  timeoutMs?: number; // Request timeout in milliseconds
+  metadata?: Record<string, unknown>; // Additional metadata to send alongside the call
+}
+
+/**
  * Base policy configuration (for built-in tools)
  */
 export interface ToolPolicyConfig {
@@ -184,7 +225,7 @@ export interface ToolInputSchema {
  */
 export interface DeclarativeThirdPartyToolConfig extends ToolPolicyConfig {
   category: "third_party";
-  execution: HttpExecutionConfig | CommandExecutionConfig | CustomExecutionConfig;
+  execution: HttpExecutionConfig | CommandExecutionConfig | CustomExecutionConfig | A2aExecutionConfig;
   inputSchema: ToolInputSchema;
 }
 
