@@ -68,7 +68,7 @@ async function main() {
   startConfigWatcher();
 
   const transport = new StdioServerTransport();
-  logger.info("Hakuna MCP Gateway server starting...");
+  logger.info("Hakuna Gateway server starting...");
   await server.connect(transport);
 }
 
