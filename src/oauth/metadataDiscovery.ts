@@ -1,4 +1,7 @@
 import { logger } from "../logger.js";
+import https from "https";
+import http from "http";
+import { Agent as HttpsAgent } from "https";
 
 export interface OAuthMetadata {
   issuer?: string;
@@ -14,6 +17,15 @@ export interface OAuthMetadata {
 
 const metadataCache = new Map<string, OAuthMetadata | null>();
 
+// Lazy singleton for an insecure HTTPS agent (used only when explicitly allowed)
+let insecureAgent: HttpsAgent | null = null;
+function getInsecureAgent(): HttpsAgent {
+  if (!insecureAgent) {
+    insecureAgent = new HttpsAgent({ rejectUnauthorized: false });
+  }
+  return insecureAgent;
+}
+
 function buildDiscoveryUrls(serverUrl: string): string[] {
   try {
     const url = new URL(serverUrl);
@@ -25,6 +37,82 @@ function buildDiscoveryUrls(serverUrl: string): string[] {
     logger.warn(`[OAUTH] Invalid server URL for discovery: ${serverUrl}`, error);
     return [];
   }
+}
+
+/**
+ * Fetch using Node's https/http modules with support for insecure TLS
+ */
+async function fetchWithCustomTLS(url: string, options: { timeout?: number; allowInsecureTLS?: boolean } = {}): Promise<{ status: number; statusText: string; body: string; headers: Record<string, string> }> {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const isHttps = urlObj.protocol === "https:";
+    const client = isHttps ? https : http;
+    
+    const requestOptions: https.RequestOptions = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || (isHttps ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "hakuna-mcp-gateway/1.0",
+      },
+    };
+
+    // Use insecure agent if allowed
+    if (isHttps && options.allowInsecureTLS) {
+      requestOptions.agent = getInsecureAgent();
+    }
+
+    const timeout = options.timeout || 10000;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    const req = client.request(requestOptions, (res) => {
+      const chunks: Buffer[] = [];
+      
+      res.on("data", (chunk) => {
+        chunks.push(chunk);
+      });
+      
+      res.on("end", () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        const body = Buffer.concat(chunks).toString();
+        const headers: Record<string, string> = {};
+        
+        // Handle headers (support both headersDistinct and headers for compatibility)
+        if (res.headersDistinct) {
+          Object.keys(res.headersDistinct).forEach((key) => {
+            const values = res.headersDistinct![key];
+            headers[key] = Array.isArray(values) ? values.join(", ") : values || "";
+          });
+        } else if (res.headers) {
+          Object.keys(res.headers).forEach((key) => {
+            const value = res.headers[key];
+            headers[key] = Array.isArray(value) ? value.join(", ") : value || "";
+          });
+        }
+        
+        resolve({
+          status: res.statusCode || 0,
+          statusText: res.statusMessage || "",
+          body,
+          headers,
+        });
+      });
+    });
+
+    req.on("error", (error) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      reject(error);
+    });
+
+    timeoutId = setTimeout(() => {
+      req.destroy();
+      reject(new Error(`Request timeout after ${timeout}ms while fetching ${url}`));
+    }, timeout);
+
+    req.end();
+  });
 }
 
 export async function discoverMcpOAuthMetadata(serverUrl: string): Promise<OAuthMetadata | null> {
@@ -39,7 +127,7 @@ export async function discoverMcpOAuthMetadata(serverUrl: string): Promise<OAuth
     return null;
   }
 
-  // Check if insecure TLS is allowed (affects global Node.js behavior)
+  // Check if insecure TLS is allowed
   const allowInsecureTLS = process.env.OAUTH_ALLOW_INSECURE_TLS === "true" || process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0";
   if (allowInsecureTLS) {
     logger.warn("[OAUTH] Insecure TLS is enabled (NODE_TLS_REJECT_UNAUTHORIZED=0 or OAUTH_ALLOW_INSECURE_TLS=true); DO NOT use in production");
@@ -49,42 +137,26 @@ export async function discoverMcpOAuthMetadata(serverUrl: string): Promise<OAuth
     try {
       logger.info(`[OAUTH] Attempting to discover OAuth metadata from ${endpoint}`);
       
-      // Create AbortController for timeout (more compatible than AbortSignal.timeout)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const response = await fetchWithCustomTLS(endpoint, {
+        timeout: 10000,
+        allowInsecureTLS,
+      });
       
-      const fetchOptions: RequestInit = {
-        headers: { 
-          Accept: "application/json",
-          "User-Agent": "hakuna-mcp-gateway/1.0",
-        },
-        signal: controller.signal,
-      };
-
-      let response: Response;
-      try {
-        response = await fetch(endpoint, fetchOptions);
-        clearTimeout(timeoutId);
-      } catch (fetchError) {
-        clearTimeout(timeoutId);
-        
-        // Check if it's a timeout
-        if (fetchError instanceof Error && (fetchError.name === "AbortError" || fetchError.message.includes("aborted"))) {
-          throw new Error(`Request timeout after 10s while fetching ${endpoint}`);
-        }
-        
-        // Re-throw to be caught by outer catch
-        throw fetchError;
-      }
-      
-      if (!response.ok) {
+      if (response.status < 200 || response.status >= 300) {
         logger.info(`[OAUTH] Discovery endpoint ${endpoint} returned ${response.status} ${response.statusText}`);
-        const text = await response.text().catch(() => "");
-        logger.info(`[OAUTH] Response body: ${text.substring(0, 200)}`);
+        logger.info(`[OAUTH] Response body: ${response.body.substring(0, 200)}`);
         continue;
       }
 
-      const data = await response.json() as OAuthMetadata;
+      let data: OAuthMetadata;
+      try {
+        data = JSON.parse(response.body) as OAuthMetadata;
+      } catch (parseError) {
+        logger.error(`[OAUTH] Failed to parse JSON response from ${endpoint}: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+        logger.info(`[OAUTH] Response body: ${response.body.substring(0, 500)}`);
+        continue;
+      }
+
       if (data.authorization_endpoint && data.token_endpoint) {
         metadataCache.set(serverUrl, data);
         logger.info(`[OAUTH] Discovered OAuth metadata for ${serverUrl} via ${endpoint}`);

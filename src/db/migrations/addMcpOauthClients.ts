@@ -13,7 +13,7 @@ async function tableExistsPostgres(table: string): Promise<boolean> {
 }
 
 async function tableExistsSqlite(table: string): Promise<boolean> {
-  const result = await executeQuery<{ name: string }>(`SELECT name FROM sqlite_master WHERE type='table' AND name=$1`, [table]);
+  const result = await executeQuery<{ name: string }>(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, [table]);
   return result.length > 0;
 }
 
