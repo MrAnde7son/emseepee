@@ -163,25 +163,70 @@ async function fetchWithCustomTLS(
 
   return new Promise((resolve, reject) => {
     const req = client.request(requestOptions, (res) => {
-      const chunks: Buffer[] = [];
+      // Check if this is an SSE stream (text/event-stream)
+      const contentType = res.headers["content-type"] || "";
+      const isSSEStream = contentType.includes("text/event-stream");
       
-      res.on("data", (chunk) => {
-        chunks.push(chunk);
-      });
-      
-      res.on("end", () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        const body = Buffer.concat(chunks);
+      if (isSSEStream) {
+        // For SSE streams, create a ReadableStream from the response
+        // Don't clear timeout for SSE - let it run until stream ends
+        const stream = new ReadableStream({
+          start(controller) {
+            res.on("data", (chunk: Buffer) => {
+              // Convert Buffer to Uint8Array for ReadableStream
+              controller.enqueue(new Uint8Array(chunk));
+            });
+            
+            res.on("end", () => {
+              if (timeoutId) clearTimeout(timeoutId);
+              controller.close();
+            });
+            
+            res.on("error", (error) => {
+              if (timeoutId) clearTimeout(timeoutId);
+              controller.error(error);
+            });
+          },
+          cancel() {
+            if (timeoutId) clearTimeout(timeoutId);
+            res.destroy();
+          },
+        });
         
-        // Create a Response-like object
-        const response = new Response(body, {
+        const response = new Response(stream, {
           status: res.statusCode || 0,
           statusText: res.statusMessage || "",
           headers: res.headers as HeadersInit,
         });
         
         resolve(response);
-      });
+      } else {
+        // For non-streaming responses, buffer the entire body
+        const chunks: Buffer[] = [];
+        
+        res.on("data", (chunk) => {
+          chunks.push(chunk);
+        });
+        
+        res.on("end", () => {
+          if (timeoutId) clearTimeout(timeoutId);
+          const body = Buffer.concat(chunks);
+          
+          // Create a Response object
+          const response = new Response(body, {
+            status: res.statusCode || 0,
+            statusText: res.statusMessage || "",
+            headers: res.headers as HeadersInit,
+          });
+          
+          resolve(response);
+        });
+        
+        res.on("error", (error) => {
+          if (timeoutId) clearTimeout(timeoutId);
+          reject(error);
+        });
+      }
     });
 
     req.on("error", (error) => {
