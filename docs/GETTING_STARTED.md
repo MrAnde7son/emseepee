@@ -16,7 +16,7 @@ pnpm run build
 ```bash
 pnpm start
 ```
-You should see `Hakuna MCP Gateway server starting...` and the server will await MCP traffic on stdio.
+You should see `Hakuna Gateway server starting...` and the server will await MCP traffic on stdio.
 
 ## Dashboard (optional)
 The dashboard lets you administer tools and policies visually.

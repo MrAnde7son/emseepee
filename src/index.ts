@@ -68,7 +68,7 @@ async function main() {
   startConfigWatcher();
 
   const transport = new StdioServerTransport();
-  logger.info("Hakuna MCP Gateway server starting...");
+  logger.info("Hakuna Gateway server starting...");
   await server.connect(transport);
 }
 
@@ -102,6 +102,8 @@ async function initialize() {
         await addOwnerColumnToAgents();
         const { addTenantSupport } = await import("./db/migrations/addTenantSupport.js");
         await addTenantSupport();
+        const { addMcpOauthClients } = await import("./db/migrations/addMcpOauthClients.js");
+        await addMcpOauthClients();
       } catch (error) {
         logger.warn("[DB] Migration failed (non-critical):", error);
         // Continue anyway - migration failures shouldn't block startup

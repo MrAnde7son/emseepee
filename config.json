@@ -4,7 +4,6 @@
       "name": "github",
       "description": "GitHub MCP server for repository operations",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/github.svg",
-      "command": "docker",
       "serverUrl": "https://api.githubcopilot.com/mcp/",
       "enabled": false,
       "defaultPolicy": {
@@ -444,16 +443,9 @@
       "name": "snowflake",
       "description": "Snowflake MCP server for queries, tables, and pipelines",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/snowflake.svg",
-      "command": "docker",
-      "args": [
-        "run", "--rm", "-i",
-        "mcp/snowflake"
-      ],
-      "env": {
-        "SNOWFLAKE_ACCOUNT": "",
-        "SNOWFLAKE_USER": "",
-        "SNOWFLAKE_PASSWORD": "",
-        "SNOWFLAKE_WAREHOUSE": ""
+      "serverUrl": "https://<ACCOUNT>.<REGION>.snowflakecomputing.com/api/v2/databases/MCP/schemas/MCP_SERVERS/mcp-servers/SNOWFLAKE_MCP_SERVER",
+      "headers": {
+        "Authorization": "Bearer ${SNOWFLAKE_PAT}"
       },
       "enabled": false,
       "defaultPolicy": {

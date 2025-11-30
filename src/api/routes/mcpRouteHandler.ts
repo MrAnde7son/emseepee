@@ -5,6 +5,7 @@ import { getMcpServerProxies } from "../../config.js";
 import { clearConfigCache } from "../../config.js";
 import type { Sensitivity, OAuthConfig } from "../../config.js";
 import { ErrorHandler } from "../middleware/errorHandler.js";
+import { toolCache } from "../../tools/toolCache.js";
 
 export class McpRouteHandler extends BaseRouteHandler {
   async handle(req: IncomingMessage, res: ServerResponse, path: string, method: string): Promise<boolean> {
@@ -158,6 +159,9 @@ export class McpRouteHandler extends BaseRouteHandler {
       await saveMcpServerProxiesToDb(mcpProxies, tenantId);
       clearConfigCache(tenantId);
       
+      // Invalidate cache so tools are re-fetched when enabled
+      toolCache.invalidate(mcpId, tenantId);
+      
       return { success: true };
     } catch (error) {
       return {
@@ -179,6 +183,9 @@ export class McpRouteHandler extends BaseRouteHandler {
       mcpProxies[mcpId].enabled = false;
       await saveMcpServerProxiesToDb(mcpProxies, tenantId);
       clearConfigCache(tenantId);
+      
+      // Invalidate cache when disabled
+      toolCache.invalidate(mcpId, tenantId);
       
       return { success: true };
     } catch (error) {
@@ -330,6 +337,9 @@ export class McpRouteHandler extends BaseRouteHandler {
     
     await saveMcpServerProxiesToDb(mcpProxies, tenantId);
     clearConfigCache(tenantId);
+    
+    // Invalidate cache when config is updated (tools may have changed)
+    toolCache.invalidate(mcpId, tenantId);
     
     return {
       id: mcpId,

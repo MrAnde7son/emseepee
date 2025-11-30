@@ -106,6 +106,24 @@ export async function createSchema(): Promise<void> {
     `);
 
     await executeUpdate(`
+      CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
+        id SERIAL PRIMARY KEY,
+        mcp_id VARCHAR(255) NOT NULL,
+        tenant_id VARCHAR(255),
+        client_id VARCHAR(255) NOT NULL,
+        client_secret VARCHAR(255),
+        registration_client_uri VARCHAR(1024),
+        registration_access_token VARCHAR(1024),
+        redirect_uri VARCHAR(1024),
+        issuer VARCHAR(1024),
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (mcp_id, tenant_id)
+      )
+    `);
+
+    await executeUpdate(`
       CREATE INDEX IF NOT EXISTS idx_provider_configs_provider_id ON provider_configs(provider_id);
       CREATE INDEX IF NOT EXISTS idx_provider_configs_tenant_id ON provider_configs(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_provider_configs_enabled ON provider_configs(enabled);
@@ -201,6 +219,24 @@ export async function createSchema(): Promise<void> {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (provider_id, tenant_id)
+      )
+    `);
+
+    await executeUpdate(`
+      CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mcp_id TEXT NOT NULL,
+        tenant_id TEXT,
+        client_id TEXT NOT NULL,
+        client_secret TEXT,
+        registration_client_uri TEXT,
+        registration_access_token TEXT,
+        redirect_uri TEXT,
+        issuer TEXT,
+        metadata TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (mcp_id, tenant_id)
       )
     `);
 

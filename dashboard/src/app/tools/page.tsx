@@ -1144,150 +1144,163 @@ export default function ToolsPage() {
                             </div>
                             
                             {/* OAuth Authentication Section */}
-                            {mcpDetails.oauth && (
+                            {/* Show OAuth section if oauth config exists OR if serverUrl exists (for dynamic OAuth) */}
+                            {(mcpDetails.oauth || mcpDetails.serverUrl) && (
                               <div className="flex items-start gap-2 pt-2 border-t">
                                 <span className="font-medium min-w-[100px] pt-2">OAuth:</span>
                                 <div className="flex-1 space-y-3">
-                                  {/* OAuth Client ID Configuration */}
-                                  <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                      <label className="text-sm font-medium min-w-[120px]">
-                                        Client ID:
-                                      </label>
-                                      {isEditingConfig ? (
-                                        <div className="flex-1 space-y-1">
-                                          <Input
-                                            type="text"
-                                            value={editedConfig.oauth?.clientId || mcpDetails.oauth.clientId || ""}
-                                            onChange={(e) => {
-                                              setEditedConfig({
-                                                ...editedConfig,
-                                                oauth: {
-                                                  ...mcpDetails.oauth!,
-                                                  ...editedConfig.oauth,
-                                                  clientId: e.target.value || undefined,
-                                                },
-                                              });
-                                            }}
-                                            placeholder="Enter OAuth client ID"
-                                            className="flex-1"
-                                          />
-                                          {(() => {
-                                            const { clientIdHelpText, clientIdHelpUrl } = mcpDetails.oauth;
-                                            
-                                            if (clientIdHelpText) {
-                                              // Check if help text contains {link} placeholder
-                                              if (clientIdHelpText.includes("{link}") && clientIdHelpUrl) {
-                                                const parts = clientIdHelpText.split("{link}");
-                                                const displayUrl = clientIdHelpUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
+                                  {/* Only show Client ID/Secret configuration for manual OAuth */}
+                                  {mcpDetails.oauth && (
+                                    <>
+                                      {/* OAuth Client ID Configuration */}
+                                      <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-sm font-medium min-w-[120px]">
+                                            Client ID:
+                                          </label>
+                                          {isEditingConfig ? (
+                                            <div className="flex-1 space-y-1">
+                                              <Input
+                                                type="text"
+                                                value={editedConfig.oauth?.clientId || mcpDetails.oauth.clientId || ""}
+                                                onChange={(e) => {
+                                                  setEditedConfig({
+                                                    ...editedConfig,
+                                                    oauth: {
+                                                      ...mcpDetails.oauth!,
+                                                      ...editedConfig.oauth,
+                                                      clientId: e.target.value || undefined,
+                                                    },
+                                                  });
+                                                }}
+                                                placeholder="Enter OAuth client ID"
+                                                className="flex-1"
+                                              />
+                                              {(() => {
+                                                const { clientIdHelpText, clientIdHelpUrl } = mcpDetails.oauth;
+                                                
+                                                if (clientIdHelpText) {
+                                                  // Check if help text contains {link} placeholder
+                                                  if (clientIdHelpText.includes("{link}") && clientIdHelpUrl) {
+                                                    const parts = clientIdHelpText.split("{link}");
+                                                    const displayUrl = clientIdHelpUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
+                                                    return (
+                                                      <p className="text-xs text-muted-foreground">
+                                                        {parts[0]}
+                                                        <a
+                                                          href={clientIdHelpUrl}
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          className="text-primary hover:underline"
+                                                        >
+                                                          {displayUrl}
+                                                        </a>
+                                                        {parts[1]}
+                                                      </p>
+                                                    );
+                                                  }
+                                                  // Plain text without link placeholder
+                                                  return (
+                                                    <p className="text-xs text-muted-foreground">
+                                                      {clientIdHelpText}
+                                                    </p>
+                                                  );
+                                                }
+                                                
+                                                // Fallback: use URL if provided
+                                                if (clientIdHelpUrl) {
+                                                  const displayUrl = clientIdHelpUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
+                                                  return (
+                                                    <p className="text-xs text-muted-foreground">
+                                                      Get this from your OAuth provider at{" "}
+                                                      <a
+                                                        href={clientIdHelpUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-primary hover:underline"
+                                                      >
+                                                        {displayUrl}
+                                                      </a>
+                                                    </p>
+                                                  );
+                                                }
+                                                
+                                                // Default fallback
                                                 return (
                                                   <p className="text-xs text-muted-foreground">
-                                                    {parts[0]}
-                                                    <a
-                                                      href={clientIdHelpUrl}
-                                                      target="_blank"
-                                                      rel="noopener noreferrer"
-                                                      className="text-primary hover:underline"
-                                                    >
-                                                      {displayUrl}
-                                                    </a>
-                                                    {parts[1]}
+                                                    Get this from your OAuth provider.
                                                   </p>
                                                 );
-                                              }
-                                              // Plain text without link placeholder
-                                              return (
-                                                <p className="text-xs text-muted-foreground">
-                                                  {clientIdHelpText}
-                                                </p>
-                                              );
-                                            }
-                                            
-                                            // Fallback: use URL if provided
-                                            if (clientIdHelpUrl) {
-                                              const displayUrl = clientIdHelpUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
-                                              return (
-                                                <p className="text-xs text-muted-foreground">
-                                                  Get this from your OAuth provider at{" "}
-                                                  <a
-                                                    href={clientIdHelpUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-primary hover:underline"
-                                                  >
-                                                    {displayUrl}
-                                                  </a>
-                                                </p>
-                                              );
-                                            }
-                                            
-                                            // Default fallback
-                                            return (
-                                              <p className="text-xs text-muted-foreground">
-                                                Get this from your OAuth provider.
-                                              </p>
-                                            );
-                                          })()}
-                                        </div>
-                                      ) : (
-                                        <div className="flex-1">
-                                          {mcpDetails.oauth.clientId ? (
-                                            <code className="bg-muted px-2 py-1 rounded text-xs">
-                                              {mcpDetails.oauth.clientId}
-                                            </code>
+                                              })()}
+                                            </div>
                                           ) : (
-                                            <span className="text-xs text-muted-foreground italic">
-                                              Not configured (will use {mcpDetails.id.toUpperCase()}_OAUTH_CLIENT_ID env var)
-                                            </span>
+                                            <div className="flex-1">
+                                              {mcpDetails.oauth.clientId ? (
+                                                <code className="bg-muted px-2 py-1 rounded text-xs">
+                                                  {mcpDetails.oauth.clientId}
+                                                </code>
+                                              ) : (
+                                                <span className="text-xs text-muted-foreground italic">
+                                                  Not configured (will use {mcpDetails.id.toUpperCase()}_OAUTH_CLIENT_ID env var)
+                                                </span>
+                                              )}
+                                            </div>
                                           )}
                                         </div>
-                                      )}
-                                    </div>
-                                  </div>
+                                      </div>
 
-                                  {/* OAuth Client Secret Configuration */}
-                                  <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                      <label className="text-sm font-medium min-w-[120px]">
-                                        Client Secret:
-                                      </label>
-                                      {isEditingConfig ? (
-                                        <div className="flex-1 space-y-1">
-                                          <Input
-                                            type="password"
-                                            value={editedConfig.oauth?.clientSecret || mcpDetails.oauth.clientSecret || ""}
-                                            onChange={(e) => {
-                                              setEditedConfig({
-                                                ...editedConfig,
-                                                oauth: {
-                                                  ...mcpDetails.oauth!,
-                                                  ...editedConfig.oauth,
-                                                  clientSecret: e.target.value || undefined,
-                                                },
-                                              });
-                                            }}
-                                            placeholder="Enter OAuth client secret"
-                                            className="flex-1"
-                                          />
-                                          <p className="text-xs text-muted-foreground">
-                                            Keep this secret secure. It will be stored in the configuration.
-                                          </p>
-                                        </div>
-                                      ) : (
-                                        <div className="flex-1">
-                                          {mcpDetails.oauth.clientSecret ? (
-                                            <code className="bg-muted px-2 py-1 rounded text-xs">
-                                              •••••••••••••••••
-                                            </code>
+                                      {/* OAuth Client Secret Configuration */}
+                                      <div className="space-y-2">
+                                        <div className="flex items-center gap-2">
+                                          <label className="text-sm font-medium min-w-[120px]">
+                                            Client Secret:
+                                          </label>
+                                          {isEditingConfig ? (
+                                            <div className="flex-1 space-y-1">
+                                              <Input
+                                                type="password"
+                                                value={editedConfig.oauth?.clientSecret || mcpDetails.oauth.clientSecret || ""}
+                                                onChange={(e) => {
+                                                  setEditedConfig({
+                                                    ...editedConfig,
+                                                    oauth: {
+                                                      ...mcpDetails.oauth!,
+                                                      ...editedConfig.oauth,
+                                                      clientSecret: e.target.value || undefined,
+                                                    },
+                                                  });
+                                                }}
+                                                placeholder="Enter OAuth client secret"
+                                                className="flex-1"
+                                              />
+                                              <p className="text-xs text-muted-foreground">
+                                                Keep this secret secure. It will be stored in the configuration.
+                                              </p>
+                                            </div>
                                           ) : (
-                                            <span className="text-xs text-muted-foreground italic">
-                                              Not configured (will use {mcpDetails.id.toUpperCase()}_OAUTH_CLIENT_SECRET env var)
-                                            </span>
+                                            <div className="flex-1">
+                                              {mcpDetails.oauth.clientSecret ? (
+                                                <code className="bg-muted px-2 py-1 rounded text-xs">
+                                                  •••••••••••••••••
+                                                </code>
+                                              ) : (
+                                                <span className="text-xs text-muted-foreground italic">
+                                                  Not configured (will use {mcpDetails.id.toUpperCase()}_OAUTH_CLIENT_SECRET env var)
+                                                </span>
+                                              )}
+                                            </div>
                                           )}
                                         </div>
-                                      )}
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {/* Show info message for dynamic OAuth */}
+                                  {!mcpDetails.oauth && mcpDetails.serverUrl && (
+                                    <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                                      This MCP server supports dynamic OAuth. Client credentials will be automatically discovered and registered.
                                     </div>
-                                  </div>
+                                  )}
 
                                   {/* OAuth Status and Actions */}
                                   {(() => {
@@ -1384,7 +1397,7 @@ export default function ToolsPage() {
                                             )}
                                           </div>
                                         )}
-                                        {mcpDetails.oauth.scopes && mcpDetails.oauth.scopes.length > 0 && (
+                                        {mcpDetails.oauth?.scopes && mcpDetails.oauth.scopes.length > 0 && (
                                           <div className="text-xs text-muted-foreground">
                                             Required scopes: {mcpDetails.oauth.scopes.join(", ")}
                                           </div>

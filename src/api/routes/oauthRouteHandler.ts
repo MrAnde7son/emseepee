@@ -3,14 +3,24 @@ import { URL } from "url";
 import { BaseRouteHandler } from "./baseRouteHandler.js";
 import { ErrorHandler } from "../middleware/errorHandler.js";
 import { logger } from "../../logger.js";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
+import { discoverMcpOAuthMetadata } from "../../oauth/metadataDiscovery.js";
+import { getOrRegisterClientForMcp } from "../../oauth/clientRegistrationService.js";
 import { Agent as HttpsAgent } from "https";
+import https from "https";
+import http from "http";
 
 /**
  * OAuth state storage (in-memory, should be moved to database/redis in production)
  * Maps state token to { mcpId, expiresAt }
  */
-const oauthStates = new Map<string, { mcpId: string; tenantId?: string; expiresAt: number }>();
+const oauthStates = new Map<string, {
+  mcpId: string;
+  tenantId?: string;
+  expiresAt: number;
+  codeVerifier?: string;
+  useDynamicClient?: boolean;
+}>();
 
 /**
  * OAuth tokens storage (in-memory, should be moved to database in production)
@@ -34,6 +44,91 @@ function getInsecureAgent(): HttpsAgent {
     insecureAgent = new HttpsAgent({ rejectUnauthorized: false });
   }
   return insecureAgent;
+}
+
+/**
+ * Fetch using Node's https/http modules with support for insecure TLS
+ */
+async function fetchWithCustomTLS(
+  url: string,
+  options: { method?: string; headers?: Record<string, string>; body?: string | URLSearchParams; timeout?: number; allowInsecureTLS?: boolean } = {}
+): Promise<{ status: number; statusText: string; body: string; headers: Record<string, string> }> {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const isHttps = urlObj.protocol === "https:";
+    const client = isHttps ? https : http;
+    
+    const requestOptions: https.RequestOptions = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || (isHttps ? 443 : 80),
+      path: urlObj.pathname + urlObj.search,
+      method: options.method || "GET",
+      headers: {
+        "User-Agent": "hakuna-mcp-gateway/1.0",
+        ...options.headers,
+      },
+    };
+
+    // Use insecure agent if allowed
+    if (isHttps && options.allowInsecureTLS) {
+      requestOptions.agent = getInsecureAgent();
+    }
+
+    const timeout = options.timeout || 10000;
+    let timeoutId: NodeJS.Timeout | null = null;
+
+    const req = client.request(requestOptions, (res) => {
+      const chunks: Buffer[] = [];
+      
+      res.on("data", (chunk) => {
+        chunks.push(chunk);
+      });
+      
+      res.on("end", () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        const body = Buffer.concat(chunks).toString();
+        const headers: Record<string, string> = {};
+        
+        // Handle headers (support both headersDistinct and headers for compatibility)
+        if (res.headersDistinct) {
+          Object.keys(res.headersDistinct).forEach((key) => {
+            const values = res.headersDistinct![key];
+            headers[key] = Array.isArray(values) ? values.join(", ") : values || "";
+          });
+        } else if (res.headers) {
+          Object.keys(res.headers).forEach((key) => {
+            const value = res.headers[key];
+            headers[key] = Array.isArray(value) ? value.join(", ") : value || "";
+          });
+        }
+        
+        resolve({
+          status: res.statusCode || 0,
+          statusText: res.statusMessage || "",
+          body,
+          headers,
+        });
+      });
+    });
+
+    req.on("error", (error) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      reject(error);
+    });
+
+    timeoutId = setTimeout(() => {
+      req.destroy();
+      reject(new Error(`Request timeout after ${timeout}ms while fetching ${url}`));
+    }, timeout);
+
+    // Write body if present
+    if (options.body) {
+      const bodyString = options.body instanceof URLSearchParams ? options.body.toString() : options.body;
+      req.write(bodyString);
+    }
+
+    req.end();
+  });
 }
 
 export class OAuthRouteHandler extends BaseRouteHandler {
@@ -92,55 +187,91 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       const { getMcpServerProxies } = await import("../../config.js");
       const mcpProxies = await getMcpServerProxies(auth.tenantId || undefined);
       const mcpConfig = mcpProxies[mcpId];
-      
+
       if (!mcpConfig) {
         this.sendError(res, 404, `MCP server ${mcpId} not found`);
         return;
       }
-      
-      if (!mcpConfig.oauth) {
+
+      const oauthConfig = mcpConfig.oauth;
+      const redirectUri = oauthConfig?.redirectUri ||
+        `${req.headers["x-forwarded-proto"] || "http"}://${req.headers.host}/api/oauth/callback`;
+
+      let authorizationUrl: string | undefined;
+      let tokenUrl: string | undefined;
+      let clientId: string | undefined;
+      let scopes: string[] | undefined;
+      let codeVerifier: string | undefined;
+      let useDynamicClient = false;
+
+      if (oauthConfig?.clientId || oauthConfig?.clientSecret) {
+        authorizationUrl = oauthConfig.authorizationUrl;
+        tokenUrl = oauthConfig.tokenUrl;
+        clientId = oauthConfig.clientId || process.env[`${mcpId.toUpperCase()}_OAUTH_CLIENT_ID`];
+        scopes = oauthConfig.scopes;
+      } else if (mcpConfig.serverUrl) {
+        const metadata = await discoverMcpOAuthMetadata(mcpConfig.serverUrl);
+        if (!metadata) {
+          this.sendError(res, 400, "This MCP server does not expose OAuth metadata; please configure OAuth manually.");
+          return;
+        }
+
+        const registeredClient = await getOrRegisterClientForMcp(auth.tenantId || null, mcpId, metadata, redirectUri);
+        if (!registeredClient) {
+          this.sendError(res, 400, "Dynamic client registration is not available. Please configure OAuth manually.");
+          return;
+        }
+
+        authorizationUrl = metadata.authorization_endpoint;
+        tokenUrl = metadata.token_endpoint;
+        clientId = registeredClient.clientId;
+        scopes = metadata.scopes_supported as string[] | undefined;
+        useDynamicClient = true;
+        codeVerifier = randomBytes(32).toString("base64url");
+      } else {
         this.sendError(res, 400, `MCP server ${mcpId} does not support OAuth`);
         return;
       }
-      
-      const oauthConfig = mcpConfig.oauth;
-      
+
+      if (!authorizationUrl || !tokenUrl || !clientId) {
+        this.sendError(res, 400, "OAuth configuration incomplete. Please provide client credentials.");
+        return;
+      }
+
       // Generate state token for CSRF protection
       const state = randomBytes(32).toString("hex");
       const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
-      oauthStates.set(state, { mcpId, tenantId: auth.tenantId || undefined, expiresAt });
-      
+      oauthStates.set(state, { mcpId, tenantId: auth.tenantId || undefined, expiresAt, codeVerifier, useDynamicClient });
+
       // Build authorization URL
-      const redirectUri = oauthConfig.redirectUri || 
-        `${req.headers["x-forwarded-proto"] || "http"}://${req.headers.host}/api/oauth/callback`;
-      
-      const clientId = oauthConfig.clientId || process.env[`${mcpId.toUpperCase()}_OAUTH_CLIENT_ID`] || "";
-      if (!clientId) {
-        this.sendError(res, 400, `OAuth client ID not configured. Please configure it in the MCP server settings in the dashboard, or set the ${mcpId.toUpperCase()}_OAUTH_CLIENT_ID environment variable.`);
-        return;
-      }
-      
-      const authUrl = new URL(oauthConfig.authorizationUrl);
+      const authUrl = new URL(authorizationUrl);
       authUrl.searchParams.set("client_id", clientId);
       authUrl.searchParams.set("redirect_uri", redirectUri);
       authUrl.searchParams.set("response_type", "code");
       authUrl.searchParams.set("state", state);
-      if (oauthConfig.scopes && oauthConfig.scopes.length > 0) {
-        authUrl.searchParams.set("scope", oauthConfig.scopes.join(" "));
+      if (scopes && scopes.length > 0) {
+        authUrl.searchParams.set("scope", scopes.join(" "));
       }
-      
+
+      // Add PKCE challenge if code verifier is present
+      if (codeVerifier) {
+        const challenge = createHash("sha256").update(codeVerifier).digest("base64url");
+        authUrl.searchParams.set("code_challenge", challenge);
+        authUrl.searchParams.set("code_challenge_method", "S256");
+      }
+
       // Apply any provider-specific authorization params from config
-      const authParams = { ...oauthConfig.authorizationParams };
-      if (oauthConfig.provider === "notion" && !authParams.owner) {
+      const authParams = { ...(oauthConfig?.authorizationParams || {}) };
+      if (oauthConfig?.provider === "notion" && !authParams.owner) {
         // Maintain backwards compatibility with Notion requiring owner=user
         authParams.owner = "user";
       }
       for (const [key, value] of Object.entries(authParams)) {
         authUrl.searchParams.set(key, value);
       }
-      
+
       logger.info(`[OAUTH] Initiating OAuth flow for ${mcpId}, redirecting to ${authUrl.toString()}`);
-      
+
       this.sendJSON(res, 200, {
         authorizationUrl: authUrl.toString(),
         state,
@@ -190,29 +321,55 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         return;
       }
       
-      const { mcpId, tenantId } = stateData;
+      const { mcpId, tenantId, codeVerifier, useDynamicClient } = stateData;
       oauthStates.delete(state); // Clean up used state
-      
+
       // Get MCP config
       const { getMcpServerProxies } = await import("../../config.js");
       const mcpProxies = await getMcpServerProxies(tenantId);
       const mcpConfig = mcpProxies[mcpId];
-      
-      if (!mcpConfig || !mcpConfig.oauth) {
+
+      if (!mcpConfig) {
         this.sendError(res, 404, `MCP server ${mcpId} not found or OAuth not configured`);
         return;
       }
-      
+
       const oauthConfig = mcpConfig.oauth;
-      
-      // Exchange authorization code for access token
-      const redirectUri = oauthConfig.redirectUri || 
+      const redirectUri = oauthConfig?.redirectUri ||
         `${req.headers["x-forwarded-proto"] || "http"}://${req.headers.host}/api/oauth/callback`;
-      
-      const clientId = oauthConfig.clientId || process.env[`${mcpId.toUpperCase()}_OAUTH_CLIENT_ID`] || "";
-      const clientSecret = oauthConfig.clientSecret || process.env[`${mcpId.toUpperCase()}_OAUTH_CLIENT_SECRET`] || "";
-      
-      if (!clientSecret) {
+
+      let clientId: string | undefined;
+      let clientSecret: string | undefined;
+      let tokenUrl: string | undefined;
+      let provider: string | undefined = oauthConfig?.provider;
+
+      if (oauthConfig?.clientId || oauthConfig?.clientSecret) {
+        clientId = oauthConfig.clientId || process.env[`${mcpId.toUpperCase()}_OAUTH_CLIENT_ID`];
+        clientSecret = oauthConfig.clientSecret || process.env[`${mcpId.toUpperCase()}_OAUTH_CLIENT_SECRET`];
+        tokenUrl = oauthConfig.tokenUrl;
+      } else if (mcpConfig.serverUrl && useDynamicClient) {
+        const metadata = await discoverMcpOAuthMetadata(mcpConfig.serverUrl);
+        if (!metadata) {
+          this.sendError(res, 400, "OAuth metadata no longer available. Please retry or configure manually.");
+          return;
+        }
+        const registered = await getOrRegisterClientForMcp(tenantId || null, mcpId, metadata, redirectUri);
+        if (!registered) {
+          this.sendError(res, 400, "Dynamic client registration unavailable. Please configure manually.");
+          return;
+        }
+        clientId = registered.clientId;
+        clientSecret = registered.clientSecret;
+        tokenUrl = metadata.token_endpoint;
+        provider = metadata.issuer as string | undefined;
+      }
+
+      if (!clientId || !tokenUrl) {
+        this.sendError(res, 400, "OAuth client not configured");
+        return;
+      }
+
+      if (!clientSecret && !useDynamicClient) {
         logger.error(`[OAUTH] OAuth client secret not configured for ${mcpId}`);
         const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
         res.writeHead(302, {
@@ -223,13 +380,18 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       }
       
       // Build token request
-      const tokenGrantType = oauthConfig.tokenGrantType || "authorization_code";
-      const tokenRequestContentType = oauthConfig.tokenRequestContentType || "form";
-      const tokenAuthMethod = oauthConfig.tokenAuthMethod || (oauthConfig.provider === "notion" ? "basic" : "body");
+      const tokenGrantType = oauthConfig?.tokenGrantType || "authorization_code";
+      // For dynamic OAuth, default to form encoding (OAuth 2.0 standard)
+      // For manual OAuth, use config value or default to form
+      // Notion's MCP server requires form encoding regardless of config
+      const tokenRequestContentType = useDynamicClient 
+        ? "form"  // Dynamic OAuth always uses form encoding
+        : (oauthConfig?.tokenRequestContentType || "form");
+      const tokenAuthMethod = oauthConfig?.tokenAuthMethod || (oauthConfig?.provider === "notion" ? "basic" : "body");
       const tokenRequestHeaders: HeadersInit = {
         "Accept": "application/json",
       };
-      
+
       let tokenRequestBody: string | URLSearchParams;
       
       const tokenParams: Record<string, string> = {
@@ -238,14 +400,27 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         redirect_uri: redirectUri,
       };
       
-      if (tokenAuthMethod === "basic") {
-        const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-        tokenRequestHeaders["Authorization"] = `Basic ${basicAuth}`;
-      } else {
-        tokenParams.client_id = clientId;
-        tokenParams.client_secret = clientSecret;
+      // Add code verifier for PKCE if present
+      if (codeVerifier) {
+        tokenParams.code_verifier = codeVerifier;
       }
       
+      if (tokenAuthMethod === "basic" && clientSecret) {
+        const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+        tokenRequestHeaders["Authorization"] = `Basic ${basicAuth}`;
+        // Some OAuth servers require client_id in body even with Basic auth
+        tokenParams.client_id = clientId;
+      } else if (clientSecret) {
+        tokenParams.client_id = clientId;
+        tokenParams.client_secret = clientSecret;
+      } else {
+        // Always include client_id if we have it (for dynamic clients or when no secret)
+        if (clientId) {
+          tokenParams.client_id = clientId;
+        }
+      }
+      
+      // Prepare body
       if (tokenRequestContentType === "json") {
         tokenRequestHeaders["Content-Type"] = "application/json";
         tokenRequestBody = JSON.stringify(tokenParams);
@@ -256,23 +431,22 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         tokenRequestBody = params;
       }
       
-      // Perform token request with richer error logging (helps diagnose network/TLS/proxy failures)
-      const tokenRequestInit: RequestInit & { agent?: HttpsAgent } = {
-        method: "POST",
-        headers: tokenRequestHeaders,
-        body: tokenRequestBody,
-      };
-
-      // Allow opting into insecure TLS for environments with MITM/self-signed proxies (dev only)
-      if (process.env.OAUTH_ALLOW_INSECURE_TLS === "true" || process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0") {
-        tokenRequestInit.agent = getInsecureAgent();
+      // Check if insecure TLS is allowed
+      const allowInsecureTLS = process.env.OAUTH_ALLOW_INSECURE_TLS === "true" || process.env.NODE_TLS_REJECT_UNAUTHORIZED === "0";
+      if (allowInsecureTLS) {
         logger.warn("[OAUTH] Using insecure TLS (rejectUnauthorized=false) for token exchange; DO NOT use in production");
       }
       
-      let tokenResponse: Response;
+      let tokenResponse: { status: number; statusText: string; body: string; headers: Record<string, string> };
       try {
-        logger.info(`[OAUTH] Exchanging code for token at ${oauthConfig.tokenUrl} (provider=${oauthConfig.provider}, grant_type=${tokenParams.grant_type}, auth_method=${tokenAuthMethod}, content_type=${tokenRequestHeaders["Content-Type"]})`);
-        tokenResponse = await fetch(oauthConfig.tokenUrl, tokenRequestInit);
+        logger.info(`[OAUTH] Exchanging code for token at ${tokenUrl} (provider=${provider}, grant_type=${tokenParams.grant_type}, auth_method=${tokenAuthMethod}, content_type=${tokenRequestHeaders["Content-Type"]})`);
+        tokenResponse = await fetchWithCustomTLS(tokenUrl, {
+          method: "POST",
+          headers: tokenRequestHeaders as Record<string, string>,
+          body: tokenRequestBody,
+          timeout: 10000,
+          allowInsecureTLS,
+        });
       } catch (fetchError) {
         const reason = fetchError instanceof Error ? `${fetchError.message}${fetchError.cause ? `; cause=${fetchError.cause}` : ""}` : String(fetchError);
         logger.error(`[OAUTH] Token request failed for ${mcpId}: ${reason}`);
@@ -284,9 +458,8 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         return;
       }
       
-      if (!tokenResponse.ok) {
-        const errorText = await tokenResponse.text();
-        logger.error(`[OAUTH] Token exchange failed: ${tokenResponse.status} ${errorText}`);
+      if (tokenResponse.status < 200 || tokenResponse.status >= 300) {
+        logger.error(`[OAUTH] Token exchange failed: ${tokenResponse.status} ${tokenResponse.statusText} - ${tokenResponse.body.substring(0, 500)}`);
         const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
         res.writeHead(302, {
           Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent("Failed to exchange authorization code")}`,
@@ -295,12 +468,29 @@ export class OAuthRouteHandler extends BaseRouteHandler {
         return;
       }
       
-      const tokenData = await tokenResponse.json() as {
+      let tokenData: {
         access_token: string;
         refresh_token?: string;
         expires_in?: number;
         token_type?: string;
       };
+      try {
+        tokenData = JSON.parse(tokenResponse.body) as {
+          access_token: string;
+          refresh_token?: string;
+          expires_in?: number;
+          token_type?: string;
+        };
+      } catch (parseError) {
+        logger.error(`[OAUTH] Failed to parse token response JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+        logger.info(`[OAUTH] Response body: ${tokenResponse.body.substring(0, 500)}`);
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:1337";
+        res.writeHead(302, {
+          Location: `${frontendUrl}/tools?oauth_error=${encodeURIComponent("Invalid token response from OAuth provider")}`,
+        });
+        res.end();
+        return;
+      }
       
       logger.info(`[OAUTH] Token exchange successful for ${mcpId}. Token type: ${tokenData.token_type || "Bearer"}, Token length: ${tokenData.access_token?.length || 0}, Token prefix: ${tokenData.access_token?.substring(0, 10) || "none"}...`);
       
@@ -366,6 +556,16 @@ export class OAuthRouteHandler extends BaseRouteHandler {
           logger.warn(`[OAUTH] Failed to disconnect MCP client for ${mcpId}:`, disconnectError);
           // Non-fatal - connection will be re-established on next tool discovery
         }
+        
+        // Invalidate tool cache so tools are re-fetched with new token
+        try {
+          const { toolCache } = await import("../../tools/toolCache.js");
+          toolCache.invalidate(mcpId, tenantId);
+          logger.info(`[OAUTH] Invalidated tool cache for ${mcpId} to force tool re-discovery with new token`);
+        } catch (cacheError) {
+          logger.warn(`[OAUTH] Failed to invalidate tool cache for ${mcpId}:`, cacheError);
+          // Non-fatal - cache will expire or be refreshed on next request
+        }
       }
       
       // Redirect to frontend with success
@@ -401,7 +601,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       const mcpProxies = await getMcpServerProxies(tenantId);
       const mcpConfig = mcpProxies[mcpId];
       
-      const isConfigured = !!(mcpConfig?.oauth);
+      const isConfigured = !!(mcpConfig?.oauth || mcpConfig?.serverUrl);
       const isAuthenticated = !!tokens && (!tokens.expiresAt || tokens.expiresAt > Date.now());
       
       this.sendJSON(res, 200, {
@@ -435,6 +635,15 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       if (mcpProxiesDb[mcpId] && mcpProxiesDb[mcpId].headers) {
         delete mcpProxiesDb[mcpId].headers?.Authorization;
         await saveMcpServerProxiesToDb(mcpProxiesDb, tenantId);
+      }
+      
+      // Invalidate tool cache when tokens are revoked
+      try {
+        const { toolCache } = await import("../../tools/toolCache.js");
+        toolCache.invalidate(mcpId, tenantId);
+        logger.info(`[OAUTH] Invalidated tool cache for ${mcpId} after token revocation`);
+      } catch (cacheError) {
+        logger.warn(`[OAUTH] Failed to invalidate tool cache for ${mcpId}:`, cacheError);
       }
       
       logger.info(`[OAUTH] OAuth tokens revoked for ${mcpId}`);
