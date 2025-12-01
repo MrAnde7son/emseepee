@@ -807,8 +807,8 @@ export default function PoliciesPage() {
       )}
 
       {filteredPolicies.length > 0 && (
-        <div className="border border-border rounded-xl overflow-hidden">
-          <Table>
+        <div className="border border-border rounded-xl">
+          <Table className="min-w-[720px]">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[300px]">Name</TableHead>

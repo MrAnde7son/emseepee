@@ -325,8 +325,8 @@ export default function EventsPage() {
       )}
 
       {filteredData && filteredData.length > 0 && (
-        <div className="border border-border rounded-xl overflow-hidden">
-          <Table>
+        <div className="border border-border rounded-xl">
+          <Table className="min-w-[680px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Timestamp</TableHead>
