@@ -28,7 +28,10 @@ function getUserDisplayName(user: HumanUser): string {
   if (user.name && user.name.trim().length > 0) {
     return user.name;
   }
-  return user.email;
+  if (user.email && user.email.trim().length > 0) {
+    return user.email;
+  }
+  return String(user.id);
 }
 
 export default function UsersPage() {
@@ -39,11 +42,14 @@ export default function UsersPage() {
     if (!searchQuery) return users;
     const query = searchQuery.toLowerCase();
     return users.filter((user) => {
+      const role = user.role || "member";
+      const email = user.email || "";
       return (
-        user.email.toLowerCase().includes(query) ||
+        email.toLowerCase().includes(query) ||
         (user.name?.toLowerCase().includes(query) ?? false) ||
-        user.role.toLowerCase().includes(query) ||
-        (user.tenantId?.toLowerCase().includes(query) ?? false)
+        role.toLowerCase().includes(query) ||
+        (user.tenantId?.toLowerCase().includes(query) ?? false) ||
+        (user.source?.toLowerCase().includes(query) ?? false)
       );
     });
   }, [users, searchQuery]);
@@ -132,6 +138,8 @@ export default function UsersPage() {
               <TableHead>Email</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Tenant</TableHead>
+              <TableHead>Source</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead>Created</TableHead>
               <TableHead>Updated</TableHead>
             </TableRow>
@@ -139,13 +147,13 @@ export default function UsersPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   Loading users...
                 </TableCell>
               </TableRow>
             ) : filteredUsers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   {searchQuery ? "No users match your search" : "No users found."}
                 </TableCell>
               </TableRow>
@@ -176,6 +184,18 @@ export default function UsersPage() {
                       <Badge variant="outline">{user.tenantId}</Badge>
                     ) : (
                       <span className="text-sm text-muted-foreground">Default</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="capitalize">
+                      {user.source ? user.source.replace("-", " ") : "local"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {user.active === false ? (
+                      <Badge variant="destructive" className="uppercase">Disabled</Badge>
+                    ) : (
+                      <Badge variant="secondary" className="uppercase">Active</Badge>
                     )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{formatDate(user.createdAt)}</TableCell>

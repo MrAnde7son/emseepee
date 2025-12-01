@@ -82,12 +82,14 @@ export interface Agent {
 }
 
 export interface HumanUser {
-  id: number;
+  id: number | string;
   email: string;
   name?: string | null;
   role: string;
   tenantId?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  source?: string;
+  active?: boolean;
 }
 

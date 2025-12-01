@@ -4,6 +4,8 @@ import type { IncomingMessage, ServerResponse } from "http";
 import { UsersRouteHandler } from "../src/api/routes/usersRouteHandler.js";
 import * as userService from "../src/db/services/userService.js";
 import * as authMiddleware from "../src/api/middleware/auth.js";
+import * as providerService from "../src/db/services/providerService.js";
+import { MicrosoftCopilotIntegration } from "../src/integrations/microsoft/copilot/MicrosoftCopilotIntegration.js";
 
 type MockResponse = ServerResponse & { data: string; statusCode?: number; headers?: Record<string, string> };
 
@@ -67,6 +69,9 @@ describe("UsersRouteHandler", () => {
       },
     ] as any);
 
+    vi.spyOn(providerService, "getProviderConfig").mockResolvedValue(null as any);
+    vi.spyOn(MicrosoftCopilotIntegration.prototype, "listUsers").mockResolvedValue([]);
+
     const handler = new UsersRouteHandler();
     const req = createRequest("GET", { authorization: "Bearer token" });
     const res = createMockResponse();
@@ -78,8 +83,41 @@ describe("UsersRouteHandler", () => {
 
     const payload = JSON.parse(res.data) as Array<Record<string, unknown>>;
     expect(payload).toHaveLength(2);
-    expect(payload[0]).toMatchObject({ id: 1, email: "user1@example.com", name: "User One", role: "member" });
+    expect(payload[0]).toMatchObject({ id: 1, email: "user1@example.com", name: "User One", role: "member", source: "local" });
     expect(payload[0]).not.toHaveProperty("passwordHash");
+  });
+
+  it("includes Microsoft 365 users when provider is configured", async () => {
+    vi.spyOn(authMiddleware.AuthMiddleware, "requireAuth").mockReturnValue({
+      userId: 1,
+      email: "admin@example.com",
+      role: "admin",
+      tenantId: "tenant-a",
+    });
+
+    vi.spyOn(userService, "listUsers").mockResolvedValue([] as any);
+    vi.spyOn(providerService, "getProviderConfig").mockResolvedValue({
+      providerId: "microsoft_copilot",
+      config: { tenantId: "t1", clientId: "c1", clientSecret: "s", dataverseHost: "example.crm.dynamics.com" },
+      enabled: true,
+      createdAt: "now",
+      updatedAt: "now",
+    } as any);
+
+    vi.spyOn(MicrosoftCopilotIntegration.prototype, "listUsers").mockResolvedValue([
+      { id: "u1", email: "cloud@example.com", displayName: "Cloud User", active: true, source: "microsoft-365" },
+    ]);
+
+    const handler = new UsersRouteHandler();
+    const req = createRequest("GET", { authorization: "Bearer token" });
+    const res = createMockResponse();
+
+    const handled = await handler.handle(req, res, "/api/users", "GET");
+
+    expect(handled).toBe(true);
+    const payload = JSON.parse(res.data) as Array<Record<string, unknown>>;
+    expect(payload).toHaveLength(1);
+    expect(payload[0]).toMatchObject({ id: "u1", email: "cloud@example.com", name: "Cloud User", source: "microsoft-365" });
   });
 
   it("returns an error when no auth token is provided", async () => {

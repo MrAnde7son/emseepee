@@ -1,6 +1,7 @@
 import type { ProviderAgentAdapter } from "../config.js";
 import { CursorAdapter } from "./adapters/cursor.js";
 import { OpenAIAdapter } from "./adapters/openai.js";
+import { MicrosoftCopilotAdapter } from "./adapters/microsoftCopilot.js";
 import { logger } from "../logger.js";
 
 /**
@@ -32,6 +33,9 @@ export class AdapterFactory {
           (config?.organizationId as string) || process.env.OPENAI_ORGANIZATION_ID
         );
 
+      case "microsoft_copilot":
+        return new MicrosoftCopilotAdapter(config);
+
       // Add more providers here as adapters are implemented
       // case "n8n":
       //   return new N8nAdapter(config?.apiUrl, config?.apiKey);
@@ -50,7 +54,7 @@ export class AdapterFactory {
    * Check if an adapter is available for a provider (without creating it)
    */
   static isAdapterAvailable(providerId: string): boolean {
-    const supportedProviders = ["cursor", "openai"];
+    const supportedProviders = ["cursor", "openai", "microsoft_copilot"];
     return supportedProviders.includes(providerId);
   }
 
@@ -58,7 +62,7 @@ export class AdapterFactory {
    * Get list of supported provider IDs
    */
   static getSupportedProviders(): string[] {
-    return ["cursor", "openai"];
+    return ["cursor", "openai", "microsoft_copilot"];
   }
 }
 

@@ -253,9 +253,7 @@ export async function registerMcpServerProxies(
 
   // Process each configured proxy
   for (const [proxyName, proxyConfig] of Object.entries(mcpServerProxies)) {
-    // Skip if proxy is not enabled (must be explicitly true)
     if (proxyConfig.enabled !== true) {
-      logger.info(`[MCP-GATEWAY] Skipping disabled MCP server proxy: ${proxyName}`);
       continue;
     }
 
