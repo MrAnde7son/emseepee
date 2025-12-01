@@ -227,6 +227,8 @@ export const Api = {
     }
     return res.json() as Promise<{ token: string; user: { id: number; email: string; name: string | null; role: string } }>;
   },
+  startSocialLogin: (provider: "google" | "github") =>
+    fetchJSON<{ authorizationUrl: string; state: string }>(`/api/auth/oauth/${provider}/start`),
   login: async (data: { email: string; password: string }) => {
     const res = await fetch(`${BASE_URL}/api/auth/login`, {
       method: "POST",
