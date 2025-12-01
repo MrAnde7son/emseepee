@@ -2,6 +2,8 @@ import { IncomingMessage, ServerResponse } from "http";
 import { BaseRouteHandler } from "./baseRouteHandler.js";
 import { RequestParser } from "../middleware/requestParser.js";
 import { ErrorHandler } from "../middleware/errorHandler.js";
+import { logger } from "../../logger.js";
+import { MicrosoftCopilotIntegration, type Microsoft365CopilotIntegrationConfig } from "../../integrations/microsoft/copilot/MicrosoftCopilotIntegration.js";
 
 export class UsersRouteHandler extends BaseRouteHandler {
   async handle(req: IncomingMessage, res: ServerResponse, path: string, method: string): Promise<boolean> {
@@ -75,9 +77,34 @@ export class UsersRouteHandler extends BaseRouteHandler {
         tenantId: user.tenantId,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
+        source: "local" as const,
+        active: true,
       }));
 
-      this.sendJSON(res, 200, sanitizedUsers);
+      const { getProviderConfig } = await import("../../db/services/providerService.js");
+      const providerConfig = await getProviderConfig("microsoft_copilot", auth.tenantId);
+      let microsoftUsers: Array<{ id: string; email?: string; name?: string | null; role: string; tenantId?: string | null; createdAt?: string; updatedAt?: string; source: string; active?: boolean }> = [];
+
+      if (providerConfig) {
+        try {
+          const integration = new MicrosoftCopilotIntegration();
+          microsoftUsers = await integration.listUsers(providerConfig.config as Microsoft365CopilotIntegrationConfig).then((result) =>
+            result.map((user) => ({
+              id: user.id,
+              email: user.email,
+              name: user.displayName,
+              role: user.active === false ? "disabled" : "member",
+              tenantId: providerConfig.config?.tenantId ?? null,
+              source: user.source,
+              active: user.active,
+            }))
+          );
+        } catch (integrationError) {
+          logger.warn("[USERS] Failed to fetch Microsoft 365 users:", integrationError);
+        }
+      }
+
+      this.sendJSON(res, 200, [...sanitizedUsers, ...microsoftUsers]);
     } catch (error) {
       ErrorHandler.handle(error, res, "List users error");
     }
