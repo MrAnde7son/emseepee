@@ -4,7 +4,7 @@
       "name": "github",
       "description": "GitHub MCP server for repository operations",
       "icon": "https://cdn.jsdelivr.net/npm/simple-icons@v9/icons/github.svg",
-      "serverUrl": "https://api.githubcopilot.com/mcp/",
+      "serverUrl": "https://api.githubcopilot.com/mcp",
       "enabled": false,
       "defaultPolicy": {
         "allowedRoles": [
