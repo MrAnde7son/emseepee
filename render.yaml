@@ -12,7 +12,7 @@ services:
   - type: web
     name: hakuna-frontend
     env: node
-    buildCommand: pnpm install --frozen-lockfile && pnpm run build
+    buildCommand: pnpm install --frozen-lockfile && cd dashboard && pnpm run build
     startCommand: cd dashboard && pnpm run start
     envVars:
       - key: NODE_ENV
