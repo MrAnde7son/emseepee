@@ -218,7 +218,7 @@ export const PROVIDER_CONFIG_SCHEMAS: Record<string, ProviderConfigSchema> = {
       },
       {
         key: "clientId",
-        label: "Client ID (Application ID)",
+        label: "Client ID",
         type: "text",
         required: true,
         placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
