@@ -9,6 +9,7 @@ import { getOrRegisterClientForMcp } from "../../oauth/clientRegistrationService
 import { Agent as HttpsAgent } from "https";
 import https from "https";
 import http from "http";
+import { CIMD_CLIENT_ID } from "../../config/cimd.js";
 
 /**
  * OAuth state storage (in-memory, should be moved to database/redis in production)
@@ -132,6 +133,25 @@ async function fetchWithCustomTLS(
 }
 
 export class OAuthRouteHandler extends BaseRouteHandler {
+  private resolveClientId(fallback?: string): string | undefined {
+    if (CIMD_CLIENT_ID && this.isUrlClientId(CIMD_CLIENT_ID)) {
+      return CIMD_CLIENT_ID;
+    }
+    return fallback;
+  }
+
+  private isUrlClientId(value?: string): boolean {
+    if (!value) {
+      return false;
+    }
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
   async handle(req: IncomingMessage, res: ServerResponse, path: string, method: string): Promise<boolean> {
     if (path.startsWith("/api/oauth/") && method === "GET") {
       const pathAfterPrefix = path.replace("/api/oauth/", "");
@@ -194,7 +214,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       }
 
       const oauthConfig = mcpConfig.oauth;
-      const redirectUri = oauthConfig?.redirectUri ||
+      const redirectUri = oauthConfig?.redirectUri || process.env.OAUTH_REDIRECT_URI ||
         `${req.headers["x-forwarded-proto"] || "http"}://${req.headers.host}/api/oauth/callback`;
 
       let authorizationUrl: string | undefined;
@@ -207,7 +227,8 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       if (oauthConfig?.clientId || oauthConfig?.clientSecret) {
         authorizationUrl = oauthConfig.authorizationUrl;
         tokenUrl = oauthConfig.tokenUrl;
-        clientId = oauthConfig.clientId || process.env[`${mcpId.toUpperCase()}_OAUTH_CLIENT_ID`];
+        const configuredClientId = oauthConfig.clientId || process.env[`${mcpId.toUpperCase()}_OAUTH_CLIENT_ID`];
+        clientId = this.resolveClientId(configuredClientId);
         scopes = oauthConfig.scopes;
       } else if (mcpConfig.serverUrl) {
         const metadata = await discoverMcpOAuthMetadata(mcpConfig.serverUrl);
@@ -335,7 +356,7 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       }
 
       const oauthConfig = mcpConfig.oauth;
-      const redirectUri = oauthConfig?.redirectUri ||
+      const redirectUri = oauthConfig?.redirectUri || process.env.OAUTH_REDIRECT_URI ||
         `${req.headers["x-forwarded-proto"] || "http"}://${req.headers.host}/api/oauth/callback`;
 
       let clientId: string | undefined;
@@ -344,7 +365,8 @@ export class OAuthRouteHandler extends BaseRouteHandler {
       let provider: string | undefined = oauthConfig?.provider;
 
       if (oauthConfig?.clientId || oauthConfig?.clientSecret) {
-        clientId = oauthConfig.clientId || process.env[`${mcpId.toUpperCase()}_OAUTH_CLIENT_ID`];
+        const configuredClientId = oauthConfig.clientId || process.env[`${mcpId.toUpperCase()}_OAUTH_CLIENT_ID`];
+        clientId = this.resolveClientId(configuredClientId);
         clientSecret = oauthConfig.clientSecret || process.env[`${mcpId.toUpperCase()}_OAUTH_CLIENT_SECRET`];
         tokenUrl = oauthConfig.tokenUrl;
       } else if (mcpConfig.serverUrl && useDynamicClient) {

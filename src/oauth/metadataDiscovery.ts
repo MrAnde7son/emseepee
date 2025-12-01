@@ -43,6 +43,46 @@ function buildDiscoveryUrls(serverUrl: string): string[] {
  * Fetch using Node's https/http modules with support for insecure TLS
  */
 async function fetchWithCustomTLS(url: string, options: { timeout?: number; allowInsecureTLS?: boolean } = {}): Promise<{ status: number; statusText: string; body: string; headers: Record<string, string> }> {
+  if (typeof fetch === "function" && options.allowInsecureTLS !== true) {
+    const timeout = options.timeout || 10000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "hakuna-mcp-gateway/1.0",
+        },
+        signal: controller.signal,
+      });
+
+      const headers: Record<string, string> = {};
+      if (response.headers && typeof (response.headers as any).forEach === "function") {
+        (response.headers as any).forEach((value: string, key: string) => {
+          headers[key] = value;
+        });
+      }
+
+      let body = "";
+      if (typeof (response as any).text === "function") {
+        body = await (response as any).text();
+      } else if (typeof (response as any).json === "function") {
+        body = JSON.stringify(await (response as any).json());
+      }
+
+      return {
+        status: (response as Response).status ?? 200,
+        statusText: (response as Response).statusText ?? "",
+        body,
+        headers,
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
     const isHttps = urlObj.protocol === "https:";
@@ -184,4 +224,8 @@ export async function discoverMcpOAuthMetadata(serverUrl: string): Promise<OAuth
   metadataCache.set(serverUrl, null);
   logger.warn(`[OAUTH] Failed to discover OAuth metadata for ${serverUrl} from any discovery endpoint`);
   return null;
+}
+
+export function clearOAuthMetadataCache(): void {
+  metadataCache.clear();
 }

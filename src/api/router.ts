@@ -11,8 +11,10 @@ import { McpRouteHandler } from "./routes/mcpRouteHandler.js";
 import { OAuthRouteHandler } from "./routes/oauthRouteHandler.js";
 import { TelemetryRouteHandler } from "./routes/telemetryRouteHandler.js";
 import { UsersRouteHandler } from "./routes/usersRouteHandler.js";
+import { CimdRouteHandler } from "./routes/cimdRouteHandler.js";
 import { CorsMiddleware } from "./middleware/cors.js";
 import { ErrorHandler } from "./middleware/errorHandler.js";
+import { attachClientMetadata } from "./middleware/clientMetadata.js";
 
 export class Router {
   private handlers: BaseRouteHandler[] = [];
@@ -29,6 +31,7 @@ export class Router {
       new OAuthRouteHandler(),
       new TelemetryRouteHandler(),
       new UsersRouteHandler(),
+      new CimdRouteHandler(),
     ];
   }
 
@@ -49,6 +52,8 @@ export class Router {
     }
 
     try {
+      await attachClientMetadata(req, url);
+
       for (const handler of this.handlers) {
         const handled = await handler.handle(req, res, path, method);
         if (handled) {

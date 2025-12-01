@@ -36,6 +36,13 @@ export interface PolicyInput {
   // Optional: provider ID for provider-scoped policies
   providerId?: string;
   tenantId?: string;
+  client?: {
+    id: string;
+    name?: string;
+    domain?: string;
+    uri?: string;
+    logoUri?: string;
+  };
 }
 
 /**
@@ -314,6 +321,32 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
       agentId: intent.agentId,
       resources: intent.inferredIntent.resources,
     });
+  }
+
+  if (input.client) {
+    const blockedClientIds = (process.env.BLOCKED_CLIENT_IDS || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    if (blockedClientIds.includes(input.client.id)) {
+      return {
+        decision: "deny",
+        reason: `Blocked client ${input.client.id} by configuration`,
+      };
+    }
+
+    const allowedClientDomains = (process.env.ALLOWED_CLIENT_DOMAINS || "")
+      .split(",")
+      .map((domain) => domain.trim())
+      .filter(Boolean);
+    if (allowedClientDomains.length > 0) {
+      if (!input.client.domain || !allowedClientDomains.includes(input.client.domain)) {
+        return {
+          decision: "deny",
+          reason: "Client domain not allowed",
+        };
+      }
+    }
   }
   const policyRules = await getPolicyRules(input.tenantId);
 

@@ -124,6 +124,20 @@ export async function createSchema(): Promise<void> {
     `);
 
     await executeUpdate(`
+      CREATE TABLE IF NOT EXISTS mcp_clients (
+        client_id_url TEXT PRIMARY KEY,
+        client_name TEXT,
+        client_uri TEXT,
+        logo_uri TEXT,
+        redirect_uris JSONB,
+        raw_json JSONB,
+        first_seen_at TIMESTAMP,
+        last_seen_at TIMESTAMP,
+        last_fetched_at TIMESTAMP
+      )
+    `);
+
+    await executeUpdate(`
       CREATE INDEX IF NOT EXISTS idx_provider_configs_provider_id ON provider_configs(provider_id);
       CREATE INDEX IF NOT EXISTS idx_provider_configs_tenant_id ON provider_configs(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_provider_configs_enabled ON provider_configs(enabled);
@@ -237,6 +251,20 @@ export async function createSchema(): Promise<void> {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE (mcp_id, tenant_id)
+      )
+    `);
+
+    await executeUpdate(`
+      CREATE TABLE IF NOT EXISTS mcp_clients (
+        client_id_url TEXT PRIMARY KEY,
+        client_name TEXT,
+        client_uri TEXT,
+        logo_uri TEXT,
+        redirect_uris TEXT,
+        raw_json TEXT,
+        first_seen_at DATETIME,
+        last_seen_at DATETIME,
+        last_fetched_at DATETIME
       )
     `);
 

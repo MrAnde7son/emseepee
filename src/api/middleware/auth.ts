@@ -1,5 +1,6 @@
 import { IncomingMessage } from "http";
 import { extractTokenFromHeader, verifyToken, type JWTPayload } from "../auth.js";
+import type { RequestClientMetadata } from "./clientMetadata.js";
 
 export class AuthMiddleware {
   static extractToken(req: IncomingMessage): string | null {
@@ -11,7 +12,13 @@ export class AuthMiddleware {
     return verifyToken(token);
   }
 
-  static requireAuth(req: IncomingMessage): { userId: number; email: string; role: string; tenantId?: string | null } | null {
+  static requireAuth(req: IncomingMessage): {
+    userId: number;
+    email: string;
+    role: string;
+    tenantId?: string | null;
+    clientMetadata?: RequestClientMetadata;
+  } | null {
     const token = AuthMiddleware.extractToken(req);
     if (!token) {
       return null;
@@ -27,6 +34,7 @@ export class AuthMiddleware {
       email: payload.email,
       role: payload.role,
       tenantId: payload.tenantId,
+      clientMetadata: (req as IncomingMessage & { clientMetadata?: RequestClientMetadata }).clientMetadata,
     };
   }
 }

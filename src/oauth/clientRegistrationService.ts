@@ -21,6 +21,47 @@ async function fetchWithCustomTLS(
   url: string,
   options: { method?: string; headers?: Record<string, string>; body?: string; timeout?: number; allowInsecureTLS?: boolean } = {}
 ): Promise<{ status: number; statusText: string; body: string; headers: Record<string, string> }> {
+  if (typeof fetch === "function" && options.allowInsecureTLS !== true) {
+    const timeout = options.timeout || 10000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    try {
+      const response = await fetch(url, {
+        method: options.method || "GET",
+        headers: {
+          "User-Agent": "hakuna-mcp-gateway/1.0",
+          ...options.headers,
+        },
+        body: options.body,
+        signal: controller.signal,
+      });
+
+      const headers: Record<string, string> = {};
+      if (response.headers && typeof (response.headers as any).forEach === "function") {
+        (response.headers as any).forEach((value: string, key: string) => {
+          headers[key] = value;
+        });
+      }
+
+      let body = "";
+      if (typeof (response as any).text === "function") {
+        body = await (response as any).text();
+      } else if (typeof (response as any).json === "function") {
+        body = JSON.stringify(await (response as any).json());
+      }
+
+      return {
+        status: (response as Response).status ?? 200,
+        statusText: (response as Response).statusText ?? "",
+        body,
+        headers,
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
     const isHttps = urlObj.protocol === "https:";

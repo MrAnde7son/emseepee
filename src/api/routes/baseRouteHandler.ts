@@ -1,9 +1,18 @@
 import { IncomingMessage, ServerResponse } from "http";
 import { ResponseHelper } from "../middleware/response.js";
 import { AuthMiddleware } from "../middleware/auth.js";
+import type { RequestClientMetadata } from "../middleware/clientMetadata.js";
+
+export interface AuthContext {
+  userId: number;
+  email: string;
+  role: string;
+  tenantId?: string | null;
+  clientMetadata?: RequestClientMetadata;
+}
 
 export abstract class BaseRouteHandler {
-  protected requireAuth(req: IncomingMessage): { userId: number; email: string; role: string; tenantId?: string | null } | null {
+  protected requireAuth(req: IncomingMessage): AuthContext | null {
     return AuthMiddleware.requireAuth(req);
   }
 

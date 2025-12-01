@@ -8,6 +8,13 @@ export interface AgentContext {
   agentRole: string;
   env: string;
   tenantId?: string;
+  clientMetadata?: {
+    id: string;
+    name?: string;
+    domain?: string;
+    uri?: string;
+    logoUri?: string;
+  };
 }
 
 export interface ToolExecutionResult {
@@ -65,6 +72,7 @@ export abstract class BaseGatewayHandler {
       intent, // Pass intent to policy engine
       providerId: provider, // Pass provider ID for provider-scoped policies
       tenantId: agentContext.tenantId,
+      client: agentContext.clientMetadata,
     });
 
     if (decision.decision === "deny") {
@@ -106,6 +114,10 @@ export abstract class BaseGatewayHandler {
       decision: decision.decision,
       reason: decision.reason,
     };
+
+    if (agentContext.clientMetadata) {
+      logData.client = agentContext.clientMetadata;
+    }
 
     // Include intent information if available
     if (intent) {

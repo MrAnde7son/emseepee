@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { discoverMcpOAuthMetadata } from "../src/oauth/metadataDiscovery.js";
+import { clearOAuthMetadataCache, discoverMcpOAuthMetadata } from "../src/oauth/metadataDiscovery.js";
 import { getOrRegisterClientForMcp } from "../src/oauth/clientRegistrationService.js";
 
 vi.mock("../src/db/connection.js", () => {
@@ -20,6 +20,7 @@ const mockedDb = await import("../src/db/connection.js");
 describe("OAuth dynamic discovery and registration", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    clearOAuthMetadataCache();
   });
 
   afterEach(() => {
