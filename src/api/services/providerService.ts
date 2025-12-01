@@ -68,6 +68,14 @@ export class ProviderService {
         comingSoon: !AdapterFactory.isAdapterAvailable("openai"),
       },
       {
+        id: "openai_codex",
+        name: "OpenAI Codex",
+        type: "openai",
+        status: allInstalledProviders.has("openai_codex") ? "connected" : "pending",
+        icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/openai.svg",
+        comingSoon: !AdapterFactory.isAdapterAvailable("openai_codex"),
+      },
+      {
         id: "vertex_ai",
         name: "Google Vertex AI",
         type: "vertex",

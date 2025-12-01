@@ -93,7 +93,7 @@ export interface McpServerProxyConfig {
   env?: Record<string, string>; // Environment variables
   cwd?: string; // Working directory
   // For remote endpoint connections
-  serverUrl?: string; // URL of the remote MCP server endpoint (e.g., "https://api.githubcopilot.com/mcp/")
+  serverUrl?: string; // URL of the remote MCP server endpoint (e.g., "https://api.githubcopilot.com/mcp")
   headers?: Record<string, string>; // HTTP headers for remote endpoint (supports ${VAR} env var substitution)
   enabled?: boolean; // Whether this MCP server proxy is enabled (default: false)
   // Optional: icon for the MCP server (can be a Lucide icon name or image URL)
