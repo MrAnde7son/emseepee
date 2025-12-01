@@ -241,7 +241,7 @@ export const PROVIDER_CONFIG_SCHEMAS: Record<string, ProviderConfigSchema> = {
         required: true,
         placeholder: "https://yourorg.crm.dynamics.com",
         description: "Your Microsoft Dataverse environment URL",
-        helpUrl: "https://learn.microsoft.com/en-us/power-platform/admin/dataverse-web-api",
+        helpUrl: "https://learn.microsoft.com/en-us/power-apps/developer/data-platform/webapi/overview",
       },
       {
         key: "scope",
