@@ -225,7 +225,7 @@ export class AgentsRouteHandler extends BaseRouteHandler {
       }
 
       const { getProviderConfig } = await import("../../db/services/providerService.js");
-      const providerConfig = await getProviderConfig("microsoft_copilot", auth.tenantId);
+      const providerConfig = await getProviderConfig("microsoft_copilot", auth.tenantId ?? undefined);
 
       if (!providerConfig) {
         this.sendError(res, 400, "Microsoft Copilot provider is not configured");
@@ -260,7 +260,7 @@ export class AgentsRouteHandler extends BaseRouteHandler {
       const result = await integration.invokeCopilotAgent(
         agent,
         { userId: body.userId, message: body.message, context: body.context },
-        providerConfig.config as Microsoft365CopilotIntegrationConfig
+        providerConfig.config as unknown as Microsoft365CopilotIntegrationConfig
       );
 
       logger.info(`[AGENTS] Invoked Copilot agent ${agent.id} via Hakuna`, {

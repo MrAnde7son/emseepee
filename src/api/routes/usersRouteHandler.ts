@@ -82,19 +82,20 @@ export class UsersRouteHandler extends BaseRouteHandler {
       }));
 
       const { getProviderConfig } = await import("../../db/services/providerService.js");
-      const providerConfig = await getProviderConfig("microsoft_copilot", auth.tenantId);
+      const providerConfig = await getProviderConfig("microsoft_copilot", auth.tenantId ?? undefined);
       let microsoftUsers: Array<{ id: string; email?: string; name?: string | null; role: string; tenantId?: string | null; createdAt?: string; updatedAt?: string; source: string; active?: boolean }> = [];
 
       if (providerConfig) {
         try {
           const integration = new MicrosoftCopilotIntegration();
-          microsoftUsers = await integration.listUsers(providerConfig.config as Microsoft365CopilotIntegrationConfig).then((result) =>
+          const config = providerConfig.config as unknown as Microsoft365CopilotIntegrationConfig;
+          microsoftUsers = await integration.listUsers(config).then((result) =>
             result.map((user) => ({
               id: user.id,
               email: user.email,
               name: user.displayName,
               role: user.active === false ? "disabled" : "member",
-              tenantId: providerConfig.config?.tenantId ?? null,
+              tenantId: (typeof config.tenantId === "string" ? config.tenantId : null) as string | null,
               source: user.source,
               active: user.active,
             }))
