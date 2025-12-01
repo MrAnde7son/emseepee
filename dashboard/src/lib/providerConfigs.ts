@@ -202,6 +202,57 @@ export const PROVIDER_CONFIG_SCHEMAS: Record<string, ProviderConfigSchema> = {
       },
     ],
   },
+  microsoft_copilot: {
+    providerId: "microsoft_copilot",
+    requiresConfig: true,
+    description: "Enter your Microsoft 365 Copilot credentials to connect to Microsoft Copilot Studio",
+    fields: [
+      {
+        key: "tenantId",
+        label: "Tenant ID",
+        type: "text",
+        required: true,
+        placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+        description: "Your Microsoft Azure AD tenant ID",
+        helpUrl: "https://learn.microsoft.com/en-us/azure/active-directory/fundamentals/active-directory-how-to-find-tenant",
+      },
+      {
+        key: "clientId",
+        label: "Client ID (Application ID)",
+        type: "text",
+        required: true,
+        placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+        description: "Your Azure AD application (client) ID",
+        helpUrl: "https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal",
+      },
+      {
+        key: "clientSecret",
+        label: "Client Secret",
+        type: "password",
+        required: true,
+        placeholder: "...",
+        description: "Your Azure AD application client secret",
+        helpUrl: "https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal",
+      },
+      {
+        key: "dataverseHost",
+        label: "Dataverse Host",
+        type: "url",
+        required: true,
+        placeholder: "https://yourorg.crm.dynamics.com",
+        description: "Your Microsoft Dataverse environment URL",
+        helpUrl: "https://learn.microsoft.com/en-us/power-platform/admin/dataverse-web-api",
+      },
+      {
+        key: "scope",
+        label: "Scope (Optional)",
+        type: "text",
+        required: false,
+        placeholder: "https://yourorg.crm.dynamics.com/.default",
+        description: "OAuth2 scope for API access. Defaults to {dataverseHost}/.default if not provided",
+      },
+    ],
+  },
 };
 
 /**
