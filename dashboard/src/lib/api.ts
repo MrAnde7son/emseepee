@@ -181,9 +181,9 @@ export const Api = {
     };
     disabledTools?: string[];
   }>(`/api/mcp/${mcpId}`, updates, true),
-  getPolicies: (includeArchived?: boolean, page?: number, limit?: number, filters?: { search?: string; scope?: string; effect?: string; enabled?: string; priority?: string }) => {
+  getPolicies: (archived?: boolean, page?: number, limit?: number, filters?: { search?: string; scope?: string; effect?: string; enabled?: string; priority?: string }) => {
     const params = new URLSearchParams();
-    if (includeArchived) params.set("includeArchived", "true");
+    if (archived) params.set("archived", "true");
     if (page) params.set("page", page.toString());
     if (limit) params.set("limit", limit.toString());
     if (filters?.search) params.set("q", filters.search);

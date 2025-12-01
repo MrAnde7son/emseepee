@@ -18,10 +18,10 @@ export function useTools(page?: number, limit?: number, search?: string) {
   });
 }
 
-export function usePolicies(includeArchived?: boolean, page?: number, limit?: number, filters?: { search?: string; scope?: string; effect?: string; enabled?: string; priority?: string }) {
+export function usePolicies(archived?: boolean, page?: number, limit?: number, filters?: { search?: string; scope?: string; effect?: string; enabled?: string; priority?: string }) {
   return useQuery({
-    queryKey: ["policies", includeArchived, page, limit, filters],
-    queryFn: () => Api.getPolicies(includeArchived, page, limit, filters),
+    queryKey: ["policies", archived, page, limit, filters],
+    queryFn: () => Api.getPolicies(archived, page, limit, filters),
   });
 }
 

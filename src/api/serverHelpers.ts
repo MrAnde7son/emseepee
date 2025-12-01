@@ -56,7 +56,7 @@ export function extractScopeTarget(condition: PolicyRuleCondition, scope: "tool"
 }
 
 export async function getPolicies(
-  includeArchived: boolean = false,
+  archived: boolean = false,
   page: number = 1,
   limit: number = 50,
   filters?: {
@@ -103,7 +103,7 @@ export async function getPolicies(
   });
   
   let filteredPolicies = allPolicies.filter((policy) => {
-    if (!includeArchived && policy.archived) {
+    if (archived !== policy.archived) {
       return false;
     }
     

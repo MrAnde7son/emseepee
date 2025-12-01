@@ -72,7 +72,7 @@ export class PoliciesRouteHandler extends BaseRouteHandler {
       }
 
       const url = new URL(req.url || "/", `http://${req.headers.host}`);
-      const includeArchived = url.searchParams.get("includeArchived") === "true";
+      const archived = url.searchParams.get("archived") === "true";
       const page = parseInt(url.searchParams.get("page") || "1", 10);
       const limit = parseInt(url.searchParams.get("limit") || "50", 10);
       const filters = {
@@ -82,7 +82,7 @@ export class PoliciesRouteHandler extends BaseRouteHandler {
         enabled: url.searchParams.get("status") || undefined,
         priority: url.searchParams.get("priority") || undefined,
       };
-      const policies = await getPolicies(includeArchived, page, limit, filters, auth.tenantId || undefined);
+      const policies = await getPolicies(archived, page, limit, filters, auth.tenantId || undefined);
       this.sendJSON(res, 200, policies);
     } catch (error) {
       this.sendError(res, 500, error instanceof Error ? error.message : "Failed to get policies");
