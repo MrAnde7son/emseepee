@@ -6,6 +6,7 @@ import * as userService from "../src/db/services/userService.js";
 import * as authMiddleware from "../src/api/middleware/auth.js";
 import * as providerService from "../src/db/services/providerService.js";
 import { MicrosoftCopilotIntegration } from "../src/integrations/microsoft/copilot/MicrosoftCopilotIntegration.js";
+import { OpenAIEnterpriseIntegration } from "../src/integrations/openai/OpenAIEnterpriseIntegration.js";
 
 type MockResponse = ServerResponse & { data: string; statusCode?: number; headers?: Record<string, string> };
 
@@ -118,6 +119,45 @@ describe("UsersRouteHandler", () => {
     const payload = JSON.parse(res.data) as Array<Record<string, unknown>>;
     expect(payload).toHaveLength(1);
     expect(payload[0]).toMatchObject({ id: "u1", email: "cloud@example.com", name: "Cloud User", source: "microsoft-365" });
+  });
+
+  it("includes ChatGPT Enterprise users when provider is configured", async () => {
+    vi.spyOn(authMiddleware.AuthMiddleware, "requireAuth").mockReturnValue({
+      userId: 1,
+      email: "admin@example.com",
+      role: "admin",
+      tenantId: "tenant-a",
+    });
+
+    vi.spyOn(userService, "listUsers").mockResolvedValue([] as any);
+    vi.spyOn(providerService, "getProviderConfig").mockImplementation(async (providerId: string) => {
+      if (providerId === "openai") {
+        return {
+          providerId: "openai",
+          config: { apiKey: "key", baseUrl: "https://api.test/v1", organizationId: "org" },
+          enabled: true,
+          createdAt: "now",
+          updatedAt: "now",
+        } as any;
+      }
+      return null as any;
+    });
+
+    vi.spyOn(MicrosoftCopilotIntegration.prototype, "listUsers").mockResolvedValue([]);
+    vi.spyOn(OpenAIEnterpriseIntegration.prototype, "listUsers").mockResolvedValue([
+      { id: "chat1", email: "chat@example.com", name: "Chat User", active: true, source: "chatgpt" },
+    ]);
+
+    const handler = new UsersRouteHandler();
+    const req = createRequest("GET", { authorization: "Bearer token" });
+    const res = createMockResponse();
+
+    const handled = await handler.handle(req, res, "/api/users", "GET");
+
+    expect(handled).toBe(true);
+    const payload = JSON.parse(res.data) as Array<Record<string, unknown>>;
+    expect(payload).toHaveLength(1);
+    expect(payload[0]).toMatchObject({ id: "chat1", email: "chat@example.com", name: "Chat User", source: "chatgpt" });
   });
 
   it("returns an error when no auth token is provided", async () => {

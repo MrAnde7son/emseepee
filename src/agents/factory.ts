@@ -30,7 +30,12 @@ export class AdapterFactory {
         return new OpenAIAdapter(
           apiKey,
           (config?.baseUrl as string) || process.env.OPENAI_BASE_URL,
-          (config?.organizationId as string) || process.env.OPENAI_ORGANIZATION_ID
+          (config?.organizationId as string) || process.env.OPENAI_ORGANIZATION_ID,
+          {
+            apiKey,
+            baseUrl: ((config?.baseUrl as string) || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, ""),
+            organizationId: (config?.organizationId as string) || process.env.OPENAI_ORGANIZATION_ID,
+          }
         );
 
       case "microsoft_copilot":

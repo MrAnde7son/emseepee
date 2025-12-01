@@ -1,6 +1,10 @@
 import { BaseProviderAdapter } from "./base.js";
 import type { Agent } from "../../config.js";
 import { logger } from "../../logger.js";
+import {
+  OpenAIEnterpriseIntegration,
+  type OpenAIEnterpriseIntegrationConfig,
+} from "../../integrations/openai/OpenAIEnterpriseIntegration.js";
 
 /**
  * OpenAI provider adapter
@@ -11,12 +15,20 @@ export class OpenAIAdapter extends BaseProviderAdapter {
   private apiKey: string;
   private baseUrl: string;
   private organizationId?: string;
+  private enterpriseIntegration = new OpenAIEnterpriseIntegration();
+  private enterpriseConfig?: OpenAIEnterpriseIntegrationConfig;
 
-  constructor(apiKey?: string, baseUrl?: string, organizationId?: string) {
+  constructor(
+    apiKey?: string,
+    baseUrl?: string,
+    organizationId?: string,
+    enterpriseConfig?: OpenAIEnterpriseIntegrationConfig,
+  ) {
     super();
     this.apiKey = apiKey || process.env.OPENAI_API_KEY || "";
     this.baseUrl = baseUrl || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
     this.organizationId = organizationId || process.env.OPENAI_ORGANIZATION_ID;
+    this.enterpriseConfig = enterpriseConfig;
   }
 
   getProviderId(): string {
@@ -77,6 +89,9 @@ export class OpenAIAdapter extends BaseProviderAdapter {
       return [];
     }
 
+    const assistants: Agent[] = [];
+    const gpts: Agent[] = [];
+
     try {
       const allAssistants: any[] = [];
       let hasMore = true;
@@ -89,7 +104,7 @@ export class OpenAIAdapter extends BaseProviderAdapter {
         if (after) {
           params.append("after", after);
         }
-        
+
         const url = `${this.baseUrl}/assistants?${params.toString()}`;
         const response = await fetch(url, {
           method: "GET",
@@ -106,24 +121,24 @@ export class OpenAIAdapter extends BaseProviderAdapter {
         }
 
         const data = await response.json();
-        const assistants = data.data || [];
-        allAssistants.push(...assistants);
+        const assistantsPage = data.data || [];
+        allAssistants.push(...assistantsPage);
 
         // Check if there are more pages
-        hasMore = data.has_more === true && assistants.length === limit;
-        if (hasMore && assistants.length > 0) {
+        hasMore = data.has_more === true && assistantsPage.length === limit;
+        if (hasMore && assistantsPage.length > 0) {
           // Use the last assistant's ID as the cursor for the next page
-          after = assistants[assistants.length - 1].id;
+          after = assistantsPage[assistantsPage.length - 1].id;
         } else {
           hasMore = false;
         }
       }
 
       logger.info(`[OPENAI-ADAPTER] Fetched ${allAssistants.length} assistants from OpenAI`);
-      return allAssistants.map((assistant: any) => this.assistantToAgent(assistant));
+      assistants.push(...allAssistants.map((assistant: any) => this.assistantToAgent(assistant)));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      
+
       // Provide more helpful error messages for common network issues
       if (errorMessage.includes("fetch failed") || errorMessage.includes("ECONNREFUSED") || errorMessage.includes("ENOTFOUND")) {
         logger.error(`[OPENAI-ADAPTER] Network error when connecting to ${this.baseUrl}. Check your internet connection and baseUrl configuration. Error: ${errorMessage}`);
@@ -132,10 +147,18 @@ export class OpenAIAdapter extends BaseProviderAdapter {
       } else {
         logger.error(`[OPENAI-ADAPTER] Failed to list agents: ${errorMessage}`);
       }
-      
-      // Return empty array instead of throwing to allow other providers to work
-      return [];
     }
+
+    try {
+      if (this.enterpriseConfig) {
+        const enterpriseAgents = await this.enterpriseIntegration.listAgents(this.enterpriseConfig);
+        gpts.push(...enterpriseAgents);
+      }
+    } catch (error) {
+      logger.error("[OPENAI-ADAPTER] Failed to list workspace GPTs:", error);
+    }
+
+    return [...assistants, ...gpts];
   }
 
   async getAgent(providerNativeId: string): Promise<Agent | null> {
