@@ -85,20 +85,28 @@ function createMockRequest(writeCallback?: (data: string) => void) {
 describe("OAuth dynamic discovery and registration", () => {
   let originalHttpsRequest: typeof https.request;
   let originalHttpRequest: typeof http.request;
+  let originalFetch: typeof fetch;
 
   beforeEach(() => {
     vi.restoreAllMocks();
     originalHttpsRequest = https.request;
     originalHttpRequest = http.request;
+    originalFetch = globalThis.fetch;
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     https.request = originalHttpsRequest;
     http.request = originalHttpRequest;
+    globalThis.fetch = originalFetch;
   });
 
   it("discovers metadata and caches the result", async () => {
+    // Mock fetch to throw so it falls back to https.request
+    globalThis.fetch = vi.fn(() => {
+      throw new Error("Fetch not available");
+    }) as any;
+
     const requestMock = vi.fn((options: any, callback?: (res: any) => void) => {
       const request = createMockRequest();
       // Call the callback with response in next tick to simulate async
@@ -128,6 +136,11 @@ describe("OAuth dynamic discovery and registration", () => {
     (mockedDb as any).__setRow(null);
     const executeUpdate = (mockedDb as any).executeUpdate as ReturnType<typeof vi.fn>;
     executeUpdate.mockClear();
+
+    // Mock fetch to throw so it falls back to https.request
+    globalThis.fetch = vi.fn(() => {
+      throw new Error("Fetch not available");
+    }) as any;
 
     const requestMock = vi.fn((options: any, callback?: (res: any) => void) => {
       const request = createMockRequest();
