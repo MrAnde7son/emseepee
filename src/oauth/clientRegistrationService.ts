@@ -139,6 +139,43 @@ async function fetchWithCustomTLS(
   });
 }
 
+async function fetchRegistrationEndpoint(
+  url: string,
+  options: { method?: string; headers?: Record<string, string>; body?: string; allowInsecureTLS?: boolean }
+): Promise<{ status: number; statusText: string; body: string; headers: Record<string, string> }> {
+  if (typeof fetch === "function") {
+    try {
+      const response = await fetch(url, {
+        method: options.method || "GET",
+        headers: options.headers,
+        body: options.body,
+      });
+
+      const body = typeof response.text === "function"
+        ? await response.text()
+        : JSON.stringify(await (response as unknown as { json: () => Promise<unknown> }).json());
+
+      const headers: Record<string, string> = {};
+      if (response.headers && typeof response.headers.forEach === "function") {
+        response.headers.forEach((value, key) => {
+          headers[key] = value;
+        });
+      }
+
+      return {
+        status: response.status,
+        statusText: response.statusText,
+        body,
+        headers,
+      };
+    } catch (error) {
+      logger.warn(`[OAUTH] Fetch failed for registration endpoint ${url}, falling back to custom TLS fetch`, error);
+    }
+  }
+
+  return fetchWithCustomTLS(url, options);
+}
+
 export interface RegisteredClient {
   clientId: string;
   clientSecret?: string;
@@ -275,11 +312,10 @@ export async function getOrRegisterClientForMcp(
     
     logger.info(`[OAUTH] Registering dynamic client for ${mcpId} at ${oauthMetadata.registration_endpoint}`);
     
-    const response = await fetchWithCustomTLS(oauthMetadata.registration_endpoint, {
+    const response = await fetchRegistrationEndpoint(oauthMetadata.registration_endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      timeout: 10000,
       allowInsecureTLS,
     });
 

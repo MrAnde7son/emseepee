@@ -151,5 +151,121 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   migrate(force, tenantId);
 }
 
-export { migrate, resolveTenantId, resolveTenantsForMigration };
+/**
+ * Safely upgrade configuration by merging new defaults without overwriting existing customer config
+ * This function:
+ * - Adds new MCP servers from config.json that don't exist in the database
+ * - Adds new tools from config.json that don't exist in the database
+ * - Adds new policy rules from config.json that don't exist in the database
+ * - Never overwrites existing customer configuration
+ */
+async function upgradeConfigSafely(tenantId?: string): Promise<void> {
+  let fileConfig: ReturnType<typeof loadConfigFromFile> | null = null;
+  let configLoadAttempted = false;
+
+  const getFileConfig = () => {
+    if (configLoadAttempted) {
+      return fileConfig;
+    }
+
+    configLoadAttempted = true;
+    try {
+      fileConfig = loadConfigFromFile();
+      logger.info("[UPGRADE] Loaded default configuration from config.json");
+    } catch (error) {
+      logger.info("[UPGRADE] No config.json found, skipping upgrade");
+      fileConfig = null;
+    }
+
+    return fileConfig;
+  };
+
+  try {
+    // Ensure database is initialized
+    await initializeDatabase();
+    const exists = await schemaExists();
+    if (!exists) {
+      // If schema doesn't exist, create it but don't upgrade yet
+      await createSchema();
+      logger.info("[UPGRADE] Database schema created");
+    }
+
+    const tenants = await resolveTenantsForMigration(tenantId);
+
+    for (const tenant of tenants) {
+      logger.info(`[UPGRADE] Checking for configuration upgrades for tenant: ${tenant ?? "global"}...`);
+
+      // Get existing configuration from database
+      const existingConfig = await getAllConfigFromDb(tenant);
+
+      // Get default configuration from config.json
+      const defaultConfig = getFileConfig();
+      if (!defaultConfig) {
+        // No config.json, nothing to upgrade
+        continue;
+      }
+
+      let upgraded = false;
+
+      // Merge MCP server proxies: only add new ones that don't exist
+      const mergedMcpServers = { ...existingConfig.mcpServerProxies };
+      for (const [key, value] of Object.entries(defaultConfig.mcpServerProxies)) {
+        if (!(key in mergedMcpServers)) {
+          mergedMcpServers[key] = value;
+          upgraded = true;
+          logger.info(`[UPGRADE] Added new MCP server proxy: ${key}`);
+        }
+      }
+
+      // Merge tools proxies: only add new ones that don't exist
+      const mergedTools = { ...existingConfig.toolsProxies };
+      for (const [key, value] of Object.entries(defaultConfig.toolsProxies)) {
+        if (!(key in mergedTools)) {
+          mergedTools[key] = value;
+          upgraded = true;
+          logger.info(`[UPGRADE] Added new tool proxy: ${key}`);
+        }
+      }
+
+      // Merge policy rules: only add new ones that don't exist
+      // Compare rules by their key properties (name, condition, action) to avoid duplicates
+      const mergedPolicyRules = [...existingConfig.policyRules];
+      const existingRuleKeys = new Set(
+        existingConfig.policyRules.map((rule) =>
+          JSON.stringify({ condition: rule.condition, action: rule.action })
+        )
+      );
+
+      for (const rule of defaultConfig.policyRules) {
+        const ruleKey = JSON.stringify({ condition: rule.condition, action: rule.action });
+        if (!existingRuleKeys.has(ruleKey)) {
+          mergedPolicyRules.push(rule);
+          upgraded = true;
+          logger.info(`[UPGRADE] Added new policy rule`);
+        }
+      }
+
+      // Save merged configuration if any upgrades were made
+      if (upgraded) {
+        if (Object.keys(mergedMcpServers).length > 0) {
+          await saveMcpServerProxiesToDb(mergedMcpServers, tenant);
+        }
+        if (Object.keys(mergedTools).length > 0) {
+          await saveToolsProxiesToDb(mergedTools, tenant);
+        }
+        if (mergedPolicyRules.length > 0) {
+          await savePolicyRulesToDb(mergedPolicyRules, tenant);
+        }
+        logger.info(`[UPGRADE] Configuration upgraded successfully for tenant: ${tenant ?? "global"}`);
+      } else {
+        logger.info(`[UPGRADE] No upgrades needed for tenant: ${tenant ?? "global"}`);
+      }
+    }
+  } catch (error) {
+    // Don't throw - upgrade failures shouldn't block startup
+    logger.warn("[UPGRADE] Configuration upgrade failed (non-critical):", error);
+  }
+}
+
+export { migrate, resolveTenantId, resolveTenantsForMigration, upgradeConfigSafely };
 

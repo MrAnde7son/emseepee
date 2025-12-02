@@ -26,6 +26,35 @@ function getInsecureAgent(): HttpsAgent {
   return insecureAgent;
 }
 
+async function fetchDiscoveryDocument(url: string, allowInsecureTLS?: boolean): Promise<{ status: number; statusText: string; body: string; headers: Record<string, string> }> {
+  if (typeof fetch === "function") {
+    try {
+      const response = await fetch(url, { method: "GET" });
+      const headers: Record<string, string> = {};
+      if (response.headers && typeof response.headers.forEach === "function") {
+        response.headers.forEach((value, key) => {
+          headers[key] = value;
+        });
+      }
+
+      const body = typeof response.text === "function"
+        ? await response.text()
+        : JSON.stringify(await (response as unknown as { json: () => Promise<unknown> }).json());
+
+      return {
+        status: response.status,
+        statusText: response.statusText,
+        body,
+        headers,
+      };
+    } catch (error) {
+      logger.warn(`[OAUTH] Fetch failed for ${url}, falling back to custom TLS fetch`, error);
+    }
+  }
+
+  return fetchWithCustomTLS(url, { allowInsecureTLS });
+}
+
 function buildDiscoveryUrls(serverUrl: string): string[] {
   try {
     const url = new URL(serverUrl);
@@ -176,12 +205,9 @@ export async function discoverMcpOAuthMetadata(serverUrl: string): Promise<OAuth
   for (const endpoint of discoveryUrls) {
     try {
       logger.info(`[OAUTH] Attempting to discover OAuth metadata from ${endpoint}`);
-      
-      const response = await fetchWithCustomTLS(endpoint, {
-        timeout: 10000,
-        allowInsecureTLS,
-      });
-      
+
+      const response = await fetchDiscoveryDocument(endpoint, allowInsecureTLS);
+
       if (response.status < 200 || response.status >= 300) {
         logger.info(`[OAUTH] Discovery endpoint ${endpoint} returned ${response.status} ${response.statusText}`);
         logger.info(`[OAUTH] Response body: ${response.body.substring(0, 200)}`);

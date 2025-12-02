@@ -110,6 +110,15 @@ async function initialize() {
         logger.warn("[DB] Migration failed (non-critical):", error);
         // Continue anyway - migration failures shouldn't block startup
       }
+
+      // Upgrade configuration safely (adds new defaults without overwriting customer config)
+      try {
+        const { upgradeConfigSafely } = await import("./db/migrate.js");
+        await upgradeConfigSafely();
+      } catch (error) {
+        logger.warn("[DB] Config upgrade failed (non-critical):", error);
+        // Continue anyway - upgrade failures shouldn't block startup
+      }
     }
     
     // Verify initialization succeeded

@@ -68,6 +68,22 @@ export class ProviderService {
         comingSoon: !AdapterFactory.isAdapterAvailable("openai"),
       },
       {
+        id: "openai_codex",
+        name: "OpenAI Codex",
+        type: "openai",
+        status: allInstalledProviders.has("openai_codex") ? "connected" : "pending",
+        icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/openai.svg",
+        comingSoon: !AdapterFactory.isAdapterAvailable("openai_codex"),
+      },
+      {
+        id: "microsoft_copilot",
+        name: "Microsoft Copilot",
+        type: "copilot",
+        status: allInstalledProviders.has("microsoft_copilot") ? "connected" : "pending",
+        icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/microsoft.svg",
+        comingSoon: !AdapterFactory.isAdapterAvailable("microsoft_copilot"),
+      },
+      {
         id: "vertex_ai",
         name: "Google Vertex AI",
         type: "vertex",
@@ -82,14 +98,6 @@ export class ProviderService {
         status: allInstalledProviders.has("aws_bedrock") ? "connected" : "pending",
         icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/amazonaws.svg",
         comingSoon: !AdapterFactory.isAdapterAvailable("aws_bedrock"),
-      },
-      {
-        id: "microsoft_copilot",
-        name: "Microsoft Copilot",
-        type: "copilot",
-        status: allInstalledProviders.has("microsoft_copilot") ? "connected" : "pending",
-        icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/microsoft.svg",
-        comingSoon: !AdapterFactory.isAdapterAvailable("microsoft_copilot"),
       },
       {
         id: "n8n",

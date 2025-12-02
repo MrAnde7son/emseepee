@@ -1,12 +1,44 @@
+databases:
+  - name: hakuna-postgres
+
 services:
   - type: web
-    name: hakuna
+    name: hakuna-backend
     env: node
-    buildCommand: pnpm install --frozen-lockfile
-    startCommand: pnpm dev:all
+    buildCommand: pnpm install --frozen-lockfile && pnpm run build
+    startCommand: pnpm run start
     envVars:
       - key: NODE_ENV
         value: production
       - key: GATEWAY_API_PORT
         value: 8000
-
+      - key: POSTGRES_HOST
+        fromDatabase:
+          name: hakuna-postgres
+          property: host
+      - key: POSTGRES_PORT
+        fromDatabase:
+          name: hakuna-postgres
+          property: port
+      - key: POSTGRES_DATABASE
+        fromDatabase:
+          name: hakuna-postgres
+          property: database
+      - key: POSTGRES_USER
+        fromDatabase:
+          name: hakuna-postgres
+          property: user
+      - key: POSTGRES_PASSWORD
+        fromDatabase:
+          name: hakuna-postgres
+          property: password
+  - type: web
+    name: hakuna-frontend
+    env: node
+    buildCommand: pnpm install --frozen-lockfile && cd dashboard && pnpm run build
+    startCommand: cd dashboard && pnpm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_GATEWAY_URL
+        value: https://hakuna-backend.onrender.com

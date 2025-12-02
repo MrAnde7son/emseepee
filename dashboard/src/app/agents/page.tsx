@@ -328,7 +328,7 @@ export default function AgentsPage() {
 
       {/* Agents Table */}
       <div className="border border-border rounded-xl bg-card">
-        <Table>
+        <Table className="min-w-[760px]">
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>

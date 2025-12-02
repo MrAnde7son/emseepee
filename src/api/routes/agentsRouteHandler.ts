@@ -3,6 +3,10 @@ import { URL } from "url";
 import { BaseRouteHandler } from "./baseRouteHandler.js";
 import { RequestParser } from "../middleware/requestParser.js";
 import { ErrorHandler } from "../middleware/errorHandler.js";
+import { evaluatePolicy } from "../../policy.js";
+import type { ToolPolicyConfig } from "../../config.js";
+import { MicrosoftCopilotIntegration, type Microsoft365CopilotIntegrationConfig } from "../../integrations/microsoft/copilot/MicrosoftCopilotIntegration.js";
+import { logger } from "../../logger.js";
 
 export class AgentsRouteHandler extends BaseRouteHandler {
   async handle(req: IncomingMessage, res: ServerResponse, path: string, method: string): Promise<boolean> {
@@ -15,6 +19,14 @@ export class AgentsRouteHandler extends BaseRouteHandler {
       const agentId = path.replace("/api/agents/", "");
       if (agentId && !agentId.includes("/")) {
         await this.handleGetAgent(req, res, agentId);
+        return true;
+      }
+    }
+
+    if (path.startsWith("/api/agents/") && path.endsWith("/invoke") && method === "POST") {
+      const agentId = path.replace("/api/agents/", "").replace("/invoke", "");
+      if (agentId) {
+        await this.handleInvokeAgent(req, res, agentId);
         return true;
       }
     }
@@ -180,6 +192,85 @@ export class AgentsRouteHandler extends BaseRouteHandler {
       const errorMessage = error instanceof Error ? error.message : "Failed to delete agent";
       const statusCode = errorMessage.includes("not found") ? 404 : 500;
       this.sendError(res, statusCode, errorMessage);
+    }
+  }
+
+  private async handleInvokeAgent(req: IncomingMessage, res: ServerResponse, agentId: string): Promise<void> {
+    try {
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const body = await RequestParser.parseBody(req) as { userId: string; message: string; context?: unknown };
+
+      if (!body?.message) {
+        this.sendError(res, 400, "Message is required to invoke an agent");
+        return;
+      }
+
+      const { getAgentRegistry } = await import("../../agents/registry.js");
+      const registry = getAgentRegistry();
+      const agent = await registry.getAgent(agentId);
+
+      if (!agent) {
+        this.sendError(res, 404, "Agent not found");
+        return;
+      }
+
+      if (agent.providerId !== "microsoft_copilot") {
+        this.sendError(res, 400, "Agent invocation is only supported for Microsoft Copilot agents");
+        return;
+      }
+
+      const { getProviderConfig } = await import("../../db/services/providerService.js");
+      const providerConfig = await getProviderConfig("microsoft_copilot", auth.tenantId ?? undefined);
+
+      if (!providerConfig) {
+        this.sendError(res, 400, "Microsoft Copilot provider is not configured");
+        return;
+      }
+
+      const toolConfig: ToolPolicyConfig = {
+        name: "microsoft_copilot.invoke",
+        description: "Invoke a Microsoft Copilot agent via Hakuna",
+        allowedRoles: ["admin", "member", "user"],
+        sensitivity: "medium",
+        category: "third_party",
+        enabled: true,
+      };
+
+      const decision = await evaluatePolicy({
+        tool: toolConfig,
+        agentId: agent.id,
+        agentRole: agent.role || "assistant",
+        env: agent.env || "default",
+        args: { message: body.message, context: body.context, userId: body.userId },
+        providerId: agent.providerId,
+        tenantId: agent.tenantId,
+      });
+
+      if (decision.decision === "deny") {
+        this.sendError(res, 403, decision.reason || "Invocation blocked by policy");
+        return;
+      }
+
+      const integration = new MicrosoftCopilotIntegration();
+      const result = await integration.invokeCopilotAgent(
+        agent,
+        { userId: body.userId, message: body.message, context: body.context },
+        providerConfig.config as unknown as Microsoft365CopilotIntegrationConfig
+      );
+
+      logger.info(`[AGENTS] Invoked Copilot agent ${agent.id} via Hakuna`, {
+        conversationId: result.conversationId,
+        provider: agent.providerId,
+      });
+
+      this.sendJSON(res, 200, result);
+    } catch (error) {
+      ErrorHandler.handle(error, res, "Invoke agent error");
     }
   }
 }

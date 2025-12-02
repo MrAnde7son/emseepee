@@ -1,6 +1,7 @@
 import type { ProviderAgentAdapter } from "../config.js";
 import { CursorAdapter } from "./adapters/cursor.js";
 import { OpenAIAdapter } from "./adapters/openai.js";
+import { MicrosoftCopilotAdapter } from "./adapters/microsoftCopilot.js";
 import { logger } from "../logger.js";
 
 /**
@@ -26,11 +27,13 @@ export class AdapterFactory {
           logger.warn("[ADAPTER-FACTORY] OpenAI adapter requires apiKey in config or OPENAI_API_KEY env var");
           return null;
         }
-        return new OpenAIAdapter(
-          apiKey,
-          (config?.baseUrl as string) || process.env.OPENAI_BASE_URL,
-          (config?.organizationId as string) || process.env.OPENAI_ORGANIZATION_ID
-        );
+        const baseUrl = (config?.baseUrl as string) || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+        const organizationId = (config?.organizationId as string) || process.env.OPENAI_ORGANIZATION_ID;
+        
+        return new OpenAIAdapter(apiKey, baseUrl, organizationId);
+
+      case "microsoft_copilot":
+        return new MicrosoftCopilotAdapter(config);
 
       // Add more providers here as adapters are implemented
       // case "n8n":
@@ -50,7 +53,7 @@ export class AdapterFactory {
    * Check if an adapter is available for a provider (without creating it)
    */
   static isAdapterAvailable(providerId: string): boolean {
-    const supportedProviders = ["cursor", "openai"];
+    const supportedProviders = ["cursor", "openai", "microsoft_copilot"];
     return supportedProviders.includes(providerId);
   }
 
@@ -58,7 +61,7 @@ export class AdapterFactory {
    * Get list of supported provider IDs
    */
   static getSupportedProviders(): string[] {
-    return ["cursor", "openai"];
+    return ["cursor", "openai", "microsoft_copilot"];
   }
 }
 
