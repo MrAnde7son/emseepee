@@ -27,11 +27,10 @@ export class AdapterFactory {
           logger.warn("[ADAPTER-FACTORY] OpenAI adapter requires apiKey in config or OPENAI_API_KEY env var");
           return null;
         }
-        return new OpenAIAdapter(
-          apiKey,
-          (config?.baseUrl as string) || process.env.OPENAI_BASE_URL,
-          (config?.organizationId as string) || process.env.OPENAI_ORGANIZATION_ID
-        );
+        const baseUrl = (config?.baseUrl as string) || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+        const organizationId = (config?.organizationId as string) || process.env.OPENAI_ORGANIZATION_ID;
+        
+        return new OpenAIAdapter(apiKey, baseUrl, organizationId);
 
       case "microsoft_copilot":
         return new MicrosoftCopilotAdapter(config);

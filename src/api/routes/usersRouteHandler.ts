@@ -4,6 +4,7 @@ import { RequestParser } from "../middleware/requestParser.js";
 import { ErrorHandler } from "../middleware/errorHandler.js";
 import { logger } from "../../logger.js";
 import { MicrosoftCopilotIntegration, type Microsoft365CopilotIntegrationConfig } from "../../integrations/microsoft/copilot/MicrosoftCopilotIntegration.js";
+import { OpenAIEnterpriseIntegration, type OpenAIEnterpriseIntegrationConfig } from "../../integrations/openai/OpenAIEnterpriseIntegration.js";
 
 export class UsersRouteHandler extends BaseRouteHandler {
   async handle(req: IncomingMessage, res: ServerResponse, path: string, method: string): Promise<boolean> {
@@ -82,6 +83,8 @@ export class UsersRouteHandler extends BaseRouteHandler {
       }));
 
       const { getProviderConfig } = await import("../../db/services/providerService.js");
+      
+      // Fetch Microsoft 365 users
       const providerConfig = await getProviderConfig("microsoft_copilot", auth.tenantId ?? undefined);
       let microsoftUsers: Array<{ id: string; email?: string; name?: string | null; role: string; tenantId?: string | null; createdAt?: string; updatedAt?: string; source: string; active?: boolean }> = [];
 
@@ -105,7 +108,46 @@ export class UsersRouteHandler extends BaseRouteHandler {
         }
       }
 
-      this.sendJSON(res, 200, [...sanitizedUsers, ...microsoftUsers]);
+      // Fetch ChatGPT Enterprise workspace users
+      const chatgptUsers: Array<{
+        id: string;
+        email?: string;
+        name?: string;
+        role?: string;
+        tenantId?: string | null;
+        createdAt?: string;
+        updatedAt?: string;
+        source: string;
+        active?: boolean;
+      }> = [];
+
+      const openaiProviderConfig = await getProviderConfig("openai", auth.tenantId ?? undefined);
+      if (openaiProviderConfig?.config?.apiKey) {
+        try {
+          const integration = new OpenAIEnterpriseIntegration();
+          const enterpriseConfig: OpenAIEnterpriseIntegrationConfig = {
+            apiKey: openaiProviderConfig.config.apiKey as string,
+            baseUrl: (openaiProviderConfig.config.baseUrl as string | undefined) ?? "https://api.openai.com/v1",
+            organizationId: openaiProviderConfig.config.organizationId as string | undefined,
+          };
+          const workspaceUsers = await integration.listUsers(enterpriseConfig);
+          chatgptUsers.push(
+            ...workspaceUsers.map((u) => ({
+              id: u.id,
+              email: u.email,
+              name: u.name,
+              role: "user",
+              tenantId: auth.tenantId ?? null,
+              source: "chatgpt",
+              active: u.active ?? true,
+            }))
+          );
+        } catch (integrationError) {
+          logger.warn("[USERS] Failed to fetch ChatGPT Enterprise users:", integrationError);
+        }
+      }
+
+      this.sendJSON(res, 200, [...sanitizedUsers, ...microsoftUsers, ...chatgptUsers]);
     } catch (error) {
       ErrorHandler.handle(error, res, "List users error");
     }
