@@ -508,8 +508,8 @@ export default function ProvidersPage() {
                   No policies found for this provider. Policies with scope &quot;provider&quot; that target this provider will appear here.
                 </div>
               ) : (
-                <div className="border border-border rounded-xl overflow-hidden">
-                  <Table>
+                <div className="border border-border rounded-xl">
+                  <Table className="min-w-[520px]">
                     <TableHeader>
                       <TableRow>
                         <TableHead className="w-[250px]">Name</TableHead>
