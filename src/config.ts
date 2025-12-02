@@ -334,10 +334,8 @@ export async function loadConfig(tenantId?: string): Promise<{
 export function clearConfigCache(tenantId?: string): void {
   if (tenantId === undefined) {
     CONFIG_CACHE.clear();
-    TOOL_REGISTRY_SYNC_CACHE.clear();
   } else {
     CONFIG_CACHE.delete(getCacheKey(tenantId));
-    TOOL_REGISTRY_SYNC_CACHE.delete(getCacheKey(tenantId));
   }
   logger.info("[CONFIG] Configuration cache cleared - config will be reloaded on next access");
 }
@@ -426,6 +424,8 @@ export async function getToolRegistry(tenantId?: string): Promise<ToolCategoryRe
   const config = await loadConfig(tenantId);
   const { toolsProxies } = config;
   
+  logger.info(`[CONFIG] Loading tool registry - found ${Object.keys(toolsProxies).length} tools in config`);
+  
   // Separate tools by category
   const fileTools: Record<string, ToolPolicyConfig> = {};
   const webTools: Record<string, ToolPolicyConfig> = {};
@@ -463,12 +463,16 @@ export async function getToolRegistry(tenantId?: string): Promise<ToolCategoryRe
     ...terminalTools,
   };
   
-  return {
+  const result = {
     file: mergedFileTools,
     web: mergedWebTools,
     terminal: mergedTerminalTools,
     third_party: thirdPartyTools,
   };
+  
+  logger.info(`[CONFIG] Tool registry loaded - file: ${Object.keys(result.file).length}, web: ${Object.keys(result.web).length}, terminal: ${Object.keys(result.terminal).length}, third_party: ${Object.keys(result.third_party).length}`);
+  
+  return result;
 }
 
 /**
@@ -476,13 +480,8 @@ export async function getToolRegistry(tenantId?: string): Promise<ToolCategoryRe
  * @deprecated Use getToolRegistry() instead
  * Note: This will be initialized asynchronously, use getToolRegistry() for proper async handling
  */
-const TOOL_REGISTRY_SYNC_CACHE = new Map<string, ToolCategoryRegistry>();
 export async function getToolRegistrySync(tenantId?: string): Promise<ToolCategoryRegistry> {
-  const cacheKey = getCacheKey(tenantId);
-  if (!TOOL_REGISTRY_SYNC_CACHE.has(cacheKey)) {
-    TOOL_REGISTRY_SYNC_CACHE.set(cacheKey, await getToolRegistry(tenantId));
-  }
-  return TOOL_REGISTRY_SYNC_CACHE.get(cacheKey)!;
+  return await getToolRegistry(tenantId);
 }
 
 /**

@@ -120,7 +120,7 @@ export class ProviderService {
     return providers;
   }
 
-  async installCursorProvider(): Promise<{ success: boolean; error?: string }> {
+  async installCursorProvider(tenantId?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const { writeFileSync, mkdirSync } = await import("fs");
       const projectRoot = process.cwd();
@@ -150,6 +150,13 @@ export class ProviderService {
         apiUrl = `${apiProtocol}://${apiHost}${portSuffix}/mcp`;
       }
       
+      // Add tenant ID as query parameter if provided
+      if (tenantId) {
+        const url = new URL(apiUrl);
+        url.searchParams.set("tenant", tenantId);
+        apiUrl = url.toString();
+      }
+      
       let config: { mcpServers?: Record<string, unknown> } = {};
       if (existsSync(cursorConfigPath)) {
         try {
@@ -164,8 +171,10 @@ export class ProviderService {
       }
       
       // Configure Cursor to connect via HTTP instead of spawning a process
+      // Store tenant ID in the config so it's available for future reference
       config.mcpServers["hakuna"] = {
         url: apiUrl,
+        ...(tenantId && { tenantId }),
       };
       
       if (!existsSync(cursorDir)) {
@@ -173,6 +182,8 @@ export class ProviderService {
       }
       
       writeFileSync(cursorConfigPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+      
+      logger.info(`[ProviderService] Installed Cursor provider with tenant ID: ${tenantId || "none"}`);
       
       return { success: true };
     } catch (error) {
@@ -185,7 +196,7 @@ export class ProviderService {
 
   async installProvider(providerId: string, config: Record<string, unknown>, tenantId?: string): Promise<void> {
     if (providerId === "cursor") {
-      const result = await this.installCursorProvider();
+      const result = await this.installCursorProvider(tenantId);
       if (!result.success) {
         throw new Error(result.error);
       }

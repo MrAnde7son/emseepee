@@ -5,6 +5,7 @@ import { ErrorHandler } from "../middleware/errorHandler.js";
 import { getMcpServer } from "../../mcpServerInstance.js";
 import { getTool, getAllTools } from "../../mcpToolRegistry.js";
 import { getToolRegistry } from "../../config.js";
+import { runWithAgentContextAsync, createAgentContextFromAuth } from "../../tools/agentContext.js";
 
 /**
  * Route handler for MCP protocol over HTTP/SSE
@@ -37,6 +38,20 @@ export class McpProtocolRouteHandler extends BaseRouteHandler {
         return;
       }
 
+      // Extract tenant ID from auth if available, otherwise try to infer from cached tools
+      const auth = this.requireAuth(req);
+      let tenantId = auth?.tenantId || undefined;
+      
+      // If still no tenant ID, try to get from URL query parameter (for testing/debugging)
+      if (!tenantId) {
+        const url = new URL(req.url || "/", `http://${req.headers.host}`);
+        const tenantParam = url.searchParams.get("tenant");
+        if (tenantParam) {
+          tenantId = tenantParam;
+          logger.info(`[MCP-PROTOCOL] Using tenant ID from query parameter: ${tenantId}`);
+        }
+      }
+
       const body = await this.readBody(req);
       let request: any;
       
@@ -50,7 +65,7 @@ export class McpProtocolRouteHandler extends BaseRouteHandler {
       // Handle JSON-RPC request
       // Use the MCP server's request handler if available
       // Otherwise, handle common MCP methods manually
-      const response = await this.handleMcpMethod(request, mcpServer);
+      const response = await this.handleMcpMethod(request, mcpServer, tenantId, req);
       
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(response));
@@ -92,7 +107,7 @@ export class McpProtocolRouteHandler extends BaseRouteHandler {
     }
   }
 
-  private async handleMcpMethod(request: any, mcpServer: any): Promise<any> {
+  private async handleMcpMethod(request: any, mcpServer: any, tenantId?: string, req?: IncomingMessage): Promise<any> {
     const { method, params, id } = request;
 
     try {
@@ -140,7 +155,7 @@ export class McpProtocolRouteHandler extends BaseRouteHandler {
         }
 
         case "tools/list": {
-          const tools = await this.getToolsList(mcpServer);
+          const tools = await this.getToolsList(mcpServer, tenantId);
           return {
             jsonrpc: "2.0",
             id,
@@ -163,7 +178,36 @@ export class McpProtocolRouteHandler extends BaseRouteHandler {
             };
           }
 
-          const result = await this.callTool(mcpServer, name, args || {});
+          // Extract auth to create agent context
+          let agentContext;
+          if (req) {
+            const auth = this.requireAuth(req);
+            if (auth) {
+              agentContext = createAgentContextFromAuth(auth);
+            } else {
+              // Fallback: create minimal context from available info
+              agentContext = {
+                agentId: "anonymous",
+                agentRole: "user",
+                env: process.env.AGENT_ENV || "dev",
+                tenantId: tenantId || undefined,
+              };
+            }
+          } else {
+            // No request available (shouldn't happen, but handle gracefully)
+            agentContext = {
+              agentId: "system",
+              agentRole: "system",
+              env: process.env.AGENT_ENV || "dev",
+              tenantId: tenantId || undefined,
+            };
+          }
+
+          // Execute tool with agent context stored in AsyncLocalStorage
+          const result = await runWithAgentContextAsync(agentContext, () => {
+            return this.callTool(mcpServer, name, args || {});
+          });
+
           return {
             jsonrpc: "2.0",
             id,
@@ -193,19 +237,58 @@ export class McpProtocolRouteHandler extends BaseRouteHandler {
     }
   }
 
-  private async getToolsList(mcpServer: any): Promise<any[]> {
-    // First, try to get enabled tools dynamically from config
+  private async getToolsList(mcpServer: any, tenantId?: string): Promise<any[]> {
+    const allEnabledTools: any[] = [];
+    
     try {
-      const registry = await getToolRegistry();
-      const allEnabledTools: any[] = [];
+      // If no tenant ID provided, try to infer from cached tools
+      let effectiveTenantId = tenantId;
+      if (!effectiveTenantId) {
+        // Try to find tenant that has cached tools (for MCP proxies)
+        // This ensures we use the same tenant that was used when tools were cached
+        const { toolCache } = await import("../../tools/toolCache.js");
+        const { getMcpServerProxies } = await import("../../config.js");
+        
+        // Get all tenants that have cached tools
+        const tenantsWithCache = toolCache.getAllTenantsWithCachedTools();
+        logger.info(`[MCP-PROTOCOL] Tenants with cached tools: ${tenantsWithCache.join(", ")}`);
+        
+        // For each tenant, check if they have enabled proxies with cached tools
+        for (const tenantKey of tenantsWithCache) {
+          const testTenant = tenantKey === "default" ? undefined : tenantKey;
+          const testProxies = await getMcpServerProxies(testTenant);
+          
+          // Check if any enabled proxy has cached tools for this tenant
+          for (const [proxyName, proxyConfig] of Object.entries(testProxies)) {
+            if (proxyConfig.enabled === true) {
+              const cachedTools = toolCache.getTools(proxyName, testTenant);
+              if (cachedTools && cachedTools.length > 0) {
+                effectiveTenantId = testTenant || undefined;
+                logger.info(`[MCP-PROTOCOL] Found enabled proxy ${proxyName} with cached tools for tenant ${tenantKey}, using that tenant`);
+                break;
+              }
+            }
+          }
+          if (effectiveTenantId) break;
+        }
+        
+        if (!effectiveTenantId) {
+          logger.warn(`[MCP-PROTOCOL] No tenant found with enabled proxies and cached tools`);
+        }
+      }
       
-      // Collect enabled tools from all categories
+      logger.info(`[MCP-PROTOCOL] Getting tools list (tenantId: ${effectiveTenantId || "undefined"})`);
+      
+      // Get tool registry to check enabled state
+      const registry = await getToolRegistry(effectiveTenantId);
+      
+      // Collect enabled tools from built-in categories (file, web, terminal)
       for (const category of ["file", "web", "terminal"] as const) {
         const categoryTools = registry[category];
         for (const [toolName, toolConfig] of Object.entries(categoryTools)) {
-          // Tools are enabled by default unless explicitly disabled
-          if (toolConfig.enabled !== false) {
-            // Get the tool handler from HTTP registry or MCP server
+          // Only include tools that are explicitly enabled (enabled === true)
+          if (toolConfig.enabled === true) {
+            // Get the tool handler from HTTP registry
             const httpTool = getTool(toolName);
             if (httpTool) {
               allEnabledTools.push({
@@ -213,63 +296,64 @@ export class McpProtocolRouteHandler extends BaseRouteHandler {
                 description: toolConfig.description,
                 inputSchema: httpTool.inputSchema,
               });
+              logger.info(`[MCP-PROTOCOL] Added enabled built-in tool: ${toolName}`);
             } else {
-              // Tool not in HTTP registry, try to get from MCP server
-              try {
-                const tools = (mcpServer as any)?._tools || (mcpServer as any)?.tools;
-                if (tools && tools[toolName]) {
-                  const mcpTool = tools[toolName];
-                  allEnabledTools.push({
-                    name: toolName,
-                    description: toolConfig.description,
-                    inputSchema: mcpTool.inputSchema || mcpTool.schema?.inputSchema || {},
-                  });
-                }
-              } catch (error) {
-                logger.warn(`[MCP-PROTOCOL] Could not get tool ${toolName} from MCP server:`, error);
-              }
+              logger.warn(`[MCP-PROTOCOL] Tool ${toolName} is enabled but not found in HTTP registry`);
             }
           }
         }
       }
       
-      if (allEnabledTools.length > 0) {
-        logger.info(`[MCP-PROTOCOL] Returning ${allEnabledTools.length} enabled tools from config: ${allEnabledTools.map(t => t.name).join(", ")}`);
-        return allEnabledTools;
+      // Add MCP server proxy tools (third-party tools)
+      const { getMcpServerProxies } = await import("../../config.js");
+      const { toolCache } = await import("../../tools/toolCache.js");
+      const mcpProxies = await getMcpServerProxies(effectiveTenantId);
+      
+      logger.info(`[MCP-PROTOCOL] Found ${Object.keys(mcpProxies).length} MCP proxies for tenant ${effectiveTenantId || "default"}`);
+      
+      for (const [proxyName, proxyConfig] of Object.entries(mcpProxies)) {
+        logger.info(`[MCP-PROTOCOL] Checking MCP proxy ${proxyName} (enabled: ${proxyConfig.enabled})`);
+        // Only include enabled MCP proxies
+        if (proxyConfig.enabled === true) {
+          try {
+            // Get cached tools for this proxy - try with effective tenant ID first, then fallback to undefined
+            let cachedTools = toolCache.getTools(proxyName, effectiveTenantId);
+            if (!cachedTools && effectiveTenantId) {
+              // Fallback: try without tenant ID (for backwards compatibility)
+              cachedTools = toolCache.getTools(proxyName, undefined);
+            }
+            logger.info(`[MCP-PROTOCOL] Cached tools for ${proxyName}: ${cachedTools ? cachedTools.length : 0}`);
+            if (cachedTools && cachedTools.length > 0) {
+              // Filter out disabled tools
+              for (const tool of cachedTools) {
+                const isToolDisabled = proxyConfig.disabledTools?.includes(tool.name) ?? false;
+                if (!isToolDisabled) {
+                  // Use cached tool data directly (MCP proxy tools may not be in HTTP registry)
+                  allEnabledTools.push({
+                    name: tool.name,
+                    description: tool.description,
+                    inputSchema: tool.inputSchema,
+                  });
+                  logger.info(`[MCP-PROTOCOL] Added MCP proxy tool: ${tool.name} (from ${proxyName})`);
+                } else {
+                  logger.info(`[MCP-PROTOCOL] Skipping disabled MCP proxy tool: ${tool.name} (from ${proxyName})`);
+                }
+              }
+            } else {
+              logger.warn(`[MCP-PROTOCOL] No cached tools found for MCP proxy ${proxyName} (tenantId: ${effectiveTenantId || "undefined"})`);
+            }
+          } catch (error) {
+            logger.warn(`[MCP-PROTOCOL] Failed to get tools from MCP proxy ${proxyName}:`, error);
+          }
+        }
       }
+      
+      logger.info(`[MCP-PROTOCOL] Returning ${allEnabledTools.length} enabled tools: ${allEnabledTools.map(t => t.name).join(", ")}`);
+      return allEnabledTools;
     } catch (error) {
-      logger.warn("[MCP-PROTOCOL] Failed to get tools from config, falling back to registry:", error);
+      logger.error("[MCP-PROTOCOL] Failed to get tools list:", error);
+      return [];
     }
-    
-    // Fallback: Get tools from the HTTP registry
-    const registeredTools = getAllTools();
-    logger.info(`[MCP-PROTOCOL] HTTP registry has ${registeredTools.length} tools`);
-    
-    if (registeredTools.length > 0) {
-      const toolsList = registeredTools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema,
-      }));
-      logger.info(`[MCP-PROTOCOL] Returning ${toolsList.length} tools from HTTP registry: ${toolsList.map(t => t.name).join(", ")}`);
-      return toolsList;
-    }
-
-    // Fallback: Try to access tools from the server's internal state
-    try {
-      const tools = (mcpServer as any)._tools || (mcpServer as any).tools;
-      if (tools && typeof tools === "object") {
-        return Object.entries(tools).map(([name, tool]: [string, any]) => ({
-          name,
-          description: tool.description || "",
-          inputSchema: tool.inputSchema || {},
-        }));
-      }
-    } catch (error) {
-      logger.warn("[MCP-PROTOCOL] Failed to get tools list:", error);
-    }
-    
-    return [];
   }
 
   private async callTool(mcpServer: any, name: string, args: Record<string, unknown>): Promise<any> {

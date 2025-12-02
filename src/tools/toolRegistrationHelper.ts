@@ -2,7 +2,7 @@
  * Helper to register tools in both MCP server and HTTP registry
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerTool as registerHttpTool, getAllTools } from "../mcpToolRegistry.js";
+import { registerTool as registerHttpTool, getAllTools, getTool } from "../mcpToolRegistry.js";
 import { logger } from "../logger.js";
 
 /**
@@ -15,18 +15,40 @@ export function registerToolWithHttp(
   inputSchema: any,
   handler: (args: Record<string, unknown>) => Promise<any>
 ): void {
-  // Register with MCP server (for stdio transport)
-  server.registerTool(name, { description, inputSchema }, handler);
+  try {
+    // Check if tool is already registered in HTTP registry
+    const existingTool = getTool(name);
+    if (existingTool) {
+      logger.info(`[TOOL-REG] Tool ${name} is already registered in HTTP registry, skipping registration`);
+      return;
+    }
 
-  // Also register for HTTP access
-  // Convert Zod schema to plain object schema for HTTP
-  const httpSchema = convertZodToPlainSchema(inputSchema);
-  
-  registerHttpTool(name, description, httpSchema, handler);
-  
-  // Verify registration
-  const allTools = getAllTools();
-  logger.info(`[TOOL-REG] Registered ${name} for both stdio and HTTP (total in registry: ${allTools.length})`);
+    // Register with MCP server (for stdio transport)
+    // Note: MCP server will throw if tool is already registered, so we catch and handle that
+    try {
+      server.registerTool(name, { description, inputSchema }, handler);
+    } catch (error: any) {
+      // If tool is already registered in MCP server, that's okay - just log and continue
+      if (error?.message?.includes("already registered")) {
+        logger.info(`[TOOL-REG] Tool ${name} is already registered in MCP server, skipping MCP registration`);
+      } else {
+        throw error; // Re-throw if it's a different error
+      }
+    }
+
+    // Also register for HTTP access
+    // Convert Zod schema to plain object schema for HTTP
+    const httpSchema = convertZodToPlainSchema(inputSchema);
+    
+    registerHttpTool(name, description, httpSchema, handler);
+    
+    // Verify registration
+    const allTools = getAllTools();
+    logger.info(`[TOOL-REG] Registered ${name} for both stdio and HTTP (total in registry: ${allTools.length})`);
+  } catch (error) {
+    logger.error(`[TOOL-REG] Failed to register tool ${name}:`, error);
+    throw error;
+  }
 }
 
 /**
