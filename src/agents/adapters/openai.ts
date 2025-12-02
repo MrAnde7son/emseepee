@@ -1,6 +1,7 @@
 import { BaseProviderAdapter } from "./base.js";
 import type { Agent } from "../../config.js";
 import { logger } from "../../logger.js";
+import { OpenAIEnterpriseIntegration, type OpenAIEnterpriseIntegrationConfig } from "../../integrations/openai/OpenAIEnterpriseIntegration.js";
 
 /**
  * OpenAI provider adapter
@@ -11,12 +12,26 @@ export class OpenAIAdapter extends BaseProviderAdapter {
   private apiKey: string;
   private baseUrl: string;
   private organizationId?: string;
+  private enterpriseIntegration = new OpenAIEnterpriseIntegration();
 
   constructor(apiKey?: string, baseUrl?: string, organizationId?: string) {
     super();
     this.apiKey = apiKey || process.env.OPENAI_API_KEY || "";
     this.baseUrl = baseUrl || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
     this.organizationId = organizationId || process.env.OPENAI_ORGANIZATION_ID;
+  }
+
+  /**
+   * Build enterprise config from adapter's existing fields
+   */
+  private getEnterpriseConfig(): OpenAIEnterpriseIntegrationConfig {
+    // Remove /v1 suffix from baseUrl for enterprise endpoints
+    const enterpriseBaseUrl = this.baseUrl.replace(/\/v1\/?$/, "");
+    return {
+      apiKey: this.apiKey,
+      baseUrl: enterpriseBaseUrl,
+      organizationId: this.organizationId,
+    };
   }
 
   getProviderId(): string {
@@ -77,6 +92,10 @@ export class OpenAIAdapter extends BaseProviderAdapter {
       return [];
     }
 
+    const assistants: Agent[] = [];
+    const gpts: Agent[] = [];
+
+    // Fetch classic assistants
     try {
       const allAssistants: any[] = [];
       let hasMore = true;
@@ -99,28 +118,28 @@ export class OpenAIAdapter extends BaseProviderAdapter {
         if (!response.ok) {
           if (response.status === 401) {
             logger.warn("[OPENAI-ADAPTER] Invalid API key");
-            return [];
+            break;
           }
           const errorText = await response.text();
           throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
         }
 
         const data = await response.json();
-        const assistants = data.data || [];
-        allAssistants.push(...assistants);
+        const assistantsData = data.data || [];
+        allAssistants.push(...assistantsData);
 
         // Check if there are more pages
-        hasMore = data.has_more === true && assistants.length === limit;
-        if (hasMore && assistants.length > 0) {
+        hasMore = data.has_more === true && assistantsData.length === limit;
+        if (hasMore && assistantsData.length > 0) {
           // Use the last assistant's ID as the cursor for the next page
-          after = assistants[assistants.length - 1].id;
+          after = assistantsData[assistantsData.length - 1].id;
         } else {
           hasMore = false;
         }
       }
 
       logger.info(`[OPENAI-ADAPTER] Fetched ${allAssistants.length} assistants from OpenAI`);
-      return allAssistants.map((assistant: any) => this.assistantToAgent(assistant));
+      assistants.push(...allAssistants.map((assistant: any) => this.assistantToAgent(assistant)));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       
@@ -130,12 +149,23 @@ export class OpenAIAdapter extends BaseProviderAdapter {
       } else if (errorMessage.includes("certificate") || errorMessage.includes("SSL") || errorMessage.includes("TLS")) {
         logger.error(`[OPENAI-ADAPTER] SSL/TLS error when connecting to ${this.baseUrl}. Check your certificate configuration. Error: ${errorMessage}`);
       } else {
-        logger.error(`[OPENAI-ADAPTER] Failed to list agents: ${errorMessage}`);
+        logger.error(`[OPENAI-ADAPTER] Failed to list assistants: ${errorMessage}`);
       }
-      
-      // Return empty array instead of throwing to allow other providers to work
-      return [];
     }
+
+    // Fetch enterprise workspace GPTs
+    try {
+      if (this.apiKey) {
+        const enterpriseConfig = this.getEnterpriseConfig();
+        const enterpriseAgents = await this.enterpriseIntegration.listAgents(enterpriseConfig);
+        gpts.push(...enterpriseAgents);
+        logger.info(`[OPENAI-ADAPTER] Fetched ${enterpriseAgents.length} workspace GPTs from OpenAI Enterprise`);
+      }
+    } catch (error) {
+      logger.error("[OPENAI-ADAPTER] Failed to list workspace GPTs:", error);
+    }
+
+    return [...assistants, ...gpts];
   }
 
   async getAgent(providerNativeId: string): Promise<Agent | null> {
