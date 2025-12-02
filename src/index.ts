@@ -7,6 +7,7 @@ import { logger } from "./logger.js";
 import { registerToolsByCategory, registerMcpServerProxies } from "./tools/index.js";
 import { startApiServer } from "./api/server.js";
 import { initializeTelemetry, trackTelemetry } from "./telemetry/index.js";
+import { setMcpServer } from "./mcpServerInstance.js";
 
 async function main() {
   // Set up error handlers after logger is initialized
@@ -35,6 +36,9 @@ async function main() {
     }
   );
 
+  // Store server instance globally for HTTP access
+  setMcpServer(server);
+
   // For POC: fake agent context. Later you can map this to real identity.
   function getAgentContext() {
     const agentId = "cursor-agent";
@@ -47,9 +51,22 @@ async function main() {
   // Configure which categories to enable
   // Can be controlled via environment variable or config
   const enabledCategoriesEnv = process.env.ENABLED_TOOL_CATEGORIES;
-  const enabledCategories: ToolCategory[] = enabledCategoriesEnv
-    ? (enabledCategoriesEnv.split(",") as ToolCategory[])
-    : await getEnabledCategories(); // Default: enable all categories with tools
+  let enabledCategories: ToolCategory[];
+  
+  if (enabledCategoriesEnv) {
+    enabledCategories = enabledCategoriesEnv.split(",") as ToolCategory[];
+  } else {
+    // Always register built-in tools (file, web, terminal) at startup
+    // The HTTP handler will filter by enabled state dynamically
+    enabledCategories = ["file", "web", "terminal"];
+    const dynamicEnabled = await getEnabledCategories();
+    // Also include any dynamically enabled categories (like third_party)
+    for (const cat of dynamicEnabled) {
+      if (!enabledCategories.includes(cat)) {
+        enabledCategories.push(cat);
+      }
+    }
+  }
 
   logger.info(`[MCP-GATEWAY] Registering tools from categories: ${enabledCategories.join(", ")}`);
 

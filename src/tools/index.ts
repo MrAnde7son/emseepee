@@ -20,6 +20,7 @@ import { McpServerProxyHandler, McpServerProxyManager } from "./handlers/McpServ
 import { convertInputSchemaToZod } from "./schemaConverter.js";
 import type { AgentContext } from "./handlers/BaseGatewayHandler.js";
 import { toolCache } from "./toolCache.js";
+import { registerToolWithHttp } from "./toolRegistrationHelper.js";
 
 // Global singleton manager instance
 let globalProxyManager: McpServerProxyManager | null = null;
@@ -44,56 +45,66 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
   });
 
   // FILE READ GATEWAY
-  if (fileTools.file_read_gateway && fileTools.file_read_gateway.enabled === true) {
-    server.registerTool(
+  // Tools are enabled by default unless explicitly disabled
+  if (fileTools.file_read_gateway && fileTools.file_read_gateway.enabled !== false) {
+    const toolHandler = async (args: Record<string, unknown>) => {
+      return fileHandler.readFile(getAgentContext(), args as { path: string; encoding?: string });
+    };
+    
+    const inputSchema = {
+      path: z.string().describe("File path to read (absolute or project-relative)."),
+      encoding: z.string().optional().default("utf-8"),
+    };
+    
+    registerToolWithHttp(
+      server,
       "file_read_gateway",
-      {
-        description: fileTools.file_read_gateway.description,
-        inputSchema: {
-          path: z.string().describe("File path to read (absolute or project-relative)."),
-          encoding: z.string().optional().default("utf-8"),
-        },
-      },
-      async (args) => {
-        return fileHandler.readFile(getAgentContext(), args);
-      }
+      fileTools.file_read_gateway.description,
+      inputSchema,
+      toolHandler
     );
   }
 
   // FILE SEARCH GATEWAY
-  if (fileTools.file_search_gateway && fileTools.file_search_gateway.enabled === true) {
-    server.registerTool(
+  if (fileTools.file_search_gateway && fileTools.file_search_gateway.enabled !== false) {
+    const toolHandler = async (args: Record<string, unknown>) => {
+      return fileHandler.searchFiles(getAgentContext(), args as any);
+    };
+    
+    const inputSchema = {
+      pattern: z.string().describe("Search pattern or query string to find files."),
+      directory: z.string().optional().describe("Directory to search in (absolute or project-relative). If not provided, searches from project root."),
+      fileType: z.string().optional().describe("Optional file type filter (e.g., '*.ts', '*.js')."),
+      limit: z.number().int().min(1).max(100).optional().default(20),
+    };
+    
+    registerToolWithHttp(
+      server,
       "file_search_gateway",
-      {
-        description: fileTools.file_search_gateway.description,
-        inputSchema: {
-          pattern: z.string().describe("Search pattern or query string to find files."),
-          directory: z.string().optional().describe("Directory to search in (absolute or project-relative). If not provided, searches from project root."),
-          fileType: z.string().optional().describe("Optional file type filter (e.g., '*.ts', '*.js')."),
-          limit: z.number().int().min(1).max(100).optional().default(20),
-        },
-      },
-      async (args) => {
-        return fileHandler.searchFiles(getAgentContext(), args);
-      }
+      fileTools.file_search_gateway.description,
+      inputSchema,
+      toolHandler
     );
   }
 
   // FILE WRITE GATEWAY
-  if (fileTools.file_write_gateway && fileTools.file_write_gateway.enabled === true) {
-    server.registerTool(
+  if (fileTools.file_write_gateway && fileTools.file_write_gateway.enabled !== false) {
+    const toolHandler = async (args: Record<string, unknown>) => {
+      return fileHandler.writeFile(getAgentContext(), args as any);
+    };
+    
+    const inputSchema = {
+      path: z.string().describe("File path to write (absolute or project-relative)."),
+      contents: z.string().describe("Content to write to the file."),
+      encoding: z.string().optional().default("utf-8"),
+    };
+    
+    registerToolWithHttp(
+      server,
       "file_write_gateway",
-      {
-        description: fileTools.file_write_gateway.description,
-        inputSchema: {
-          path: z.string().describe("File path to write (absolute or project-relative)."),
-          contents: z.string().describe("Content to write to the file."),
-          encoding: z.string().optional().default("utf-8"),
-        },
-      },
-      async (args) => {
-        return fileHandler.writeFile(getAgentContext(), args);
-      }
+      fileTools.file_write_gateway.description,
+      inputSchema,
+      toolHandler
     );
   }
 }
@@ -109,20 +120,23 @@ export async function registerWebTools(context: ToolRegistrationContext): Promis
   const webHandler = new WebOperationsHandler(webTools.web_search_gateway);
 
   // WEB SEARCH GATEWAY
-  if (webTools.web_search_gateway && webTools.web_search_gateway.enabled === true) {
-    server.registerTool(
+  if (webTools.web_search_gateway && webTools.web_search_gateway.enabled !== false) {
+    const toolHandler = async (args: Record<string, unknown>) => {
+      return webHandler.searchWeb(getAgentContext(), args as any);
+    };
+    
+    const inputSchema = {
+      query: z.string().describe("Search query string."),
+      limit: z.number().int().min(1).max(20).optional().default(5).describe("Maximum number of results to return (1-20)."),
+      provider: z.enum(["tavily", "serpapi", "google", "bing", "duckduckgo", "auto"]).optional().default("auto").describe("Search provider to use. 'auto' selects based on available API keys. Options: tavily (AI-optimized), serpapi (Google results), google (Custom Search), bing, duckduckgo (fallback, no API key required)."),
+    };
+    
+    registerToolWithHttp(
+      server,
       "web_search_gateway",
-      {
-        description: webTools.web_search_gateway.description,
-        inputSchema: {
-          query: z.string().describe("Search query string."),
-          limit: z.number().int().min(1).max(20).optional().default(5).describe("Maximum number of results to return (1-20)."),
-          provider: z.enum(["tavily", "serpapi", "google", "bing", "duckduckgo", "auto"]).optional().default("auto").describe("Search provider to use. 'auto' selects based on available API keys. Options: tavily (AI-optimized), serpapi (Google results), google (Custom Search), bing, duckduckgo (fallback, no API key required)."),
-        },
-      },
-      async (args) => {
-        return webHandler.searchWeb(getAgentContext(), args);
-      }
+      webTools.web_search_gateway.description,
+      inputSchema,
+      toolHandler
     );
   }
 }
@@ -135,25 +149,28 @@ export async function registerTerminalTools(context: ToolRegistrationContext): P
   const terminalTools = await getToolsByCategory("terminal");
 
   // TERMINAL COMMAND
-  if (terminalTools.terminal_command && terminalTools.terminal_command.enabled === true) {
+  if (terminalTools.terminal_command && terminalTools.terminal_command.enabled !== false) {
     const terminalHandler = new TerminalCommandsHandler(terminalTools.terminal_command);
     
-    server.registerTool(
+    const toolHandler = async (args: Record<string, unknown>) => {
+      return terminalHandler.executeCommand(getAgentContext(), args as any);
+    };
+    
+    const inputSchema = {
+      command: z.string().describe("The command to execute (e.g., 'ls', 'git', 'npm')."),
+      args: z.array(z.string()).optional().describe("Array of command arguments."),
+      cwd: z.string().optional().describe("Working directory for the command. If not provided, uses current working directory."),
+      env: z.record(z.string()).optional().describe("Additional environment variables to set for the command execution."),
+      timeout: z.number().int().min(0).optional().default(30000).describe("Timeout in milliseconds (0 = no timeout). Default: 30000 (30 seconds)."),
+      shell: z.boolean().optional().default(true).describe("Whether to execute the command in a shell. Default: true."),
+    };
+    
+    registerToolWithHttp(
+      server,
       "terminal_command",
-      {
-        description: terminalTools.terminal_command.description,
-        inputSchema: {
-          command: z.string().describe("The command to execute (e.g., 'ls', 'git', 'npm')."),
-          args: z.array(z.string()).optional().describe("Array of command arguments."),
-          cwd: z.string().optional().describe("Working directory for the command. If not provided, uses current working directory."),
-          env: z.record(z.string()).optional().describe("Additional environment variables to set for the command execution."),
-          timeout: z.number().int().min(0).optional().default(30000).describe("Timeout in milliseconds (0 = no timeout). Default: 30000 (30 seconds)."),
-          shell: z.boolean().optional().default(true).describe("Whether to execute the command in a shell. Default: true."),
-        },
-      },
-      async (args) => {
-        return terminalHandler.executeCommand(getAgentContext(), args);
-      }
+      terminalTools.terminal_command.description,
+      inputSchema,
+      toolHandler
     );
   }
 }

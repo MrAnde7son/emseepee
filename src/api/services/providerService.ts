@@ -127,8 +127,28 @@ export class ProviderService {
       const cursorDir = join(projectRoot, ".cursor");
       const cursorConfigPath = join(cursorDir, "mcp.json");
       
-      // Use absolute path from project root to avoid path calculation issues
-      const gatewayPath = join(projectRoot, "dist", "index.js");
+      // Get the API server URL from environment variable or construct from host/port
+      // Priority: GATEWAY_API_URL > GATEWAY_API_HOST + GATEWAY_API_PORT + GATEWAY_API_PROTOCOL > localhost:8000
+      let apiUrl: string;
+      
+      if (process.env.GATEWAY_API_URL) {
+        // Use full URL if provided
+        apiUrl = process.env.GATEWAY_API_URL.endsWith("/mcp")
+          ? process.env.GATEWAY_API_URL
+          : `${process.env.GATEWAY_API_URL}/mcp`;
+      } else {
+        // Construct from components
+        const apiHost = process.env.GATEWAY_API_HOST || "localhost";
+        const apiPort = process.env.GATEWAY_API_PORT ? parseInt(process.env.GATEWAY_API_PORT, 10) : 8000;
+        const apiProtocol = process.env.GATEWAY_API_PROTOCOL || "http";
+        
+        // Only include port if it's not the default for the protocol
+        const portSuffix = (apiProtocol === "http" && apiPort === 80) || (apiProtocol === "https" && apiPort === 443)
+          ? ""
+          : `:${apiPort}`;
+        
+        apiUrl = `${apiProtocol}://${apiHost}${portSuffix}/mcp`;
+      }
       
       let config: { mcpServers?: Record<string, unknown> } = {};
       if (existsSync(cursorConfigPath)) {
@@ -143,10 +163,9 @@ export class ProviderService {
         config.mcpServers = {};
       }
       
+      // Configure Cursor to connect via HTTP instead of spawning a process
       config.mcpServers["hakuna"] = {
-        command: "node",
-        args: [gatewayPath],
-        cwd: projectRoot,
+        url: apiUrl,
       };
       
       if (!existsSync(cursorDir)) {
