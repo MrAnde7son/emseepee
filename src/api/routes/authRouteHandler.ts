@@ -22,6 +22,24 @@ export class AuthRouteHandler extends BaseRouteHandler {
         await this.handleSocialLoginCallback(req, res, provider);
         return true;
       }
+
+      // If path matches OAuth pattern but doesn't match valid actions, return 404
+      // This prevents other handlers from trying to process it
+      if (provider) {
+        if (action && action !== "start" && action !== "callback") {
+          this.sendError(res, 404, `Invalid OAuth action: ${action}`);
+        } else if (!action) {
+          this.sendError(res, 404, "OAuth action not specified");
+        } else {
+          // Method is not GET
+          this.sendError(res, 405, `Method ${method} not allowed for OAuth routes`);
+        }
+        return true;
+      }
+
+      // If path matches OAuth pattern but provider is missing
+      this.sendError(res, 404, "OAuth provider not specified");
+      return true;
     }
 
     if (path === "/api/auth/register" && method === "POST") {
