@@ -71,113 +71,120 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-6">
-        <div className="text-center space-y-2">
-          <h1 className="text-2xl font-semibold">Welcome back</h1>
-          <p className="text-sm text-muted-foreground">
-            Sign in to your account to continue
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium">
-              Email
-            </label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="john@example.com"
-              value={formData.email}
-              onChange={handleChange}
-              required
-              autoComplete="email"
-            />
+    <div
+      className="min-h-screen bg-background"
+      data-testid="login-page-container"
+    >
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-start px-4 py-10 sm:py-14 lg:py-16">
+        <div className="space-y-6">
+          <div className="text-center space-y-2">
+            <h1 className="text-2xl font-semibold">Welcome back</h1>
+            <p className="text-sm text-muted-foreground">
+              Sign in to your account to continue
+            </p>
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium">
-              Password
-            </label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              placeholder="••••••••"
-              value={formData.password}
-              onChange={handleChange}
-              required
-              autoComplete="current-password"
-            />
+          <div className="rounded-lg border bg-card p-6 shadow-sm sm:p-8">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <label htmlFor="email" className="text-sm font-medium">
+                  Email
+                </label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="john@example.com"
+                  value={formData.email}
+                  onChange={handleChange}
+                  required
+                  autoComplete="email"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="password" className="text-sm font-medium">
+                  Password
+                </label>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-sm">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-input"
+                    defaultChecked
+                  />
+                  <span className="text-muted-foreground">Remember me</span>
+                </label>
+                <Link
+                  href="/forgot-password"
+                  className="text-primary hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+
+              {error && (
+                <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                  {error}
+                </div>
+              )}
+
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? "Signing in..." : "Sign in"}
+              </Button>
+            </form>
           </div>
 
-          <div className="flex items-center justify-between text-sm">
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input
-                type="checkbox"
-                className="rounded border-input"
-                defaultChecked
-              />
-              <span className="text-muted-foreground">Remember me</span>
-            </label>
-            <Link
-              href="/forgot-password"
-              className="text-primary hover:underline"
-            >
-              Forgot password?
+          <div className="text-center text-sm text-muted-foreground">
+            Don&apos;t have an account?{" "}
+            <Link href="/register" className="text-primary hover:underline">
+              Create an account
             </Link>
           </div>
 
-          {error && (
-            <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md p-3">
-              {error}
+          <div className="relative py-2">
+            <div className="absolute inset-0 flex items-center" aria-hidden="true">
+              <div className="w-full border-t" />
             </div>
-          )}
-
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Signing in..." : "Sign in"}
-          </Button>
-        </form>
-
-        <div className="relative py-2">
-          <div className="absolute inset-0 flex items-center" aria-hidden="true">
-            <div className="w-full border-t" />
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+            </div>
           </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Button
+              variant="outline"
+              className="w-full"
+              type="button"
+              disabled={!!socialLoading}
+              onClick={() => handleSocialLogin("github")}
+            >
+              <GithubIcon className="mr-2 h-4 w-4" />
+              {socialLoading === "github" ? "Connecting..." : "Continue with GitHub"}
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              type="button"
+              disabled={!!socialLoading}
+              onClick={() => handleSocialLogin("google")}
+            >
+              <GoogleIcon className="mr-2 h-4 w-4" />
+              {socialLoading === "google" ? "Connecting..." : "Continue with Google"}
+            </Button>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Button
-            variant="outline"
-            className="w-full"
-            type="button"
-            disabled={!!socialLoading}
-            onClick={() => handleSocialLogin("github")}
-          >
-            <GithubIcon className="mr-2 h-4 w-4" />
-            {socialLoading === "github" ? "Connecting..." : "Continue with GitHub"}
-          </Button>
-          <Button
-            variant="outline"
-            className="w-full"
-            type="button"
-            disabled={!!socialLoading}
-            onClick={() => handleSocialLogin("google")}
-          >
-            <GoogleIcon className="mr-2 h-4 w-4" />
-            {socialLoading === "google" ? "Connecting..." : "Continue with Google"}
-          </Button>
-        </div>
-
-        <div className="text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
-          <Link href="/register" className="text-primary hover:underline">
-            Create an account
-          </Link>
         </div>
       </div>
     </div>

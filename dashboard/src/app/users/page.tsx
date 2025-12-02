@@ -131,7 +131,7 @@ export default function UsersPage() {
       </div>
 
       <div className="border border-border rounded-xl bg-card">
-        <Table>
+        <Table className="min-w-[760px]">
           <TableHeader>
             <TableRow>
               <TableHead>User</TableHead>

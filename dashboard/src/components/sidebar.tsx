@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Gauge, Plug, Shield, ListFilter, Settings, Bot, LogOut, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Settings, LogOut } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -14,66 +14,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-interface User {
-  id: number;
-  email: string;
-  name: string | null;
-  role: string;
-}
-
-/**
- * Get user initials from name or email
- */
-function getUserInitials(user: User | null): string {
-  if (!user) return "U";
-  
-  if (user.name) {
-    const parts = user.name.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    return user.name.substring(0, 2).toUpperCase();
-  }
-  
-  // Fallback to email initials
-  return user.email.substring(0, 2).toUpperCase();
-}
-
-const navItems = [
-  { href: "/providers", label: "Providers", icon: Plug },
-  { href: "/tools", label: "Library", icon: Gauge },
-  { href: "/policies", label: "Policies", icon: Shield },
-  { href: "/events", label: "Events", icon: ListFilter },
-  { href: "/agents", label: "Agents", icon: Bot },
-  { href: "/users", label: "Users", icon: Users },
-];
-
-/**
- * Load user from localStorage
- */
-function loadUserFromStorage(): User | null {
-  if (typeof window === "undefined") return null;
-  
-  const userStr = localStorage.getItem("user");
-  if (userStr) {
-    try {
-      return JSON.parse(userStr);
-    } catch {
-      // Invalid user data, clear it
-      localStorage.removeItem("user");
-      localStorage.removeItem("auth_token");
-      return null;
-    }
-  }
-  return null;
-}
+import { getUserInitials, loadUserFromStorage, navItems } from "@/lib/navigation";
+import { HumanUser } from "@/lib/types";
 
 export function Sidebar() {
   // Initialize isExpanded to true (same on server and client to avoid hydration mismatch)
   const [isExpanded, setIsExpanded] = useState(true);
   // Initialize user as null to avoid hydration mismatch (will load on client)
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<HumanUser | null>(null);
   const pathname = usePathname();
   const router = useRouter();
 
