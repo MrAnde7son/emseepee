@@ -394,6 +394,13 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
       sensitivity: "high",
       category: "file",
     },
+    list_file_gateway: {
+      name: "list_file_gateway",
+      description: "List files and directories through the central gateway with policy enforcement.",
+      allowedRoles: ["coder_bot", "admin"],
+      sensitivity: "medium",
+      category: "file",
+    },
   },
   web: {
     web_search_gateway: {

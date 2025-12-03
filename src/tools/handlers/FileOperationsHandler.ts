@@ -22,14 +22,19 @@ export interface FileSearchArgs extends Record<string, unknown> {
   limit?: number;
 }
 
+export interface FileListArgs extends Record<string, unknown> {
+  path?: string;
+}
+
 /**
- * Handler for file system operations (read, write, search)
+ * Handler for file system operations (read, write, search, list)
  */
 export class FileOperationsHandler extends BaseGatewayHandler {
   private toolConfigs: {
     read?: ToolPolicyConfig;
     write?: ToolPolicyConfig;
     search?: ToolPolicyConfig;
+    list?: ToolPolicyConfig;
   };
   private currentToolName: string = "file_operations";
 
@@ -37,6 +42,7 @@ export class FileOperationsHandler extends BaseGatewayHandler {
     read?: ToolPolicyConfig;
     write?: ToolPolicyConfig;
     search?: ToolPolicyConfig;
+    list?: ToolPolicyConfig;
   }) {
     super();
     this.toolConfigs = toolConfigs;
@@ -147,6 +153,47 @@ export class FileOperationsHandler extends BaseGatewayHandler {
         results.length > 0
           ? results.map((p) => p.replace(process.cwd(), ".")).join("\n")
           : `No files found matching pattern "${args.pattern}"`;
+
+      return this.createSuccessResponse(resultText);
+    }, toolCfg);
+  }
+
+  /**
+   * List files and directories in a directory
+   */
+  async listFiles(
+    agentContext: AgentContext,
+    args: FileListArgs
+  ): Promise<ToolExecutionResult> {
+    const toolCfg = this.toolConfigs.list;
+    if (!toolCfg) {
+      return this.createErrorResponse("File list tool not configured");
+    }
+
+    this.currentToolName = "list_file_gateway";
+    return this.executeWithPolicy(agentContext, args, async () => {
+      const listPath = args.path
+        ? this.resolvePath(args.path)
+        : process.cwd();
+
+      const entries = await fs.readdir(listPath, { withFileTypes: true });
+      const items: string[] = [];
+
+      for (const entry of entries) {
+        const itemName = entry.name;
+        const itemType = entry.isDirectory() ? "directory" : "file";
+        items.push(`${itemType}: ${itemName}`);
+      }
+
+      logger.info("[MCP-GATEWAY] list_file_gateway success", {
+        path: listPath,
+        itemsCount: items.length,
+      });
+
+      const resultText =
+        items.length > 0
+          ? items.join("\n")
+          : `Directory "${listPath}" is empty`;
 
       return this.createSuccessResponse(resultText);
     }, toolCfg);

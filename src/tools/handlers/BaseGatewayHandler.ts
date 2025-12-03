@@ -1,7 +1,7 @@
 import type { ToolPolicyConfig } from "../../config.js";
 import { logger } from "../../logger.js";
 import { evaluatePolicy, type PolicyDecision } from "../../policy.js";
-import { inferAgentIntent, type ToolCallEvent } from "../../intent/index.js";
+import { inferAgentIntent, type ToolCallEvent, type ProviderType } from "../../intent/index.js";
 
 export interface AgentContext {
   agentId: string;
@@ -39,7 +39,7 @@ export abstract class BaseGatewayHandler {
     }
 
     const startTime = Date.now();
-    const provider = 'cursor'; // Default provider, can be enhanced to detect from context
+    const provider = this.detectProvider(agentContext.agentId);
 
     // Step 1: Intent Layer - normalize and classify the tool call
     const toolCallEvent: ToolCallEvent = {
@@ -215,6 +215,19 @@ export abstract class BaseGatewayHandler {
         },
       ],
     };
+  }
+
+  protected detectProvider(agentId: string): ProviderType {
+    // Extract provider from agentId format: "provider:nativeId"
+    if (agentId.includes(":")) {
+      const [provider] = agentId.split(":");
+      if (provider && ['openai', 'vertex', 'gemini', 'n8n', 'cursor', 'unknown'].includes(provider)) {
+        return provider as ProviderType;
+      }
+      return 'unknown';
+    }
+    
+    return 'unknown';
   }
 
   /**

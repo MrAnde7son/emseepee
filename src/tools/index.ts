@@ -74,6 +74,7 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
       read: fileTools.file_read_gateway,
       write: fileTools.file_write_gateway,
       search: fileTools.file_search_gateway,
+      list: fileTools.list_file_gateway,
     });
 
     // FILE READ GATEWAY
@@ -151,6 +152,28 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
         server,
         "file_write_gateway",
         fileTools.file_write_gateway.description,
+        inputSchema,
+        toolHandler
+      );
+    }
+
+    // LIST FILE GATEWAY
+    if (fileTools.list_file_gateway) {
+      logger.info(`[MCP-GATEWAY] Registering list_file_gateway`);
+      const toolHandler = wrapToolHandlerWithEnabledCheck(
+        "list_file_gateway",
+        "file",
+        async (args) => fileHandler.listFiles(getAgentContext(), args as any)
+      );
+      
+      const inputSchema = z.object({
+        path: z.string().optional().describe("Directory path to list (absolute or project-relative). If not provided, lists current working directory."),
+      });
+      
+      registerToolWithHttp(
+        server,
+        "list_file_gateway",
+        fileTools.list_file_gateway.description,
         inputSchema,
         toolHandler
       );
