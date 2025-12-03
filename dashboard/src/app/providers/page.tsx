@@ -317,336 +317,334 @@ export default function ProvidersPage() {
     { id: "entra", name: "Microsoft Entra", icon: "🔷", comingSoon: true },
   ];
 
-  if (providersView === "idps") {
-    return (
-      <div className="space-y-4">
+  return (
+    <div className="space-y-4">
+      <Tabs value={providersView} onValueChange={(value) => setProvidersView(value as "agentic" | "idps")} className="w-full">
         <div className="flex items-center justify-between gap-2">
+          <TabsList>
+            <TabsTrigger value="agentic">Agentic Providers</TabsTrigger>
+            <TabsTrigger value="idps">Identity Providers</TabsTrigger>
+          </TabsList>
+          <div className="flex items-center gap-2">
+            {providersView === "agentic" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetch()}
+              >
+                <RefreshCcw className="h-3 w-3 mr-1" />
+                Refresh
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => refetchIdps()}>
+                <RefreshCcw className="h-3 w-3 mr-1" /> Refresh
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <TabsContent value="agentic" className="space-y-4 mt-4">
+          <div>
+            <h1 className="text-xl font-semibold">Agentic Providers</h1>
+            <p className="text-xs text-muted-foreground">
+              Connect Cursor, n8n, OpenAI and other agent platforms to the gateway.
+            </p>
+          </div>
+
+          {isLoading && <div className="text-sm text-muted-foreground">Loading providers...</div>}
+
+          {data && data.length === 0 && (
+            <div className="text-sm text-muted-foreground border border-dashed border-border rounded-lg p-4">
+              No providers yet. Connect your first provider to start enforcing policies.
+            </div>
+          )}
+
+          {data && data.length > 0 && (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {data.map((p) => {
+                const isComingSoon = p.comingSoon === true;
+                
+                return (
+                  <div
+                    key={p.id}
+                    className={`border border-border rounded-xl p-4 bg-card flex flex-col gap-2 ${isComingSoon ? "opacity-75" : ""}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {p.icon && (
+                          p.icon.startsWith("http://") || p.icon.startsWith("https://") ? (
+                            <img 
+                              src={p.icon} 
+                              alt={`${p.name} icon`}
+                              className="w-5 h-5"
+                              onError={(e) => {
+                                // Fallback to a default icon if the image fails to load
+                                e.currentTarget.style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <span className="text-lg" role="img" aria-label={`${p.name} icon`}>
+                              {p.icon}
+                            </span>
+                          )
+                        )}
+                        <div className="font-semibold text-sm">{p.name}</div>
+                      </div>
+                      {isComingSoon ? (
+                        <Badge variant="outline" className="border-amber-500/50 text-amber-500 bg-amber-500/10">
+                          <Clock className="h-3 w-3 mr-1" />
+                          Coming soon
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant={p.status === "connected" ? "default" : "outline"}
+                        >
+                          {p.status}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Type: <span className="font-mono">{p.type}</span>
+                    </div>
+                    {isComingSoon ? (
+                      <div className="mt-2 p-3 rounded-lg bg-muted/50 border border-dashed border-border flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <p className="text-xs text-muted-foreground">
+                          This provider integration is coming soon. Stay tuned for updates!
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        {p.lastHeartbeat && (
+                          <div className="text-[11px] text-muted-foreground">
+                            Last heartbeat: {new Date(p.lastHeartbeat).toLocaleString()}
+                          </div>
+                        )}
+                        <div className="mt-2 flex gap-2">
+                          {p.status === "pending" ? (
+                            <Button 
+                              size="sm" 
+                              className="text-xs"
+                              onClick={() => handleInstallClick(p)}
+                              disabled={installing === p.id}
+                            >
+                              {installing === p.id ? "Installing..." : "Install"}
+                            </Button>
+                          ) : (
+                            <>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="text-xs"
+                                onClick={() => {
+                                  setSelectedProvider(p);
+                                  setViewMode("details");
+                                }}
+                              >
+                                View details
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="text-xs"
+                                onClick={() => {
+                                  setSelectedProvider(p);
+                                  setViewMode("policies");
+                                }}
+                              >
+                                Policies
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="text-xs text-destructive hover:text-destructive"
+                                onClick={() => handleUninstallClick(p)}
+                                disabled={uninstalling === p.id}
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" />
+                                {uninstalling === p.id ? "Uninstalling..." : "Uninstall"}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="idps" className="space-y-4 mt-4">
           <div>
             <h1 className="text-xl font-semibold">Identity Providers</h1>
             <p className="text-xs text-muted-foreground">Configure IdP connections for your tenant.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setProvidersView("agentic")}>
-              Back to Agentic
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => refetchIdps()}>
-              <RefreshCcw className="h-3 w-3 mr-1" /> Refresh
-            </Button>
-          </div>
-        </div>
 
-        {isLoadingIdps && <div className="text-sm text-muted-foreground">Loading providers...</div>}
+          {isLoadingIdps && <div className="text-sm text-muted-foreground">Loading providers...</div>}
 
-        {!isLoadingIdps && (
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {idpProviders.map((idp) => {
-              const connection = connections.find((conn) => conn.type === idp.id);
-              const isConnected = !!connection;
-              const isComingSoon = idp.comingSoon;
+          {!isLoadingIdps && (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {idpProviders.map((idp) => {
+                const connection = connections.find((conn) => conn.type === idp.id);
+                const isConnected = !!connection;
+                const isComingSoon = idp.comingSoon;
 
-              return (
-                <div
-                  key={idp.id}
-                  className={`border border-border rounded-xl p-4 bg-card flex flex-col gap-2 ${isComingSoon ? "opacity-75" : ""}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg" role="img" aria-label={`${idp.name} icon`}>
-                        {idp.icon}
-                      </span>
-                      <div className="font-semibold text-sm">{idp.name}</div>
+                return (
+                  <div
+                    key={idp.id}
+                    className={`border border-border rounded-xl p-4 bg-card flex flex-col gap-2 ${isComingSoon ? "opacity-75" : ""}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg" role="img" aria-label={`${idp.name} icon`}>
+                          {idp.icon}
+                        </span>
+                        <div className="font-semibold text-sm">{idp.name}</div>
+                      </div>
+                      {isComingSoon ? (
+                        <Badge variant="outline" className="border-amber-500/50 text-amber-500 bg-amber-500/10">
+                          <Clock className="h-3 w-3 mr-1" />
+                          Coming soon
+                        </Badge>
+                      ) : (
+                        <Badge variant={isConnected ? "default" : "outline"}>
+                          {isConnected ? "connected" : "pending"}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Type: <span className="font-mono">{idp.id}</span>
                     </div>
                     {isComingSoon ? (
-                      <Badge variant="outline" className="border-amber-500/50 text-amber-500 bg-amber-500/10">
-                        <Clock className="h-3 w-3 mr-1" />
-                        Coming soon
-                      </Badge>
+                      <div className="mt-2 p-3 rounded-lg bg-muted/50 border border-dashed border-border flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <p className="text-xs text-muted-foreground">
+                          This provider integration is coming soon. Stay tuned for updates!
+                        </p>
+                      </div>
                     ) : (
-                      <Badge variant={isConnected ? "default" : "outline"}>
-                        {isConnected ? "connected" : "pending"}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Type: <span className="font-mono">{idp.id}</span>
-                  </div>
-                  {isComingSoon ? (
-                    <div className="mt-2 p-3 rounded-lg bg-muted/50 border border-dashed border-border flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <p className="text-xs text-muted-foreground">
-                        This provider integration is coming soon. Stay tuned for updates!
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      {connection && (
-                        <div className="text-[11px] text-muted-foreground space-y-1">
-                          <div className="break-all">Issuer: {connection.issuer}</div>
-                          <div>Client ID: {connection.clientId}</div>
-                        </div>
-                      )}
-                      <div className="mt-2 flex gap-2">
-                        <Button
-                          size="sm"
-                          className="text-xs"
-                          onClick={() => handleIdpInstallClick(idp.id)}
-                          disabled={savingIdp}
-                        >
-                          {isConnected ? "Configure" : "Install"}
-                        </Button>
-                        {isConnected && (
+                      <>
+                        {connection && (
+                          <div className="text-[11px] text-muted-foreground space-y-1">
+                            <div className="break-all">Issuer: {connection.issuer}</div>
+                            <div>Client ID: {connection.clientId}</div>
+                          </div>
+                        )}
+                        <div className="mt-2 flex gap-2">
                           <Button
-                            variant="outline"
                             size="sm"
-                            className="text-xs text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteIdp(connection.id)}
+                            className="text-xs"
+                            onClick={() => handleIdpInstallClick(idp.id)}
                             disabled={savingIdp}
                           >
-                            <Trash2 className="h-3 w-3 mr-1" />
-                            Delete
+                            {isConnected ? "Configure" : "Install"}
                           </Button>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* IdP Configuration Dialog */}
-        <Dialog open={showIdpConfigDialog} onOpenChange={setShowIdpConfigDialog}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>
-                {selectedIdpType ? `Configure ${idpProviders.find((p) => p.id === selectedIdpType)?.name || selectedIdpType}` : "Configure Identity Provider"}
-              </DialogTitle>
-              <DialogDescription>
-                Enter your IdP connection details to enable authentication.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 mt-4">
-              <div className="space-y-2">
-                <label htmlFor="idp-issuer" className="text-sm font-medium">
-                  Issuer <span className="text-destructive">*</span>
-                </label>
-                <Input
-                  id="idp-issuer"
-                  placeholder="https://your-org.okta.com"
-                  value={idpIssuer}
-                  onChange={(e) => setIdpIssuer(e.target.value)}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  The issuer URL for your IdP (e.g., https://your-org.okta.com)
-                </p>
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="idp-client-id" className="text-sm font-medium">
-                  Client ID <span className="text-destructive">*</span>
-                </label>
-                <Input
-                  id="idp-client-id"
-                  value={idpClientId}
-                  onChange={(e) => setIdpClientId(e.target.value)}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  The OAuth client ID from your IdP
-                </p>
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="idp-client-secret" className="text-sm font-medium">
-                  Client Secret <span className="text-destructive">*</span>
-                </label>
-                <Input
-                  id="idp-client-secret"
-                  type="password"
-                  value={idpClientSecret}
-                  onChange={(e) => setIdpClientSecret(e.target.value)}
-                  placeholder={connections.find((c) => c.type === selectedIdpType) ? "Enter new secret to update" : ""}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  The OAuth client secret from your IdP
-                </p>
-              </div>
-              <div className="flex justify-end gap-2 pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowIdpConfigDialog(false);
-                    setSelectedIdpType(null);
-                    setIdpIssuer("");
-                    setIdpClientId("");
-                    setIdpClientSecret("");
-                  }}
-                  disabled={savingIdp}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSaveIdpConnection}
-                  disabled={savingIdp || !idpIssuer || !idpClientId || !idpClientSecret}
-                >
-                  {savingIdp ? "Saving..." : "Save Connection"}
-                </Button>
-              </div>
+                          {isConnected && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteIdp(connection.id)}
+                              disabled={savingIdp}
+                            >
+                              <Trash2 className="h-3 w-3 mr-1" />
+                              Delete
+                            </Button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-    );
-  }
+          )}
+        </TabsContent>
+      </Tabs>
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-semibold">Agentic Providers</h1>
-          <p className="text-xs text-muted-foreground">
-            Connect Cursor, n8n, OpenAI and other agent platforms to the gateway.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setProvidersView("idps")}>
-            Identity Providers
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-          >
-            <RefreshCcw className="h-3 w-3 mr-1" />
-            Refresh
-          </Button>
-        </div>
-      </div>
-
-      {isLoading && <div className="text-sm text-muted-foreground">Loading providers...</div>}
-
-      {data && data.length === 0 && (
-        <div className="text-sm text-muted-foreground border border-dashed border-border rounded-lg p-4">
-          No providers yet. Connect your first provider to start enforcing policies.
-        </div>
-      )}
-
-      {data && data.length > 0 && (
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {data.map((p) => {
-            const isComingSoon = p.comingSoon === true;
-            
-            return (
-              <div
-                key={p.id}
-                className={`border border-border rounded-xl p-4 bg-card flex flex-col gap-2 ${isComingSoon ? "opacity-75" : ""}`}
+      {/* IdP Configuration Dialog */}
+      <Dialog open={showIdpConfigDialog} onOpenChange={setShowIdpConfigDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedIdpType ? `Configure ${idpProviders.find((p) => p.id === selectedIdpType)?.name || selectedIdpType}` : "Configure Identity Provider"}
+            </DialogTitle>
+            <DialogDescription>
+              Enter your IdP connection details to enable authentication.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <label htmlFor="idp-issuer" className="text-sm font-medium">
+                Issuer <span className="text-destructive">*</span>
+              </label>
+              <Input
+                id="idp-issuer"
+                placeholder="https://your-org.okta.com"
+                value={idpIssuer}
+                onChange={(e) => setIdpIssuer(e.target.value)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                The issuer URL for your IdP (e.g., https://your-org.okta.com)
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="idp-client-id" className="text-sm font-medium">
+                Client ID <span className="text-destructive">*</span>
+              </label>
+              <Input
+                id="idp-client-id"
+                value={idpClientId}
+                onChange={(e) => setIdpClientId(e.target.value)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                The OAuth client ID from your IdP
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="idp-client-secret" className="text-sm font-medium">
+                Client Secret <span className="text-destructive">*</span>
+              </label>
+              <Input
+                id="idp-client-secret"
+                type="password"
+                value={idpClientSecret}
+                onChange={(e) => setIdpClientSecret(e.target.value)}
+                placeholder={connections.find((c) => c.type === selectedIdpType) ? "Enter new secret to update" : ""}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                The OAuth client secret from your IdP
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowIdpConfigDialog(false);
+                  setSelectedIdpType(null);
+                  setIdpIssuer("");
+                  setIdpClientId("");
+                  setIdpClientSecret("");
+                }}
+                disabled={savingIdp}
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {p.icon && (
-                      p.icon.startsWith("http://") || p.icon.startsWith("https://") ? (
-                        <img 
-                          src={p.icon} 
-                          alt={`${p.name} icon`}
-                          className="w-5 h-5"
-                          onError={(e) => {
-                            // Fallback to a default icon if the image fails to load
-                            e.currentTarget.style.display = "none";
-                          }}
-                        />
-                      ) : (
-                        <span className="text-lg" role="img" aria-label={`${p.name} icon`}>
-                          {p.icon}
-                        </span>
-                      )
-                    )}
-                    <div className="font-semibold text-sm">{p.name}</div>
-                  </div>
-                  {isComingSoon ? (
-                    <Badge variant="outline" className="border-amber-500/50 text-amber-500 bg-amber-500/10">
-                      <Clock className="h-3 w-3 mr-1" />
-                      Coming soon
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant={p.status === "connected" ? "default" : "outline"}
-                    >
-                      {p.status}
-                    </Badge>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Type: <span className="font-mono">{p.type}</span>
-                </div>
-                {isComingSoon ? (
-                  <div className="mt-2 p-3 rounded-lg bg-muted/50 border border-dashed border-border flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <p className="text-xs text-muted-foreground">
-                      This provider integration is coming soon. Stay tuned for updates!
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {p.lastHeartbeat && (
-                      <div className="text-[11px] text-muted-foreground">
-                        Last heartbeat: {new Date(p.lastHeartbeat).toLocaleString()}
-                      </div>
-                    )}
-                    <div className="mt-2 flex gap-2">
-                      {p.status === "pending" ? (
-                        <Button 
-                          size="sm" 
-                          className="text-xs"
-                          onClick={() => handleInstallClick(p)}
-                          disabled={installing === p.id}
-                        >
-                          {installing === p.id ? "Installing..." : "Install"}
-                        </Button>
-                      ) : (
-                        <>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="text-xs"
-                            onClick={() => {
-                              setSelectedProvider(p);
-                              setViewMode("details");
-                            }}
-                          >
-                            View details
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="text-xs"
-                            onClick={() => {
-                              setSelectedProvider(p);
-                              setViewMode("policies");
-                            }}
-                          >
-                            Policies
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="text-xs text-destructive hover:text-destructive"
-                            onClick={() => handleUninstallClick(p)}
-                            disabled={uninstalling === p.id}
-                          >
-                            <Trash2 className="h-3 w-3 mr-1" />
-                            {uninstalling === p.id ? "Uninstalling..." : "Uninstall"}
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveIdpConnection}
+                disabled={savingIdp || !idpIssuer || !idpClientId || !idpClientSecret}
+              >
+                {savingIdp ? "Saving..." : "Save Connection"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Provider Details Dialog */}
       <Dialog open={selectedProvider !== null && viewMode === "details"} onOpenChange={(open) => !open && setSelectedProvider(null)}>
