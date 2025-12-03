@@ -89,6 +89,7 @@ describe("OAuth dynamic discovery and registration", () => {
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    clearOAuthMetadataCache();
     originalHttpsRequest = https.request;
     originalHttpRequest = http.request;
     originalFetch = globalThis.fetch;

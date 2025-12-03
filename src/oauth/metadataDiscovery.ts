@@ -107,6 +107,8 @@ async function fetchWithCustomTLS(url: string, options: { timeout?: number; allo
         body,
         headers,
       };
+    } catch (error) {
+      logger.warn(`[OAUTH] Fetch failed for ${url}, falling back to https.request`, error);
     } finally {
       clearTimeout(timeoutId);
     }
