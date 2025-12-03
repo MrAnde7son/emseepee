@@ -1,6 +1,6 @@
 export type OperationType = 'read' | 'write' | 'delete' | 'execute' | 'admin';
 
-export type ProviderType = 'openai' | 'vertex' | 'gemini' | 'n8n' | 'cursor' | 'other';
+export type ProviderType = 'openai' | 'vertex' | 'gemini' | 'n8n' | 'cursor' | 'unknown';
 
 export type RiskLevel = 'low' | 'medium' | 'high';
 

@@ -7,25 +7,50 @@ import { evaluatePolicy } from "../../policy.js";
 import type { ToolPolicyConfig } from "../../config.js";
 import { MicrosoftCopilotIntegration, type Microsoft365CopilotIntegrationConfig } from "../../integrations/microsoft/copilot/MicrosoftCopilotIntegration.js";
 import { logger } from "../../logger.js";
+import { AgentGraphService } from "../services/agentGraphService.js";
 
 export class AgentsRouteHandler extends BaseRouteHandler {
+  /**
+   * Decode agentId from URL path
+   * Handles URL-encoded characters like ':' which becomes '%3A'
+   */
+  private decodeAgentId(encodedAgentId: string): string {
+    try {
+      return decodeURIComponent(encodedAgentId);
+    } catch {
+      // If decoding fails, return as-is
+      return encodedAgentId;
+    }
+  }
+
   async handle(req: IncomingMessage, res: ServerResponse, path: string, method: string): Promise<boolean> {
     if (path === "/api/agents" && method === "GET") {
       await this.handleGetAgents(req, res);
       return true;
     }
 
+    if (path.startsWith("/api/agents/") && path.endsWith("/graph") && method === "GET") {
+      const encodedAgentId = path.replace("/api/agents/", "").replace("/graph", "");
+      if (encodedAgentId) {
+        const agentId = this.decodeAgentId(encodedAgentId);
+        await this.handleGetAgentGraph(req, res, agentId);
+        return true;
+      }
+    }
+
     if (path.startsWith("/api/agents/") && method === "GET") {
-      const agentId = path.replace("/api/agents/", "");
-      if (agentId && !agentId.includes("/")) {
+      const encodedAgentId = path.replace("/api/agents/", "");
+      if (encodedAgentId && !encodedAgentId.includes("/")) {
+        const agentId = this.decodeAgentId(encodedAgentId);
         await this.handleGetAgent(req, res, agentId);
         return true;
       }
     }
 
     if (path.startsWith("/api/agents/") && path.endsWith("/invoke") && method === "POST") {
-      const agentId = path.replace("/api/agents/", "").replace("/invoke", "");
-      if (agentId) {
+      const encodedAgentId = path.replace("/api/agents/", "").replace("/invoke", "");
+      if (encodedAgentId) {
+        const agentId = this.decodeAgentId(encodedAgentId);
         await this.handleInvokeAgent(req, res, agentId);
         return true;
       }
@@ -37,16 +62,18 @@ export class AgentsRouteHandler extends BaseRouteHandler {
     }
 
     if (path.startsWith("/api/agents/") && method === "PUT") {
-      const agentId = path.replace("/api/agents/", "");
-      if (agentId && !agentId.includes("/")) {
+      const encodedAgentId = path.replace("/api/agents/", "");
+      if (encodedAgentId && !encodedAgentId.includes("/")) {
+        const agentId = this.decodeAgentId(encodedAgentId);
         await this.handleUpdateAgent(req, res, agentId);
         return true;
       }
     }
 
     if (path.startsWith("/api/agents/") && method === "DELETE") {
-      const agentId = path.replace("/api/agents/", "");
-      if (agentId && !agentId.includes("/")) {
+      const encodedAgentId = path.replace("/api/agents/", "");
+      if (encodedAgentId && !encodedAgentId.includes("/")) {
+        const agentId = this.decodeAgentId(encodedAgentId);
         await this.handleDeleteAgent(req, res, agentId);
         return true;
       }
@@ -272,6 +299,46 @@ export class AgentsRouteHandler extends BaseRouteHandler {
     } catch (error) {
       ErrorHandler.handle(error, res, "Invoke agent error");
     }
+  }
+
+  private async handleGetAgentGraph(req: IncomingMessage, res: ServerResponse, agentId: string): Promise<void> {
+    try {
+      const auth = this.requireAuth(req);
+      if (!auth) {
+        this.sendError(res, 401, "No token provided");
+        return;
+      }
+
+      const url = new URL(req.url || "/", `http://${req.headers.host}`);
+      const parsedLimit = parseInt(url.searchParams.get("limit") || "200", 10);
+      const limit = Number.isNaN(parsedLimit) ? 200 : parsedLimit;
+      const filters = {
+        decisions: this.parseList(url.searchParams.get("decision")),
+        providers: this.parseList(url.searchParams.get("provider")),
+        tools: this.parseList(url.searchParams.get("tool")),
+        riskLevels: this.parseList(url.searchParams.get("risk")),
+      };
+
+      const graphService = new AgentGraphService(auth.tenantId ?? undefined);
+      const graph = await graphService.buildGraph(agentId, { filters, limit });
+
+      this.sendJSON(res, 200, graph);
+    } catch (error) {
+      ErrorHandler.handle(error, res, "Get agent graph error");
+    }
+  }
+
+  private parseList(value: string | null): string[] | undefined {
+    if (!value) {
+      return undefined;
+    }
+
+    const parts = value
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    return parts.length > 0 ? parts : undefined;
   }
 }
 

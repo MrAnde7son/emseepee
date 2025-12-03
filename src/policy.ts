@@ -429,7 +429,8 @@ export async function evaluatePolicy(input: PolicyInput): Promise<PolicyDecision
   // Default policy: check allowedRoles first
   if (operations.length === 0 || (!operations.includes("allow") && !operations.includes("block"))) {
     // Check if role is allowed (this is always checked as a baseline)
-    if (!tool.allowedRoles.includes(agentRole)) {
+    // If allowedRoles is empty, allow all roles by default
+    if (tool.allowedRoles.length > 0 && !tool.allowedRoles.includes(agentRole)) {
       return {
         decision: "deny",
         reason: `Role '${agentRole}' is not allowed to use tool '${tool.name}'`,

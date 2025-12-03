@@ -74,6 +74,8 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
       read: fileTools.file_read_gateway,
       write: fileTools.file_write_gateway,
       search: fileTools.file_search_gateway,
+      list: fileTools.list_file_gateway,
+      grep: fileTools.file_grep_gateway,
     });
 
     // FILE READ GATEWAY
@@ -151,6 +153,54 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
         server,
         "file_write_gateway",
         fileTools.file_write_gateway.description,
+        inputSchema,
+        toolHandler
+      );
+    }
+
+    // LIST FILE GATEWAY
+    if (fileTools.list_file_gateway) {
+      logger.info(`[MCP-GATEWAY] Registering list_file_gateway`);
+      const toolHandler = wrapToolHandlerWithEnabledCheck(
+        "list_file_gateway",
+        "file",
+        async (args) => fileHandler.listFiles(getAgentContext(), args as any)
+      );
+      
+      const inputSchema = z.object({
+        path: z.string().optional().describe("Directory path to list (absolute or project-relative). If not provided, lists current working directory."),
+      });
+      
+      registerToolWithHttp(
+        server,
+        "list_file_gateway",
+        fileTools.list_file_gateway.description,
+        inputSchema,
+        toolHandler
+      );
+    }
+
+    // FILE GREP GATEWAY
+    if (fileTools.file_grep_gateway) {
+      logger.info(`[MCP-GATEWAY] Registering file_grep_gateway`);
+      const toolHandler = wrapToolHandlerWithEnabledCheck(
+        "file_grep_gateway",
+        "file",
+        async (args) => fileHandler.grepFiles(getAgentContext(), args as any)
+      );
+      
+      const inputSchema = z.object({
+        pattern: z.string().describe("Regex pattern to search for in file contents."),
+        directory: z.string().optional().describe("Directory to search in (absolute or project-relative). If not provided, searches from project root."),
+        fileType: z.string().optional().describe("Optional file type filter (e.g., '*.ts', '*.js')."),
+        caseSensitive: z.boolean().optional().default(false).describe("Whether the search should be case-sensitive. Default: false."),
+        limit: z.number().int().min(1).max(500).optional().default(100).describe("Maximum number of matches to return. Default: 100."),
+      });
+      
+      registerToolWithHttp(
+        server,
+        "file_grep_gateway",
+        fileTools.file_grep_gateway.description,
         inputSchema,
         toolHandler
       );

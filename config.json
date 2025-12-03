@@ -534,10 +534,7 @@
     "file_read_gateway": {
       "name": "file_read_gateway",
       "description": "Read files through the central gateway with policy enforcement.",
-      "allowedRoles": [
-        "coder_bot",
-        "admin"
-      ],
+      "allowedRoles": [],
       "sensitivity": "medium",
       "category": "file",
       "enabled": false
@@ -545,10 +542,7 @@
     "file_search_gateway": {
       "name": "file_search_gateway",
       "description": "Search for files through the central gateway with policy enforcement.",
-      "allowedRoles": [
-        "coder_bot",
-        "admin"
-      ],
+      "allowedRoles": [],
       "sensitivity": "medium",
       "category": "file",
       "enabled": false
@@ -556,22 +550,31 @@
     "file_write_gateway": {
       "name": "file_write_gateway",
       "description": "Write files through the central gateway with policy enforcement.",
-      "allowedRoles": [
-        "coder_bot",
-        "admin"
-      ],
+      "allowedRoles": [],
       "sensitivity": "high",
+      "category": "file",
+      "enabled": false
+    },
+    "list_file_gateway": {
+      "name": "list_file_gateway",
+      "description": "List files and directories through the central gateway with policy enforcement.",
+      "allowedRoles": [],
+      "sensitivity": "medium",
+      "category": "file",
+      "enabled": false
+    },
+    "file_grep_gateway": {
+      "name": "file_grep_gateway",
+      "description": "Search for patterns in file contents through the central gateway with policy enforcement. Supports regex patterns, file type filtering, and case-sensitive/insensitive matching.",
+      "allowedRoles": [],
+      "sensitivity": "medium",
       "category": "file",
       "enabled": false
     },
     "web_search_gateway": {
       "name": "web_search_gateway",
       "description": "Perform web search through the central gateway with policy enforcement.",
-      "allowedRoles": [
-        "coder_bot",
-        "research_bot",
-        "admin"
-      ],
+      "allowedRoles": [],
       "sensitivity": "medium",
       "category": "web",
       "enabled": false
@@ -579,10 +582,7 @@
     "terminal_command": {
       "name": "terminal_command",
       "description": "Execute terminal commands through the central gateway with policy enforcement.",
-      "allowedRoles": [
-        "coder_bot",
-        "admin"
-      ],
+      "allowedRoles": [],
       "sensitivity": "high",
       "category": "terminal",
       "enabled": false

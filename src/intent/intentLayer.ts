@@ -53,7 +53,7 @@ export async function inferAgentIntent(
   toolConfig?: { name: string; description?: string }
 ): Promise<AgentIntent> {
   const requestId = event.requestId || generateRequestId();
-  const provider: ProviderType = event.provider || 'other';
+  const provider: ProviderType = event.provider || 'unknown';
   
   // Step 1: Rule-based inference (always runs)
   const ruleBasedIntent = inferIntentFromToolCall(event);

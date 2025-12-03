@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import Link from "next/link";
 import { useAgents, useProviders, useUsers } from "@/hooks/useGatewayData";
 import { Api } from "@/lib/api";
 import { Agent } from "@/lib/types";
@@ -523,6 +524,11 @@ export default function AgentsPage() {
                   </pre>
                 </div>
               )}
+              <div className="flex justify-end">
+                <Button asChild variant="secondary">
+                  <Link href={`/agents/${selectedAgent.id}`}>Open activity graph</Link>
+                </Button>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm font-medium">Created</label>

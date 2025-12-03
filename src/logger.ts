@@ -19,6 +19,7 @@ interface GatewayEvent {
   decision: "allow" | "deny" | "log";
   riskLevel?: "low" | "medium" | "high";
   latencyMs?: number;
+  metadata?: Record<string, unknown>;
 }
 
 /**
