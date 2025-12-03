@@ -8,6 +8,7 @@ import { PoliciesRouteHandler } from "./routes/policiesRouteHandler.js";
 import { EventsRouteHandler } from "./routes/eventsRouteHandler.js";
 import { AgentsRouteHandler } from "./routes/agentsRouteHandler.js";
 import { McpRouteHandler } from "./routes/mcpRouteHandler.js";
+import { McpProtocolRouteHandler } from "./routes/mcpProtocolRouteHandler.js";
 import { OAuthRouteHandler } from "./routes/oauthRouteHandler.js";
 import { TelemetryRouteHandler } from "./routes/telemetryRouteHandler.js";
 import { UsersRouteHandler } from "./routes/usersRouteHandler.js";
@@ -21,6 +22,8 @@ export class Router {
 
   constructor() {
     this.handlers = [
+      // MCP protocol handler should be first to catch /mcp and /sse routes
+      new McpProtocolRouteHandler(),
       new AuthRouteHandler(),
       new ProvidersRouteHandler(),
       new ToolsRouteHandler(),

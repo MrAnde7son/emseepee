@@ -62,6 +62,7 @@ export interface GatewayEvent {
   decision: "allow" | "deny" | "log";
   riskLevel?: "low" | "medium" | "high";
   latencyMs?: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface Agent {
@@ -91,5 +92,34 @@ export interface HumanUser {
   updatedAt?: string;
   source?: string;
   active?: boolean;
+}
+
+export interface AgentGraphNode {
+  id: string;
+  label: string;
+  kind: "agent" | "target";
+  provider?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  eventId: string;
+  timestamp: string;
+  intentSummary: string;
+  decision: "allow" | "deny" | "log";
+  riskLevel?: "low" | "medium" | "high";
+  latencyMs?: number;
+  provider: string;
+  toolName: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AgentGraphResponse {
+  nodes: AgentGraphNode[];
+  edges: AgentGraphEdge[];
+  totalEvents: number;
 }
 

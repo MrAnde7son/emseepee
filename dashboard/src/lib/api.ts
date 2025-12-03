@@ -1,4 +1,4 @@
-import { Provider, Tool, Policy, GatewayEvent, Agent, HumanUser } from "./types";
+import { Provider, Tool, Policy, GatewayEvent, Agent, HumanUser, AgentGraphResponse } from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8000";
 
@@ -303,6 +303,35 @@ export const Api = {
       throw new Error(`Request failed: ${res.status}`);
     }
     return res.json() as Promise<Agent>;
+  },
+  getAgentGraph: async (
+    agentId: string,
+    options?: { decisions?: string[]; providers?: string[]; tools?: string[]; riskLevels?: string[]; limit?: number }
+  ) => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+
+    const params = new URLSearchParams();
+    if (options?.decisions?.length) params.set("decision", options.decisions.join(","));
+    if (options?.providers?.length) params.set("provider", options.providers.join(","));
+    if (options?.tools?.length) params.set("tool", options.tools.join(","));
+    if (options?.riskLevels?.length) params.set("risk", options.riskLevels.join(","));
+    if (options?.limit) params.set("limit", options.limit.toString());
+
+    const search = params.toString() ? `?${params.toString()}` : "";
+
+    const res = await fetch(`${BASE_URL}/api/agents/${agentId}/graph${search}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      throw new Error(`Request failed: ${res.status}`);
+    }
+
+    return res.json() as Promise<AgentGraphResponse>;
   },
   createAgent: async (agent: {
     providerId: string;

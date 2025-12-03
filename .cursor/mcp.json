@@ -1,11 +1,8 @@
 {
   "mcpServers": {
     "hakuna": {
-      "command": "node",
-      "args": [
-        "/Users/imizrahi/Downloads/hakuna/dist/index.js"
-      ],
-      "cwd": "/Users/imizrahi/Downloads/hakuna"
+      "url": "http://localhost:8000/mcp?tenant=gmail.com",
+      "tenantId": "gmail.com"
     }
   }
 }

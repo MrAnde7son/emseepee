@@ -332,6 +332,9 @@ export class ToolsRouteHandler extends BaseRouteHandler {
             fileType: { type: "string", description: "Optional file type filter (e.g., '*.ts', '*.js')", required: false },
             limit: { type: "number", description: "Maximum number of results", required: false },
           },
+          list_file_gateway: {
+            path: { type: "string", description: "Directory path to list (absolute or project-relative). If not provided, lists current working directory.", required: false },
+          },
           web_search_gateway: {
             query: { type: "string", description: "Search query", required: true },
             limit: { type: "number", description: "Maximum number of results", required: false },
@@ -464,7 +467,29 @@ export class ToolsRouteHandler extends BaseRouteHandler {
           toolsProxies[toolId].enabled = true;
           await saveToolsProxiesToDb(toolsProxies, tenantId);
         } else {
-          return { success: false, error: `Tool ${toolId} not found` };
+          // Tool not found in database - check if it's a default built-in tool
+          const toolRegistry = await getToolRegistry(tenantId);
+          
+          // Search through all categories for the tool
+          let defaultToolConfig = null;
+          for (const category of ["file", "web", "terminal"] as const) {
+            if (toolRegistry[category][toolId]) {
+              defaultToolConfig = toolRegistry[category][toolId];
+              break;
+            }
+          }
+          
+          if (defaultToolConfig) {
+            // Add the tool to toolsProxies with enabled: true
+            toolsProxies[toolId] = {
+              ...defaultToolConfig,
+              enabled: true,
+            };
+            await saveToolsProxiesToDb(toolsProxies, tenantId);
+            logger.info(`[ToolsRouteHandler] Added default tool ${toolId} to toolsProxies and enabled it`);
+          } else {
+            return { success: false, error: `Tool ${toolId} not found` };
+          }
         }
       }
       
@@ -503,7 +528,29 @@ export class ToolsRouteHandler extends BaseRouteHandler {
           toolsProxies[toolId].enabled = false;
           await saveToolsProxiesToDb(toolsProxies, tenantId);
         } else {
-          return { success: false, error: `Tool ${toolId} not found` };
+          // Tool not found in database - check if it's a default built-in tool
+          const toolRegistry = await getToolRegistry(tenantId);
+          
+          // Search through all categories for the tool
+          let defaultToolConfig = null;
+          for (const category of ["file", "web", "terminal"] as const) {
+            if (toolRegistry[category][toolId]) {
+              defaultToolConfig = toolRegistry[category][toolId];
+              break;
+            }
+          }
+          
+          if (defaultToolConfig) {
+            // Add the tool to toolsProxies with enabled: false
+            toolsProxies[toolId] = {
+              ...defaultToolConfig,
+              enabled: false,
+            };
+            await saveToolsProxiesToDb(toolsProxies, tenantId);
+            logger.info(`[ToolsRouteHandler] Added default tool ${toolId} to toolsProxies and disabled it`);
+          } else {
+            return { success: false, error: `Tool ${toolId} not found` };
+          }
         }
       }
       

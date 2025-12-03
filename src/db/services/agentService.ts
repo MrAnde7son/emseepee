@@ -285,6 +285,19 @@ export async function deleteAgentFromDb(hakunaId: string): Promise<void> {
 }
 
 /**
+ * Delete all agents for a provider from the database
+ */
+export async function deleteAgentsByProviderFromDb(providerId: string): Promise<void> {
+  const config = getDatabaseConfig();
+  
+  if (config.type === "postgres") {
+    await executeUpdate(`DELETE FROM agents WHERE provider_id = $1`, [providerId]);
+  } else {
+    await executeUpdate(`DELETE FROM agents WHERE provider_id = ?`, [providerId]);
+  }
+}
+
+/**
  * Update agent last seen timestamp
  */
 export async function updateAgentLastSeen(hakunaId: string): Promise<void> {

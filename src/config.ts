@@ -334,10 +334,8 @@ export async function loadConfig(tenantId?: string): Promise<{
 export function clearConfigCache(tenantId?: string): void {
   if (tenantId === undefined) {
     CONFIG_CACHE.clear();
-    TOOL_REGISTRY_SYNC_CACHE.clear();
   } else {
     CONFIG_CACHE.delete(getCacheKey(tenantId));
-    TOOL_REGISTRY_SYNC_CACHE.delete(getCacheKey(tenantId));
   }
   logger.info("[CONFIG] Configuration cache cleared - config will be reloaded on next access");
 }
@@ -378,22 +376,36 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
     file_read_gateway: {
       name: "file_read_gateway",
       description: "Read files through the central gateway with policy enforcement.",
-      allowedRoles: ["coder_bot", "admin"],
+      allowedRoles: [],
       sensitivity: "medium",
       category: "file",
     },
     file_search_gateway: {
       name: "file_search_gateway",
       description: "Search for files through the central gateway with policy enforcement.",
-      allowedRoles: ["coder_bot", "admin"],
+      allowedRoles: [],
       sensitivity: "medium",
       category: "file",
     },
     file_write_gateway: {
       name: "file_write_gateway",
       description: "Write files through the central gateway with policy enforcement.",
-      allowedRoles: ["coder_bot", "admin"],
+      allowedRoles: [],
       sensitivity: "high",
+      category: "file",
+    },
+    list_file_gateway: {
+      name: "list_file_gateway",
+      description: "List files and directories through the central gateway with policy enforcement.",
+      allowedRoles: [],
+      sensitivity: "medium",
+      category: "file",
+    },
+    file_grep_gateway: {
+      name: "file_grep_gateway",
+      description: "Search for patterns in file contents through the central gateway with policy enforcement. Supports regex patterns, file type filtering, and case-sensitive/insensitive matching.",
+      allowedRoles: [],
+      sensitivity: "medium",
       category: "file",
     },
   },
@@ -401,7 +413,7 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
     web_search_gateway: {
       name: "web_search_gateway",
       description: "Perform comprehensive web search through the central gateway with policy enforcement. Supports multiple search providers (Tavily, SerpAPI, Google Custom Search, Bing, DuckDuckGo) with automatic provider selection based on available API keys. Returns structured results with titles, snippets, and URLs.",
-      allowedRoles: ["coder_bot", "research_bot", "admin"],
+      allowedRoles: [],
       sensitivity: "medium",
       category: "web",
     },
@@ -410,7 +422,7 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
     terminal_command: {
       name: "terminal_command",
       description: "Execute terminal commands through the central gateway with policy enforcement. Supports custom working directory, environment variables, and timeout configuration.",
-      allowedRoles: ["coder_bot", "admin"],
+      allowedRoles: [],
       sensitivity: "high",
       category: "terminal",
     },
@@ -425,6 +437,8 @@ const DEFAULT_BUILT_IN_TOOLS: ToolCategoryRegistry = {
 export async function getToolRegistry(tenantId?: string): Promise<ToolCategoryRegistry> {
   const config = await loadConfig(tenantId);
   const { toolsProxies } = config;
+  
+  logger.info(`[CONFIG] Loading tool registry - found ${Object.keys(toolsProxies).length} tools in config`);
   
   // Separate tools by category
   const fileTools: Record<string, ToolPolicyConfig> = {};
@@ -463,12 +477,16 @@ export async function getToolRegistry(tenantId?: string): Promise<ToolCategoryRe
     ...terminalTools,
   };
   
-  return {
+  const result = {
     file: mergedFileTools,
     web: mergedWebTools,
     terminal: mergedTerminalTools,
     third_party: thirdPartyTools,
   };
+  
+  logger.info(`[CONFIG] Tool registry loaded - file: ${Object.keys(result.file).length}, web: ${Object.keys(result.web).length}, terminal: ${Object.keys(result.terminal).length}, third_party: ${Object.keys(result.third_party).length}`);
+  
+  return result;
 }
 
 /**
@@ -476,20 +494,15 @@ export async function getToolRegistry(tenantId?: string): Promise<ToolCategoryRe
  * @deprecated Use getToolRegistry() instead
  * Note: This will be initialized asynchronously, use getToolRegistry() for proper async handling
  */
-const TOOL_REGISTRY_SYNC_CACHE = new Map<string, ToolCategoryRegistry>();
 export async function getToolRegistrySync(tenantId?: string): Promise<ToolCategoryRegistry> {
-  const cacheKey = getCacheKey(tenantId);
-  if (!TOOL_REGISTRY_SYNC_CACHE.has(cacheKey)) {
-    TOOL_REGISTRY_SYNC_CACHE.set(cacheKey, await getToolRegistry(tenantId));
-  }
-  return TOOL_REGISTRY_SYNC_CACHE.get(cacheKey)!;
+  return await getToolRegistry(tenantId);
 }
 
 /**
  * Get all tools from a specific category
  */
-export async function getToolsByCategory(category: ToolCategory): Promise<Record<string, ToolPolicyConfig | ThirdPartyToolConfig>> {
-  const registry = await getToolRegistry();
+export async function getToolsByCategory(category: ToolCategory, tenantId?: string): Promise<Record<string, ToolPolicyConfig | ThirdPartyToolConfig>> {
+  const registry = await getToolRegistry(tenantId);
   return registry[category] || {};
 }
 

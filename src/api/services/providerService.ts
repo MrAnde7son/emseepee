@@ -120,15 +120,42 @@ export class ProviderService {
     return providers;
   }
 
-  async installCursorProvider(): Promise<{ success: boolean; error?: string }> {
+  async installCursorProvider(tenantId?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const { writeFileSync, mkdirSync } = await import("fs");
       const projectRoot = process.cwd();
       const cursorDir = join(projectRoot, ".cursor");
       const cursorConfigPath = join(cursorDir, "mcp.json");
       
-      // Use absolute path from project root to avoid path calculation issues
-      const gatewayPath = join(projectRoot, "dist", "index.js");
+      // Get the API server URL from environment variable or construct from host/port
+      // Priority: GATEWAY_API_URL > GATEWAY_API_HOST + GATEWAY_API_PORT + GATEWAY_API_PROTOCOL > localhost:8000
+      let apiUrl: string;
+      
+      if (process.env.GATEWAY_API_URL) {
+        // Use full URL if provided
+        apiUrl = process.env.GATEWAY_API_URL.endsWith("/mcp")
+          ? process.env.GATEWAY_API_URL
+          : `${process.env.GATEWAY_API_URL}/mcp`;
+      } else {
+        // Construct from components
+        const apiHost = process.env.GATEWAY_API_HOST || "localhost";
+        const apiPort = process.env.GATEWAY_API_PORT ? parseInt(process.env.GATEWAY_API_PORT, 10) : 8000;
+        const apiProtocol = process.env.GATEWAY_API_PROTOCOL || "http";
+        
+        // Only include port if it's not the default for the protocol
+        const portSuffix = (apiProtocol === "http" && apiPort === 80) || (apiProtocol === "https" && apiPort === 443)
+          ? ""
+          : `:${apiPort}`;
+        
+        apiUrl = `${apiProtocol}://${apiHost}${portSuffix}/mcp`;
+      }
+      
+      // Add tenant ID as query parameter if provided
+      if (tenantId) {
+        const url = new URL(apiUrl);
+        url.searchParams.set("tenant", tenantId);
+        apiUrl = url.toString();
+      }
       
       let config: { mcpServers?: Record<string, unknown> } = {};
       if (existsSync(cursorConfigPath)) {
@@ -143,10 +170,11 @@ export class ProviderService {
         config.mcpServers = {};
       }
       
+      // Configure Cursor to connect via HTTP instead of spawning a process
+      // Store tenant ID in the config so it's available for future reference
       config.mcpServers["hakuna"] = {
-        command: "node",
-        args: [gatewayPath],
-        cwd: projectRoot,
+        url: apiUrl,
+        ...(tenantId && { tenantId }),
       };
       
       if (!existsSync(cursorDir)) {
@@ -154,6 +182,8 @@ export class ProviderService {
       }
       
       writeFileSync(cursorConfigPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+      
+      logger.info(`[ProviderService] Installed Cursor provider with tenant ID: ${tenantId || "none"}`);
       
       return { success: true };
     } catch (error) {
@@ -166,7 +196,7 @@ export class ProviderService {
 
   async installProvider(providerId: string, config: Record<string, unknown>, tenantId?: string): Promise<void> {
     if (providerId === "cursor") {
-      const result = await this.installCursorProvider();
+      const result = await this.installCursorProvider(tenantId);
       if (!result.success) {
         throw new Error(result.error);
       }
@@ -288,6 +318,16 @@ export class ProviderService {
         logger.warn(`[ProviderService] Failed to delete DB config for ${providerId}:`, error);
       }
 
+      // Delete all agents associated with this provider from the database
+      try {
+        const { deleteAgentsByProviderFromDb } = await import("../../db/services/agentService.js");
+        await deleteAgentsByProviderFromDb(providerId);
+        logger.info(`[ProviderService] Deleted all agents for provider: ${providerId}`);
+      } catch (agentError) {
+        logger.warn(`[ProviderService] Failed to delete agents for ${providerId}:`, agentError);
+      }
+
+      // Unregister the adapter
       try {
         const { unregisterProviderAdapter } = await import("../../agents/index.js");
         unregisterProviderAdapter(providerId);
@@ -310,6 +350,16 @@ export class ProviderService {
     await deleteProviderConfig(providerId, tenantId);
     logger.info(`[ProviderService] Deleted provider configuration for: ${providerId}`);
 
+    // Delete all agents associated with this provider from the database
+    try {
+      const { deleteAgentsByProviderFromDb } = await import("../../db/services/agentService.js");
+      await deleteAgentsByProviderFromDb(providerId);
+      logger.info(`[ProviderService] Deleted all agents for provider: ${providerId}`);
+    } catch (agentError) {
+      logger.warn(`[ProviderService] Failed to delete agents for ${providerId}:`, agentError);
+    }
+
+    // Unregister the adapter
     try {
       const { unregisterProviderAdapter } = await import("../../agents/index.js");
       unregisterProviderAdapter(providerId);
