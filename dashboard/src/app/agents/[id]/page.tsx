@@ -188,7 +188,7 @@ export default function AgentGraphPage() {
     );
   };
 
-  const handleEdgeClick: EdgeMouseHandler<AgentGraphEdgeData> = (event, edge) => {
+  const handleEdgeClick: EdgeMouseHandler<Edge<AgentGraphEdgeData>> = (event, edge) => {
     setSelectedEdgeId(edge.id);
     if (graphContainerRef.current) {
       const rect = graphContainerRef.current.getBoundingClientRect();
