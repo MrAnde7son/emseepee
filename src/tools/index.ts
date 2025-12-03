@@ -19,6 +19,7 @@ import { OpenApiToolGenerator, OpenApiToolHandler } from "./handlers/OpenApiTool
 import { McpServerProxyHandler, McpServerProxyManager } from "./handlers/McpServerProxyHandler.js";
 import { convertInputSchemaToZod } from "./schemaConverter.js";
 import type { AgentContext } from "./handlers/BaseGatewayHandler.js";
+import { getAgentContext } from "./agentContext.js";
 import { toolCache } from "./toolCache.js";
 import { registerToolWithHttp } from "./toolRegistrationHelper.js";
 
@@ -28,6 +29,30 @@ let globalProxyManager: McpServerProxyManager | null = null;
 export interface ToolRegistrationContext {
   server: McpServer;
   getAgentContext: () => AgentContext;
+}
+
+/**
+ * Wraps a tool handler with runtime enabled state checking.
+ * All tools should use this wrapper to ensure consistent behavior.
+ */
+function wrapToolHandlerWithEnabledCheck(
+  toolName: string,
+  category: ToolCategory,
+  handler: (args: Record<string, unknown>) => Promise<any>
+): (args: Record<string, unknown>) => Promise<any> {
+  return async (args: Record<string, unknown>) => {
+    // Check enabled state at runtime by reading from config with tenant context
+    const agentContext = getAgentContext();
+    const categoryTools = await getToolsByCategory(category, agentContext?.tenantId);
+    const toolConfig = categoryTools[toolName];
+    const isEnabled = toolConfig?.enabled !== false;
+    
+    if (!isEnabled) {
+      throw new Error(`Tool ${toolName} is disabled`);
+    }
+    
+    return handler(args);
+  };
 }
 
 /**
@@ -54,15 +79,12 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
     // FILE READ GATEWAY
     // Register all tools so they appear in MCP proxy, but check enabled state at runtime
     if (fileTools.file_read_gateway) {
-      const isEnabled = fileTools.file_read_gateway.enabled !== false;
-      logger.info(`[MCP-GATEWAY] Registering file_read_gateway (enabled: ${isEnabled})`);
-      const toolHandler = async (args: Record<string, unknown>) => {
-        // Check enabled state at runtime
-        if (!isEnabled) {
-          throw new Error("Tool file_read_gateway is disabled");
-        }
-        return fileHandler.readFile(getAgentContext(), args as { path: string; encoding?: string });
-      };
+      logger.info(`[MCP-GATEWAY] Registering file_read_gateway`);
+      const toolHandler = wrapToolHandlerWithEnabledCheck(
+        "file_read_gateway",
+        "file",
+        async (args) => fileHandler.readFile(getAgentContext(), args as { path: string; encoding?: string })
+      );
       
       const inputSchema = z.object({
         path: z.string().describe("File path to read (absolute or project-relative)."),
@@ -87,14 +109,12 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
 
     // FILE SEARCH GATEWAY
     if (fileTools.file_search_gateway) {
-      const isEnabled = fileTools.file_search_gateway.enabled !== false;
-      logger.info(`[MCP-GATEWAY] Registering file_search_gateway (enabled: ${isEnabled})`);
-      const toolHandler = async (args: Record<string, unknown>) => {
-        if (!isEnabled) {
-          throw new Error("Tool file_search_gateway is disabled");
-        }
-        return fileHandler.searchFiles(getAgentContext(), args as any);
-      };
+      logger.info(`[MCP-GATEWAY] Registering file_search_gateway`);
+      const toolHandler = wrapToolHandlerWithEnabledCheck(
+        "file_search_gateway",
+        "file",
+        async (args) => fileHandler.searchFiles(getAgentContext(), args as any)
+      );
       
       const inputSchema = z.object({
         pattern: z.string().describe("Search pattern or query string to find files."),
@@ -114,14 +134,12 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
 
     // FILE WRITE GATEWAY
     if (fileTools.file_write_gateway) {
-      const isEnabled = fileTools.file_write_gateway.enabled !== false;
-      logger.info(`[MCP-GATEWAY] Registering file_write_gateway (enabled: ${isEnabled})`);
-      const toolHandler = async (args: Record<string, unknown>) => {
-        if (!isEnabled) {
-          throw new Error("Tool file_write_gateway is disabled");
-        }
-        return fileHandler.writeFile(getAgentContext(), args as any);
-      };
+      logger.info(`[MCP-GATEWAY] Registering file_write_gateway`);
+      const toolHandler = wrapToolHandlerWithEnabledCheck(
+        "file_write_gateway",
+        "file",
+        async (args) => fileHandler.writeFile(getAgentContext(), args as any)
+      );
       
       const inputSchema = z.object({
         path: z.string().describe("File path to write (absolute or project-relative)."),
@@ -156,14 +174,12 @@ export async function registerWebTools(context: ToolRegistrationContext): Promis
 
   // WEB SEARCH GATEWAY
   if (webTools.web_search_gateway) {
-    const isEnabled = webTools.web_search_gateway.enabled !== false;
-    logger.info(`[MCP-GATEWAY] Registering web_search_gateway (enabled: ${isEnabled})`);
-    const toolHandler = async (args: Record<string, unknown>) => {
-      if (!isEnabled) {
-        throw new Error("Tool web_search_gateway is disabled");
-      }
-      return webHandler.searchWeb(getAgentContext(), args as any);
-    };
+    logger.info(`[MCP-GATEWAY] Registering web_search_gateway`);
+    const toolHandler = wrapToolHandlerWithEnabledCheck(
+      "web_search_gateway",
+      "web",
+      async (args) => webHandler.searchWeb(getAgentContext(), args as any)
+    );
     
     const inputSchema = z.object({
       query: z.string().describe("Search query string."),
@@ -193,16 +209,14 @@ export async function registerTerminalTools(context: ToolRegistrationContext): P
 
   // TERMINAL COMMAND
   if (terminalTools.terminal_command) {
-    const isEnabled = terminalTools.terminal_command.enabled !== false;
-    logger.info(`[MCP-GATEWAY] Registering terminal_command (enabled: ${isEnabled})`);
+    logger.info(`[MCP-GATEWAY] Registering terminal_command`);
     const terminalHandler = new TerminalCommandsHandler(terminalTools.terminal_command);
     
-    const toolHandler = async (args: Record<string, unknown>) => {
-      if (!isEnabled) {
-        throw new Error("Tool terminal_command is disabled");
-      }
-      return terminalHandler.executeCommand(getAgentContext(), args as any);
-    };
+    const toolHandler = wrapToolHandlerWithEnabledCheck(
+      "terminal_command",
+      "terminal",
+      async (args) => terminalHandler.executeCommand(getAgentContext(), args as any)
+    );
     
     const inputSchema = z.object({
       command: z.string().describe("The command to execute (e.g., 'ls', 'git', 'npm')."),
@@ -239,15 +253,10 @@ export async function registerThirdPartyTools(context: ToolRegistrationContext):
   }
 
   // Register each third-party tool based on its configuration
+  // Register all tools so they appear in MCP proxy, but check enabled state at runtime
   for (const [toolName, toolConfig] of Object.entries(thirdPartyTools)) {
     if (!isThirdPartyToolConfig(toolConfig)) {
       logger.warn(`[MCP-GATEWAY] Tool ${toolName} is not a valid third-party tool configuration`);
-      continue;
-    }
-
-    // Skip if tool is not enabled (must be explicitly true)
-    if (toolConfig.enabled !== true) {
-      logger.info(`[MCP-GATEWAY] Skipping disabled third-party tool: ${toolName}`);
       continue;
     }
 
@@ -257,12 +266,19 @@ export async function registerThirdPartyTools(context: ToolRegistrationContext):
 
       for (const operation of operations) {
         const handler = new OpenApiToolHandler(operation, toolConfig);
+        // Wrap with enabled check - OpenAPI tools use the parent tool name for config lookup
+        const wrappedHandler = wrapToolHandlerWithEnabledCheck(
+          toolName,
+          "third_party",
+          async (args) => handler.execute(getAgentContext(), args)
+        );
+        
         registerToolWithHttp(
           server,
           operation.name,
           operation.description,
           operation.inputSchema,
-          async (args) => handler.execute(getAgentContext(), args)
+          wrappedHandler
         );
 
         logger.info(`[MCP-GATEWAY] Registered OpenAPI tool: ${operation.name}`);
@@ -282,14 +298,19 @@ export async function registerThirdPartyTools(context: ToolRegistrationContext):
     const zodSchema = convertInputSchemaToZod(toolConfig.inputSchema);
 
     // Register the tool with both MCP server and HTTP registry
+    // Wrap with enabled check for consistent runtime behavior
+    const wrappedHandler = wrapToolHandlerWithEnabledCheck(
+      toolName,
+      "third_party",
+      async (args) => handler.execute(getAgentContext(), args)
+    );
+
     registerToolWithHttp(
       server,
       toolName,
       toolConfig.description,
       zodSchema,
-      async (args) => {
-        return handler.execute(getAgentContext(), args);
-      }
+      wrappedHandler
     );
 
     logger.info(`[MCP-GATEWAY] Registered third-party tool: ${toolName}`);

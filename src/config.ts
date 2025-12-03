@@ -487,8 +487,8 @@ export async function getToolRegistrySync(tenantId?: string): Promise<ToolCatego
 /**
  * Get all tools from a specific category
  */
-export async function getToolsByCategory(category: ToolCategory): Promise<Record<string, ToolPolicyConfig | ThirdPartyToolConfig>> {
-  const registry = await getToolRegistry();
+export async function getToolsByCategory(category: ToolCategory, tenantId?: string): Promise<Record<string, ToolPolicyConfig | ThirdPartyToolConfig>> {
+  const registry = await getToolRegistry(tenantId);
   return registry[category] || {};
 }
 
