@@ -205,6 +205,10 @@ export interface ToolPolicyConfig {
   sensitivity: Sensitivity;
   category: ToolCategory;
   enabled?: boolean; // Whether this tool is enabled (default: false)
+  authMode?: "none" | "api_key" | "oauth" | "idp";
+  idpAudience?: string;
+  idpScopes?: string[];
+  idpTypeOverride?: "okta" | "entra" | "auth0";
 }
 
 /**
@@ -563,10 +567,12 @@ export async function getEnabledCategories(): Promise<ToolCategory[]> {
   }) as ToolCategory[];
 }
 
+export type NonHumanIdentityKind = "agent" | "service" | "automation" | "workload";
+
 /**
  * Agent metadata - unified representation of an agent across all providers
  */
-export interface Agent {
+export interface NonHumanIdentity {
   // Stable Hakuna identity
   id: string;
   // Human-readable name
@@ -593,7 +599,13 @@ export interface Agent {
   createdAt?: string;
   updatedAt?: string;
   lastSeenAt?: string;
+  // NHI specific fields
+  kind?: NonHumanIdentityKind;
+  idpType?: "okta" | "entra" | "auth0";
+  idpObjectId?: string;
 }
+
+export type Agent = NonHumanIdentity;
 
 /**
  * Provider Agent Adapter - interface for providers to implement

@@ -9,6 +9,7 @@ import { getPolicyRules } from "./config.js";
 import { logger } from "./logger.js";
 import { createContext, runInContext } from "vm";
 import type { AgentIntent } from "./intent/index.js";
+import type { NonHumanIdentity } from "./config.js";
 
 export type DecisionValue = "allow" | "deny";
 
@@ -36,6 +37,7 @@ export interface PolicyInput {
   // Optional: provider ID for provider-scoped policies
   providerId?: string;
   tenantId?: string;
+  nhi?: NonHumanIdentity;
 }
 
 /**
@@ -46,7 +48,7 @@ function matchesCondition(
   condition: PolicyRuleCondition,
   input: PolicyInput
 ): boolean {
-  const { tool, agentId, agentRole, env, args, intent, providerId } = input;
+  const { tool, agentId, agentRole, env, args, intent, providerId, nhi } = input;
 
   // Check tool name
   if (condition.toolName !== undefined) {

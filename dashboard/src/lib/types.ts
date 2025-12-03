@@ -123,3 +123,16 @@ export interface AgentGraphResponse {
   totalEvents: number;
 }
 
+export type IdpType = "okta" | "entra" | "auth0";
+
+export interface IdpConnection {
+  id: number;
+  tenantId?: string;
+  type: IdpType;
+  issuer: string;
+  clientId: string;
+  metadata?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+

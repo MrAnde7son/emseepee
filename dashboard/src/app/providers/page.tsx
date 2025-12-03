@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { useProviders, usePolicies } from "@/hooks/useGatewayData";
+import { useIdpConnections, usePolicies, useProviders } from "@/hooks/useGatewayData";
 import { Api } from "@/lib/api";
-import { Provider, Policy } from "@/lib/types";
+import { Provider, Policy, type IdpType } from "@/lib/types";
 import {
   getProviderConfigSchema,
   providerRequiresConfig,
@@ -48,7 +48,13 @@ interface PolicyCondition {
 
 export default function ProvidersPage() {
   const { data, isLoading, refetch } = useProviders();
+  const {
+    data: idpData,
+    isLoading: isLoadingIdps,
+    refetch: refetchIdps,
+  } = useIdpConnections();
   const { data: policiesData } = usePolicies();
+  const [providersView, setProvidersView] = useState<"agentic" | "idps">("agentic");
   const [installing, setInstalling] = useState<string | null>(null);
   const [uninstalling, setUninstalling] = useState<string | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<Provider | null>(null);
@@ -61,6 +67,11 @@ export default function ProvidersPage() {
   const [providerToUninstall, setProviderToUninstall] = useState<Provider | null>(null);
   const [providerConfig, setProviderConfig] = useState<Record<string, string>>({});
   const [showPasswordFields, setShowPasswordFields] = useState<Set<string>>(new Set());
+  const [idpType, setIdpType] = useState<IdpType>("okta");
+  const [idpIssuer, setIdpIssuer] = useState("");
+  const [idpClientId, setIdpClientId] = useState("");
+  const [idpClientSecret, setIdpClientSecret] = useState("");
+  const [savingIdp, setSavingIdp] = useState(false);
   
   const handleInstallClick = (provider: Provider) => {
     // Check if provider needs configuration
@@ -154,6 +165,32 @@ export default function ProvidersPage() {
     }));
   };
 
+  const handleSaveIdpConnection = async () => {
+    setSavingIdp(true);
+    try {
+      await Api.createOrUpdateIdpConnection({
+        type: idpType,
+        issuer: idpIssuer,
+        clientId: idpClientId,
+        clientSecret: idpClientSecret,
+      });
+      await refetchIdps();
+    } catch (error) {
+      alert(`Failed to save IdP connection: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setSavingIdp(false);
+    }
+  };
+
+  const handleDeleteIdp = async (id: number) => {
+    try {
+      await Api.deleteIdpConnection(id);
+      await refetchIdps();
+    } catch (error) {
+      alert(`Failed to delete IdP connection: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  };
+
   const handleUninstallClick = (provider: Provider) => {
     setProviderToUninstall(provider);
     setShowUninstallDialog(true);
@@ -245,6 +282,99 @@ export default function ProvidersPage() {
     return providerScopedPolicies;
   }, [selectedProvider, policiesData, policyDetails]);
 
+  const connections = idpData?.connections || [];
+
+  if (providersView === "idps") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h1 className="text-xl font-semibold">Identity Providers</h1>
+            <p className="text-xs text-muted-foreground">Configure IdP connections for your tenant.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setProvidersView("agentic")}>
+              Back to Agentic
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => refetchIdps()}>
+              <RefreshCcw className="h-3 w-3 mr-1" /> Refresh
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="border border-border rounded-xl p-4 space-y-3">
+            <h2 className="font-semibold text-sm">Add or Update Connection</h2>
+            <div className="space-y-2">
+              <label className="text-xs font-medium">Provider</label>
+              <select
+                className="border border-input rounded-md px-3 py-2 text-sm bg-background"
+                value={idpType}
+                onChange={(e) => setIdpType(e.target.value as IdpType)}
+              >
+                <option value="okta">Okta</option>
+                <option value="entra" disabled>
+                  Entra (coming soon)
+                </option>
+                <option value="auth0" disabled>
+                  Auth0 (coming soon)
+                </option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-medium">Issuer</label>
+              <Input
+                placeholder="https://your-org.okta.com"
+                value={idpIssuer}
+                onChange={(e) => setIdpIssuer(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-medium">Client ID</label>
+              <Input value={idpClientId} onChange={(e) => setIdpClientId(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-medium">Client Secret</label>
+              <Input
+                type="password"
+                value={idpClientSecret}
+                onChange={(e) => setIdpClientSecret(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={handleSaveIdpConnection} disabled={savingIdp || !idpIssuer || !idpClientId}>
+                {savingIdp ? "Saving..." : "Save Connection"}
+              </Button>
+            </div>
+          </div>
+          <div className="border border-border rounded-xl p-4 space-y-3">
+            <h2 className="font-semibold text-sm">Existing Connections</h2>
+            {isLoadingIdps ? (
+              <div className="text-sm text-muted-foreground">Loading...</div>
+            ) : connections.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No IdP connections yet.</div>
+            ) : (
+              <div className="space-y-3">
+                {connections.map((conn) => (
+                  <div key={conn.id} className="border border-border rounded-lg p-3 flex items-center justify-between">
+                    <div>
+                      <div className="font-medium text-sm">{conn.type.toUpperCase()}</div>
+                      <div className="text-xs text-muted-foreground break-all">{conn.issuer}</div>
+                      <div className="text-xs text-muted-foreground">Client ID: {conn.clientId}</div>
+                    </div>
+                    <Button variant="destructive" size="sm" onClick={() => handleDeleteIdp(conn.id)}>
+                      <Trash2 className="h-3 w-3 mr-1" /> Delete
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
@@ -255,9 +385,12 @@ export default function ProvidersPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button variant="outline" size="sm" onClick={() => setProvidersView("idps")}>
+            Identity Providers
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => refetch()}
           >
             <RefreshCcw className="h-3 w-3 mr-1" />

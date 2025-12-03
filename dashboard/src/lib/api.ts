@@ -1,4 +1,14 @@
-import { Provider, Tool, Policy, GatewayEvent, Agent, HumanUser, AgentGraphResponse } from "./types";
+import {
+  Provider,
+  Tool,
+  Policy,
+  GatewayEvent,
+  Agent,
+  HumanUser,
+  AgentGraphResponse,
+  IdpConnection,
+  IdpType,
+} from "./types";
 
 const BASE_URL = process.env.NEXT_PUBLIC_GATEWAY_URL || "http://localhost:8000";
 
@@ -81,6 +91,15 @@ async function deleteJSON(path: string, requireAuth: boolean = false): Promise<v
 
 export const Api = {
   getProviders: () => fetchJSON<Provider[]>("/api/providers", { requireAuth: true }),
+  getIdpConnections: () => fetchJSON<{ connections: IdpConnection[] }>("/api/idp/connections", { requireAuth: true }),
+  createOrUpdateIdpConnection: (payload: {
+    type: IdpType;
+    issuer: string;
+    clientId: string;
+    clientSecret?: string;
+    metadata?: Record<string, unknown>;
+  }) => postJSON<{ connection: IdpConnection }>("/api/idp/connections", payload, true),
+  deleteIdpConnection: (id: number) => deleteJSON(`/api/idp/connections/${id}`, true),
   installProvider: (providerId: string, config?: Record<string, unknown>) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/install`, config || {}, true),
   uninstallProvider: (providerId: string) => postJSON<{ success: boolean }>(`/api/providers/${providerId}/uninstall`, {}, true),
   getTools: (page?: number, limit?: number, search?: string) => {
