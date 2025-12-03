@@ -54,7 +54,7 @@ describe("AgentGraphService", () => {
     const agentNode = graph.nodes.find((node) => node.kind === "agent");
     expect(agentNode?.id).toBe("agent:agent-123");
 
-    expect(graph.nodes.filter((node) => node.kind === "tool").map((n) => n.label)).toEqual([
+    expect(graph.nodes.filter((node) => node.kind === "target").map((n) => n.label)).toEqual([
       "email",
       "search",
     ]);
