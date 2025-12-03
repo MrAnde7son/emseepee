@@ -97,7 +97,7 @@ export interface HumanUser {
 export interface AgentGraphNode {
   id: string;
   label: string;
-  kind: "agent" | "tool";
+  kind: "agent" | "target";
   provider?: string;
   metadata?: Record<string, unknown>;
 }

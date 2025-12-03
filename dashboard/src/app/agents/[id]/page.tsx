@@ -7,11 +7,13 @@ import {
   Background,
   Controls,
   MiniMap,
+  Handle,
   type Edge,
   type Node,
   type OnEdgeClick,
   MarkerType,
   ConnectionLineType,
+  Position,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useQuery } from "@tanstack/react-query";
@@ -28,6 +30,7 @@ import {
   AlertCircle,
   CheckCircle2,
   XCircle,
+  FileText,
 } from "lucide-react";
 
 import { useAgentGraph } from "@/hooks/useAgentGraph";
@@ -58,6 +61,7 @@ function AgentNode({ data }: { data: AgentGraphNodeData }) {
 
   return (
     <div className="group relative flex flex-col items-center">
+      <Handle type="source" position={Position.Right} />
       <div className="relative flex h-20 w-20 items-center justify-center rounded-full border-4 border-blue-500 bg-gradient-to-br from-blue-100 to-blue-200 shadow-lg transition-all hover:scale-110 hover:shadow-xl dark:from-blue-900 dark:to-blue-800 dark:border-blue-400">
         <Bot className="h-10 w-10 text-blue-600 dark:text-blue-300" />
         <Target className="absolute -right-1 -top-1 h-5 w-5 rounded-full bg-blue-500 text-white shadow-md" />
@@ -79,7 +83,7 @@ function AgentNode({ data }: { data: AgentGraphNodeData }) {
   );
 }
 
-function ToolNode({ data }: { data: AgentGraphNodeData }) {
+function TargetNode({ data }: { data: AgentGraphNodeData }) {
   const decodedLabel = useMemo(() => {
     try {
       return decodeURIComponent(data.label);
@@ -88,41 +92,23 @@ function ToolNode({ data }: { data: AgentGraphNodeData }) {
     }
   }, [data.label]);
 
-  const getToolIcon = () => {
-    if (data.provider?.toLowerCase().includes("aws") || data.provider?.toLowerCase().includes("s3")) {
-      return <Cloud className="h-10 w-10" />;
-    }
-    return <Wrench className="h-10 w-10" />;
-  };
-
-  const getToolColor = () => {
-    if (data.provider?.toLowerCase().includes("aws")) {
-      return {
-        border: "border-orange-500 dark:border-orange-400",
-        bg: "from-orange-100 to-orange-200 dark:from-orange-900 dark:to-orange-800",
-        icon: "text-orange-600 dark:text-orange-300",
-        label: "text-orange-700 dark:text-orange-300",
-      };
-    }
-    return {
-      border: "border-purple-500 dark:border-purple-400",
-      bg: "from-purple-100 to-purple-200 dark:from-purple-900 dark:to-purple-800",
-      icon: "text-purple-600 dark:text-purple-300",
-      label: "text-purple-700 dark:text-purple-300",
-    };
-  };
-
-  const colors = getToolColor();
+  // Determine if this is a file target based on metadata or label
+  const isFile = decodedLabel.includes(".") || decodedLabel.startsWith("/") || data.metadata?.args;
 
   return (
     <div className="group relative flex flex-col items-center">
-      <div
-        className={`relative flex h-20 w-20 items-center justify-center rounded-full border-4 ${colors.border} bg-gradient-to-br ${colors.bg} shadow-lg transition-all hover:scale-110 hover:shadow-xl`}
-      >
-        <div className={colors.icon}>{getToolIcon()}</div>
+      <Handle type="target" position={Position.Left} />
+      <div className="relative flex h-20 w-20 items-center justify-center rounded-full border-4 border-green-500 bg-gradient-to-br from-green-100 to-green-200 shadow-lg transition-all hover:scale-110 hover:shadow-xl dark:from-green-900 dark:to-green-800 dark:border-green-400">
+        {isFile ? (
+          <FileText className="h-10 w-10 text-green-600 dark:text-green-300" />
+        ) : (
+          <Target className="h-10 w-10 text-green-600 dark:text-green-300" />
+        )}
       </div>
       <div className="mt-2 text-center">
-        <div className={`text-xs font-semibold uppercase tracking-wider ${colors.label}`}>Tool</div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-green-700 dark:text-green-300">
+          Target
+        </div>
         <div className="mt-1 max-w-[120px] truncate text-sm font-bold text-gray-900 dark:text-gray-100">
           {decodedLabel}
         </div>
@@ -138,7 +124,7 @@ function ToolNode({ data }: { data: AgentGraphNodeData }) {
 
 const nodeTypes = {
   agent: AgentNode,
-  tool: ToolNode,
+  target: TargetNode,
 };
 
 const decisions = ["allow", "deny", "log"] as const;

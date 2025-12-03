@@ -5,7 +5,8 @@ import type { AgentGraphEdge, AgentGraphNode } from "./types";
 export interface AgentGraphNodeData {
   label: string;
   provider?: string;
-  kind: "agent" | "tool";
+  kind: "agent" | "target";
+  metadata?: Record<string, unknown>;
 }
 
 export interface AgentGraphEdgeData {
@@ -23,7 +24,7 @@ export function layoutAgentGraph(
   edgesData: AgentGraphEdge[]
 ): { nodes: Node<AgentGraphNodeData>[]; edges: Edge<AgentGraphEdgeData>[] } {
   const agentNode = nodesData.find((node) => node.kind === "agent");
-  const toolNodes = nodesData.filter((node) => node.kind === "tool");
+  const targetNodes = nodesData.filter((node) => node.kind === "target");
 
   const positionedNodes: Node<AgentGraphNodeData>[] = [];
   
@@ -32,7 +33,7 @@ export function layoutAgentGraph(
     positionedNodes.push({
       id: agentNode.id,
       position: { x: 100, y: 200 },
-      data: { label: agentNode.label, provider: agentNode.provider, kind: "agent" },
+      data: { label: agentNode.label, provider: agentNode.provider, kind: "agent", metadata: agentNode.metadata },
       type: "agent",
       sourcePosition: "right",
       targetPosition: "left",
@@ -41,21 +42,21 @@ export function layoutAgentGraph(
     });
   }
 
-  // Position tool nodes in a radial or grid pattern to the right of the agent
-  const toolCount = toolNodes.length;
+  // Position target nodes in a radial or grid pattern to the right of the agent
+  const targetCount = targetNodes.length;
   const spacing = 200; // Increased spacing for better visual separation
   const startX = 500; // Further right for better spacing
   
-  // Calculate layout: if few tools, arrange vertically; if many, arrange in a grid
-  if (toolCount <= 4) {
-    // Vertical layout for small number of tools
-    const baseOffset = toolCount > 0 ? -((toolCount - 1) * spacing) / 2 : 0;
-    toolNodes.forEach((node, index) => {
+  // Calculate layout: if few targets, arrange vertically; if many, arrange in a grid
+  if (targetCount <= 4) {
+    // Vertical layout for small number of targets
+    const baseOffset = targetCount > 0 ? -((targetCount - 1) * spacing) / 2 : 0;
+    targetNodes.forEach((node, index) => {
       positionedNodes.push({
         id: node.id,
         position: { x: startX, y: 200 + baseOffset + index * spacing },
-        data: { label: node.label, provider: node.provider, kind: "tool" },
-        type: "tool",
+        data: { label: node.label, provider: node.provider, kind: "target", metadata: node.metadata },
+        type: "target",
         targetPosition: "left",
         sourcePosition: "right",
         width: 120,
@@ -63,13 +64,13 @@ export function layoutAgentGraph(
       });
     });
   } else {
-    // Grid layout for many tools
-    const cols = Math.ceil(Math.sqrt(toolCount));
-    const rows = Math.ceil(toolCount / cols);
+    // Grid layout for many targets
+    const cols = Math.ceil(Math.sqrt(targetCount));
+    const rows = Math.ceil(targetCount / cols);
     const gridSpacing = 180;
     const startY = 200 - ((rows - 1) * gridSpacing) / 2;
     
-    toolNodes.forEach((node, index) => {
+    targetNodes.forEach((node, index) => {
       const row = Math.floor(index / cols);
       const col = index % cols;
       positionedNodes.push({
@@ -78,8 +79,8 @@ export function layoutAgentGraph(
           x: startX + col * gridSpacing, 
           y: startY + row * gridSpacing 
         },
-        data: { label: node.label, provider: node.provider, kind: "tool" },
-        type: "tool",
+        data: { label: node.label, provider: node.provider, kind: "target", metadata: node.metadata },
+        type: "target",
         targetPosition: "left",
         sourcePosition: "right",
         width: 120,
@@ -90,12 +91,13 @@ export function layoutAgentGraph(
 
   const positionedEdges: Edge<AgentGraphEdgeData>[] = edgesData.map((edge) => {
     const color = decisionColors[edge.decision];
+    // Show tool name on the edge instead of intentSummary
     return {
       id: edge.id,
       source: edge.source,
       target: edge.target,
       type: "smoothstep",
-      label: edge.intentSummary,
+      label: edge.toolName, // Tool name is now shown on the edge
       labelStyle: { 
         fill: color, 
         fontWeight: 600,

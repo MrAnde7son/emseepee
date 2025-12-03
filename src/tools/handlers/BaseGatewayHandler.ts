@@ -131,6 +131,14 @@ export abstract class BaseGatewayHandler {
         ? "log"
         : (decision.decision as "allow" | "deny");
 
+    // Extract target information from args and intent for graph visualization
+    const metadata: Record<string, unknown> = {
+      args: this.sanitizeArgsForLogging(args),
+    };
+    if (intent?.inferredIntent.resources && intent.inferredIntent.resources.length > 0) {
+      metadata.resources = intent.inferredIntent.resources;
+    }
+
     await logger.logEvent({
       provider,
       agentId: agentContext.agentId,
@@ -140,6 +148,7 @@ export abstract class BaseGatewayHandler {
       riskLevel: intent?.inferredIntent.riskLevel,
       latencyMs,
       tenantId: agentContext.tenantId,
+      metadata,
     });
   }
 

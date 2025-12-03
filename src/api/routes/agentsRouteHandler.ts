@@ -10,6 +10,19 @@ import { logger } from "../../logger.js";
 import { AgentGraphService } from "../services/agentGraphService.js";
 
 export class AgentsRouteHandler extends BaseRouteHandler {
+  /**
+   * Decode agentId from URL path
+   * Handles URL-encoded characters like ':' which becomes '%3A'
+   */
+  private decodeAgentId(encodedAgentId: string): string {
+    try {
+      return decodeURIComponent(encodedAgentId);
+    } catch {
+      // If decoding fails, return as-is
+      return encodedAgentId;
+    }
+  }
+
   async handle(req: IncomingMessage, res: ServerResponse, path: string, method: string): Promise<boolean> {
     if (path === "/api/agents" && method === "GET") {
       await this.handleGetAgents(req, res);
@@ -17,24 +30,27 @@ export class AgentsRouteHandler extends BaseRouteHandler {
     }
 
     if (path.startsWith("/api/agents/") && path.endsWith("/graph") && method === "GET") {
-      const agentId = path.replace("/api/agents/", "").replace("/graph", "");
-      if (agentId) {
+      const encodedAgentId = path.replace("/api/agents/", "").replace("/graph", "");
+      if (encodedAgentId) {
+        const agentId = this.decodeAgentId(encodedAgentId);
         await this.handleGetAgentGraph(req, res, agentId);
         return true;
       }
     }
 
     if (path.startsWith("/api/agents/") && method === "GET") {
-      const agentId = path.replace("/api/agents/", "");
-      if (agentId && !agentId.includes("/")) {
+      const encodedAgentId = path.replace("/api/agents/", "");
+      if (encodedAgentId && !encodedAgentId.includes("/")) {
+        const agentId = this.decodeAgentId(encodedAgentId);
         await this.handleGetAgent(req, res, agentId);
         return true;
       }
     }
 
     if (path.startsWith("/api/agents/") && path.endsWith("/invoke") && method === "POST") {
-      const agentId = path.replace("/api/agents/", "").replace("/invoke", "");
-      if (agentId) {
+      const encodedAgentId = path.replace("/api/agents/", "").replace("/invoke", "");
+      if (encodedAgentId) {
+        const agentId = this.decodeAgentId(encodedAgentId);
         await this.handleInvokeAgent(req, res, agentId);
         return true;
       }
@@ -46,16 +62,18 @@ export class AgentsRouteHandler extends BaseRouteHandler {
     }
 
     if (path.startsWith("/api/agents/") && method === "PUT") {
-      const agentId = path.replace("/api/agents/", "");
-      if (agentId && !agentId.includes("/")) {
+      const encodedAgentId = path.replace("/api/agents/", "");
+      if (encodedAgentId && !encodedAgentId.includes("/")) {
+        const agentId = this.decodeAgentId(encodedAgentId);
         await this.handleUpdateAgent(req, res, agentId);
         return true;
       }
     }
 
     if (path.startsWith("/api/agents/") && method === "DELETE") {
-      const agentId = path.replace("/api/agents/", "");
-      if (agentId && !agentId.includes("/")) {
+      const encodedAgentId = path.replace("/api/agents/", "");
+      if (encodedAgentId && !encodedAgentId.includes("/")) {
+        const agentId = this.decodeAgentId(encodedAgentId);
         await this.handleDeleteAgent(req, res, agentId);
         return true;
       }
