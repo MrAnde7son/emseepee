@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ReactFlow,
@@ -144,6 +144,8 @@ export default function AgentGraphPage() {
   const [riskFilters, setRiskFilters] = useState<string[]>([]);
   const [limit, setLimit] = useState(150);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number } | null>(null);
+  const graphContainerRef = useRef<HTMLDivElement>(null);
 
   const { data: agent } = useQuery<Agent>({
     queryKey: ["agent", agentId],
@@ -188,9 +190,61 @@ export default function AgentGraphPage() {
     );
   };
 
-  const handleEdgeClick: OnEdgeClick<AgentGraphEdgeData> = (_, edge) => {
+  const handleEdgeClick: OnEdgeClick<AgentGraphEdgeData> = (event, edge) => {
     setSelectedEdgeId(edge.id);
+    if (graphContainerRef.current) {
+      const rect = graphContainerRef.current.getBoundingClientRect();
+      const tooltipWidth = 384; // w-96 = 384px
+      const tooltipHeight = 500; // max height
+      const padding = 10;
+      
+      let x = event.clientX - rect.left + padding;
+      let y = event.clientY - rect.top + padding;
+      
+      // Adjust if tooltip would go off the right edge
+      if (x + tooltipWidth > rect.width) {
+        x = event.clientX - rect.left - tooltipWidth - padding;
+      }
+      
+      // Adjust if tooltip would go off the bottom edge
+      if (y + tooltipHeight > rect.height) {
+        y = event.clientY - rect.top - tooltipHeight - padding;
+      }
+      
+      // Ensure tooltip doesn't go off the left or top edges
+      x = Math.max(padding, x);
+      y = Math.max(padding, y);
+      
+      setTooltipPosition({ x, y });
+    }
   };
+
+  const handlePaneClick = () => {
+    setTooltipPosition(null);
+    setSelectedEdgeId(null);
+  };
+
+  // Close tooltip when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (
+        graphContainerRef.current &&
+        !graphContainerRef.current.contains(target) &&
+        !target.closest('[data-tooltip-content]')
+      ) {
+        setTooltipPosition(null);
+        setSelectedEdgeId(null);
+      }
+    };
+
+    if (tooltipPosition) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+      };
+    }
+  }, [tooltipPosition]);
 
   const limitIsValid = limit > 0 && limit <= 1000;
 
@@ -344,17 +398,20 @@ export default function AgentGraphPage() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.5fr_0.8fr]">
-            <div className="relative h-[600px] overflow-hidden rounded-xl border-2 border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 shadow-lg dark:border-gray-800 dark:from-gray-950 dark:to-gray-900">
-              {isGraphLoading ? (
-                <div className="flex h-full items-center justify-center text-muted-foreground">Loading graph…</div>
-              ) : nodes.length === 0 ? (
-                <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
-                  <Network className="mb-2 h-6 w-6" />
-                  <p>No events yet for this agent.</p>
-                  <p className="text-xs">Adjust filters or trigger a tool call to populate the graph.</p>
-                </div>
-              ) : (
+          <div
+            ref={graphContainerRef}
+            className="relative h-[calc(100vh-300px)] min-h-[600px] overflow-hidden rounded-xl border-2 border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 shadow-lg dark:border-gray-800 dark:from-gray-950 dark:to-gray-900"
+          >
+            {isGraphLoading ? (
+              <div className="flex h-full items-center justify-center text-muted-foreground">Loading graph…</div>
+            ) : nodes.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center text-center text-muted-foreground">
+                <Network className="mb-2 h-6 w-6" />
+                <p>No events yet for this agent.</p>
+                <p className="text-xs">Adjust filters or trigger a tool call to populate the graph.</p>
+              </div>
+            ) : (
+              <>
                 <ReactFlow
                   fitView
                   nodes={nodes}
@@ -363,6 +420,7 @@ export default function AgentGraphPage() {
                   panOnScroll
                   zoomOnScroll
                   onEdgeClick={handleEdgeClick}
+                  onPaneClick={handlePaneClick}
                   connectionLineType={ConnectionLineType.SmoothStep}
                   proOptions={{ hideAttribution: true }}
                   defaultEdgeOptions={{
@@ -400,87 +458,89 @@ export default function AgentGraphPage() {
                     }}
                   />
                 </ReactFlow>
-              )}
-            </div>
 
-            <Card className="h-[600px] shadow-lg">
-              <CardHeader className="border-b bg-gradient-to-r from-gray-50 to-white dark:from-gray-900 dark:to-gray-950">
-                <CardTitle className="flex items-center gap-2">
-                  <ShieldAlert className="h-5 w-5 text-blue-600 dark:text-blue-400" /> Interaction details
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex h-full flex-col gap-4 overflow-hidden p-6">
-                {selectedEvent ? (
-                  <>
-                    <div className="space-y-2">
-                      <div className="text-base font-bold text-gray-900 dark:text-gray-100">
-                        {selectedEvent.intentSummary}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Wrench className="h-4 w-4" />
-                        {selectedEvent.toolName}
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-2">
-                      <Badge
-                        className="font-semibold"
-                        style={{
-                          backgroundColor: `${decisionColors[selectedEvent.decision]}22`,
-                          color: decisionColors[selectedEvent.decision],
-                          borderColor: decisionColors[selectedEvent.decision],
-                        }}
-                      >
-                        {selectedEvent.decision === "allow" && <CheckCircle2 className="mr-1 h-3 w-3" />}
-                        {selectedEvent.decision === "deny" && <XCircle className="mr-1 h-3 w-3" />}
-                        {selectedEvent.decision === "log" && <AlertCircle className="mr-1 h-3 w-3" />}
-                        {selectedEvent.decision}
-                      </Badge>
-                      {selectedEvent.riskLevel && (
-                        <Badge variant="outline" className="font-medium">
-                          Risk: {selectedEvent.riskLevel}
-                        </Badge>
-                      )}
-                      {selectedEvent.latencyMs !== undefined && (
-                        <Badge variant="secondary" className="font-medium">
-                          Latency: {selectedEvent.latencyMs}ms
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-2 rounded-lg bg-muted/50 p-3 text-sm">
-                      <Clock3 className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">{formatDate(selectedEvent.timestamp)}</span>
-                    </div>
-                    
-                    <div className="space-y-1 rounded-lg bg-muted/50 p-3">
-                      <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Provider
-                      </div>
-                      <div className="text-sm font-medium">{selectedEvent.provider}</div>
-                    </div>
-                    
-                    {selectedEvent.metadata && (
-                      <div className="flex-1 overflow-auto rounded-lg border bg-muted/30 p-4">
-                        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          Metadata
+                {/* Tooltip for interaction details */}
+                {tooltipPosition && selectedEvent && (
+                  <div
+                    data-tooltip-content
+                    className="absolute z-50 w-96 rounded-lg border bg-popover shadow-lg"
+                    style={{
+                      left: `${tooltipPosition.x}px`,
+                      top: `${tooltipPosition.y}px`,
+                      maxWidth: "calc(100% - 20px)",
+                    }}
+                  >
+                    <Card className="border-0 shadow-none">
+                      <CardHeader className="border-b bg-gradient-to-r from-gray-50 to-white dark:from-gray-900 dark:to-gray-950">
+                        <CardTitle className="flex items-center gap-2 text-base">
+                          <ShieldAlert className="h-4 w-4 text-blue-600 dark:text-blue-400" /> Interaction details
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="flex max-h-[500px] flex-col gap-4 overflow-y-auto p-4">
+                        <div className="space-y-2">
+                          <div className="text-sm font-bold text-gray-900 dark:text-gray-100">
+                            {selectedEvent.intentSummary}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Wrench className="h-3 w-3" />
+                            {selectedEvent.toolName}
+                          </div>
                         </div>
-                        <pre className="whitespace-pre-wrap break-all text-xs font-mono">
-                          {JSON.stringify(selectedEvent.metadata, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex h-full flex-col items-center justify-center text-center">
-                    <Network className="mb-4 h-12 w-12 text-muted-foreground opacity-50" />
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Select an interaction in the graph to see details.
-                    </p>
+                        
+                        <div className="flex flex-wrap gap-2">
+                          <Badge
+                            className="font-semibold"
+                            style={{
+                              backgroundColor: `${decisionColors[selectedEvent.decision]}22`,
+                              color: decisionColors[selectedEvent.decision],
+                              borderColor: decisionColors[selectedEvent.decision],
+                            }}
+                          >
+                            {selectedEvent.decision === "allow" && <CheckCircle2 className="mr-1 h-3 w-3" />}
+                            {selectedEvent.decision === "deny" && <XCircle className="mr-1 h-3 w-3" />}
+                            {selectedEvent.decision === "log" && <AlertCircle className="mr-1 h-3 w-3" />}
+                            {selectedEvent.decision}
+                          </Badge>
+                          {selectedEvent.riskLevel && (
+                            <Badge variant="outline" className="font-medium text-xs">
+                              Risk: {selectedEvent.riskLevel}
+                            </Badge>
+                          )}
+                          {selectedEvent.latencyMs !== undefined && (
+                            <Badge variant="secondary" className="font-medium text-xs">
+                              Latency: {selectedEvent.latencyMs}ms
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2 rounded-lg bg-muted/50 p-2 text-xs">
+                          <Clock3 className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-muted-foreground">{formatDate(selectedEvent.timestamp)}</span>
+                        </div>
+                        
+                        <div className="space-y-1 rounded-lg bg-muted/50 p-2">
+                          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            Provider
+                          </div>
+                          <div className="text-xs font-medium">{selectedEvent.provider}</div>
+                        </div>
+                        
+                        {selectedEvent.metadata && (
+                          <div className="overflow-auto rounded-lg border bg-muted/30 p-3">
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Metadata
+                            </div>
+                            <pre className="whitespace-pre-wrap break-all text-xs font-mono">
+                              {JSON.stringify(selectedEvent.metadata, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </>
+            )}
           </div>
         </CardContent>
       </Card>
