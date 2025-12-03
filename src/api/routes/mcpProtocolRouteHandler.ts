@@ -6,12 +6,169 @@ import { getMcpServer } from "../../mcpServerInstance.js";
 import { getTool, getAllTools } from "../../mcpToolRegistry.js";
 import { getToolRegistry } from "../../config.js";
 import { runWithAgentContextAsync, createAgentContextFromAuth } from "../../tools/agentContext.js";
+import type { ProviderType } from "../../intent/types.js";
 
 /**
  * Route handler for MCP protocol over HTTP/SSE
  * Exposes the MCP server so Cursor can connect via HTTP instead of stdio
  */
 export class McpProtocolRouteHandler extends BaseRouteHandler {
+  /**
+   * Detect provider from request metadata (headers, path, etc.)
+   * Dynamically checks all registered providers against request headers
+   * Returns both ProviderType and original provider ID (for providers not in ProviderType)
+   */
+  private async detectProviderFromRequest(req: IncomingMessage, path?: string): Promise<{ providerType: ProviderType; providerId?: string }> {
+    // Helper to safely get header value as string
+    const getHeaderValue = (headerName: string): string => {
+      const header = req.headers[headerName];
+      if (!header) return "";
+      return Array.isArray(header) ? header[0] : header;
+    };
+
+    // Get all registered providers dynamically from agent registry
+    let registeredProviders: string[] = [];
+    try {
+      const { getAgentRegistry } = await import("../../agents/registry.js");
+      const registry = getAgentRegistry();
+      registeredProviders = registry.getRegisteredProviders();
+    } catch (error) {
+      logger.warn("[MCP-PROTOCOL] Failed to get registered providers from registry:", error);
+    }
+
+    // If no providers registered, fall back to known provider types
+    if (registeredProviders.length === 0) {
+      registeredProviders = ["cursor", "openai", "microsoft_copilot"];
+    }
+
+    // Check for custom provider header (most reliable)
+    const providerHeader = getHeaderValue("x-provider").toLowerCase();
+    if (providerHeader && registeredProviders.includes(providerHeader)) {
+      // Map provider IDs to ProviderType (handle variations like microsoft_copilot -> copilot)
+      const mappedProvider = this.mapProviderIdToType(providerHeader);
+      return {
+        providerType: mappedProvider,
+        providerId: mappedProvider === "unknown" ? providerHeader : undefined, // Keep original ID if mapped to unknown
+      };
+    }
+
+    // Get all header values for pattern matching
+    const userAgent = getHeaderValue("user-agent").toLowerCase();
+    const origin = getHeaderValue("origin").toLowerCase();
+    const referer = getHeaderValue("referer").toLowerCase();
+    const allHeaderText = `${userAgent} ${origin} ${referer}`;
+
+    // Dynamically check each registered provider against headers
+    for (const providerId of registeredProviders) {
+      const providerLower = providerId.toLowerCase();
+      
+      // Check if any header contains the provider name
+      if (allHeaderText.includes(providerLower)) {
+        const mappedProvider = this.mapProviderIdToType(providerId);
+        logger.info(`[MCP-PROTOCOL] Detected provider '${providerId}' (mapped to '${mappedProvider}') from headers`);
+        return {
+          providerType: mappedProvider,
+          providerId: mappedProvider === "unknown" ? providerId : undefined, // Keep original ID if mapped to unknown
+        };
+      }
+    }
+
+    // If we're on the /mcp endpoint and can't detect from headers,
+    // check if Cursor is registered and use it as default for MCP endpoint
+    if ((path === "/mcp" || path === "/sse") && registeredProviders.includes("cursor")) {
+      logger.info(`[MCP-PROTOCOL] Inferring provider as 'cursor' from endpoint ${path} (no identifying headers found)`);
+      return { providerType: "cursor" };
+    }
+
+    // Default to unknown if we can't detect
+    return { providerType: "unknown" };
+  }
+
+  /**
+   * Map provider ID from registry to ProviderType dynamically
+   * Automatically handles any provider that matches a valid ProviderType value
+   */
+  private mapProviderIdToType(providerId: string): ProviderType {
+    const id = providerId.toLowerCase();
+    
+    // Valid ProviderType values (excluding "unknown")
+    const validProviderTypes: ProviderType[] = ["cursor", "openai", "vertex", "gemini", "n8n"];
+    
+    // Check if provider ID matches any valid ProviderType (case-insensitive)
+    const matchedType = validProviderTypes.find(type => type === id);
+    if (matchedType) {
+      return matchedType;
+    }
+    
+    // Providers not in ProviderType enum (e.g., microsoft_copilot) map to "unknown"
+    // We'll still use the original provider ID for agent lookup
+    return "unknown";
+  }
+
+  /**
+   * Get default agent ID for a provider dynamically
+   * Queries the agent registry to find the default or first available agent
+   * @param detectedProvider - The ProviderType detected from request (may be "unknown")
+   * @param originalProviderId - The original provider ID from registry (for providers not in ProviderType)
+   * @param tenantId - Optional tenant ID
+   */
+  private async getDefaultAgentId(
+    detectedProvider: ProviderType, 
+    originalProviderId?: string,
+    tenantId?: string
+  ): Promise<string> {
+    // If provider is unknown and we don't have an original provider ID, return unknown:anonymous
+    if (detectedProvider === "unknown" && !originalProviderId) {
+      return "unknown:anonymous";
+    }
+
+    // Use original provider ID if available (for providers not in ProviderType like microsoft_copilot)
+    // Otherwise map ProviderType to provider ID
+    const providerId = originalProviderId || this.mapProviderTypeToId(detectedProvider);
+
+    try {
+      const { getAgentRegistry } = await import("../../agents/registry.js");
+      const registry = getAgentRegistry();
+      
+      // Get agents for this provider
+      const agents = await registry.getAgentsByProvider(providerId);
+      
+      if (agents.length > 0) {
+        // Try to find an agent with nativeId "default" first
+        const defaultAgent = agents.find(a => a.providerNativeId === "default");
+        if (defaultAgent) {
+          logger.info(`[MCP-PROTOCOL] Found default agent for provider ${providerId}: ${defaultAgent.id}`);
+          return defaultAgent.id;
+        }
+        
+        // Otherwise use the first enabled agent
+        const firstEnabledAgent = agents.find(a => a.enabled !== false) || agents[0];
+        if (firstEnabledAgent) {
+          logger.info(`[MCP-PROTOCOL] Using first available agent for provider ${providerId}: ${firstEnabledAgent.id}`);
+          return firstEnabledAgent.id;
+        }
+      }
+      
+      // Fallback: construct agent ID using provider:default format
+      logger.warn(`[MCP-PROTOCOL] No agents found for provider ${providerId}, using constructed ID`);
+      return `${providerId}:default`;
+    } catch (error) {
+      logger.warn(`[MCP-PROTOCOL] Failed to get agents for provider ${providerId}:`, error);
+      // Fallback: construct agent ID using provider:default format
+      return `${providerId}:default`;
+    }
+  }
+
+  /**
+   * Map ProviderType to provider ID
+   * Since ProviderType values are already valid provider IDs, just return as-is
+   * (except "unknown" which shouldn't be used as a provider ID)
+   */
+  private mapProviderTypeToId(providerType: ProviderType): string {
+    // ProviderType values are already valid provider IDs, so return directly
+    // "unknown" is a special case that shouldn't be used as a provider ID
+    return providerType === "unknown" ? "" : providerType;
+  }
 
   async handle(req: IncomingMessage, res: ServerResponse, path: string, method: string): Promise<boolean> {
     // Handle MCP protocol endpoints
@@ -185,9 +342,20 @@ export class McpProtocolRouteHandler extends BaseRouteHandler {
             if (auth) {
               agentContext = createAgentContextFromAuth(auth);
             } else {
-              // Fallback: create minimal context from available info
+              // Detect provider from request metadata dynamically
+              // Pass the path to help with detection (e.g., /mcp endpoint is Cursor-specific)
+              const url = new URL(req.url || "/", `http://${req.headers.host}`);
+              const { providerType, providerId: detectedProviderId } = await this.detectProviderFromRequest(req, url.pathname);
+              
+              // If we detected a recognized provider, get its default agent ID dynamically
+              const agentId = providerType !== "unknown" || detectedProviderId
+                ? await this.getDefaultAgentId(providerType, detectedProviderId, tenantId)
+                : "unknown:anonymous";
+              
+              logger.info(`[MCP-PROTOCOL] Detected provider: ${providerType}${detectedProviderId ? ` (${detectedProviderId})` : ""}, using agentId: ${agentId}`);
+              
               agentContext = {
-                agentId: "anonymous",
+                agentId,
                 agentRole: "user",
                 env: process.env.AGENT_ENV || "dev",
                 tenantId: tenantId || undefined,
@@ -196,8 +364,8 @@ export class McpProtocolRouteHandler extends BaseRouteHandler {
           } else {
             // No request available (shouldn't happen, but handle gracefully)
             agentContext = {
-              agentId: "system",
-              agentRole: "system",
+              agentId: "unknown:anonymous",
+              agentRole: "user",
               env: process.env.AGENT_ENV || "dev",
               tenantId: tenantId || undefined,
             };
