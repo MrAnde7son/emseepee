@@ -1,7 +1,7 @@
 import type { NonHumanIdentity } from "../../config.js";
 import type { ToolPolicyConfig as ToolConfig } from "../../config.js";
 
-export type IdpType = "okta" | "entra" | "auth0";
+export type IdpType = "okta" | "entra";
 
 export interface IdpConnection {
   id: number;

@@ -16,7 +16,6 @@ class UnsupportedIdpProvider implements IdpProvider {
 const providers: Record<IdpType, IdpProvider> = {
   okta: new OktaProvider(),
   entra: new UnsupportedIdpProvider("entra"),
-  auth0: new UnsupportedIdpProvider("auth0"),
 };
 
 export function getIdpProvider(type: IdpType): IdpProvider {

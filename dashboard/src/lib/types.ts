@@ -123,7 +123,7 @@ export interface AgentGraphResponse {
   totalEvents: number;
 }
 
-export type IdpType = "okta" | "entra" | "auth0";
+export type IdpType = "okta" | "entra";
 
 export interface IdpConnection {
   id: number;

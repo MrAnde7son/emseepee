@@ -62,11 +62,11 @@ describe("idpConnectionService", () => {
   it("returns null when no connection exists for tenant and type", async () => {
     mocks.executeQuery.mockResolvedValueOnce([]);
 
-    const result = await getIdpConnectionByTenantAndType("tenant-2", "auth0");
+    const result = await getIdpConnectionByTenantAndType("tenant-2", "okta");
 
     expect(mocks.executeQuery).toHaveBeenCalledWith(
       "SELECT * FROM idp_connections WHERE tenant_id = $1 AND type = $2 LIMIT 1",
-      ["tenant-2", "auth0"],
+      ["tenant-2", "okta"],
     );
     expect(result).toBeNull();
   });

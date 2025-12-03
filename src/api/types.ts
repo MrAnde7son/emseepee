@@ -55,7 +55,7 @@ export interface PaginatedResponse<T> {
   totalPages: number;
 }
 
-export type IdpType = "okta" | "entra" | "auth0";
+export type IdpType = "okta" | "entra";
 
 export interface IdpConnectionDto {
   id: number;

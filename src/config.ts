@@ -1,3 +1,4 @@
+import { IdpType } from "./api/types.js";
 import { logger } from "./logger.js";
 
 export type Sensitivity = "low" | "medium" | "high";
@@ -208,7 +209,7 @@ export interface ToolPolicyConfig {
   authMode?: "none" | "api_key" | "oauth" | "idp";
   idpAudience?: string;
   idpScopes?: string[];
-  idpTypeOverride?: "okta" | "entra" | "auth0";
+  idpTypeOverride?: IdpType;
 }
 
 /**
@@ -601,7 +602,7 @@ export interface NonHumanIdentity {
   lastSeenAt?: string;
   // NHI specific fields
   kind?: NonHumanIdentityKind;
-  idpType?: "okta" | "entra" | "auth0";
+  idpType?: IdpType;
   idpObjectId?: string;
 }
 
