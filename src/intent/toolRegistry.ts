@@ -47,6 +47,12 @@ const TOOL_REGISTRY: ToolMetadata[] = [
     defaultAction: 'search_files',
     defaultRisk: 'low',
   },
+  {
+    name: 'file_grep_gateway',
+    operation: 'read',
+    defaultAction: 'grep_files',
+    defaultRisk: 'low',
+  },
   
   // Web operations
   {

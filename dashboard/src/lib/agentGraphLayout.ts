@@ -1,4 +1,5 @@
-import { MarkerType, type Edge, type Node } from "@xyflow/react";
+import { MarkerType, Position, type Edge, type Node } from "@xyflow/react";
+import dagre from "dagre";
 
 import type { AgentGraphEdge, AgentGraphNode } from "./types";
 
@@ -7,10 +8,12 @@ export interface AgentGraphNodeData {
   provider?: string;
   kind: "agent" | "target";
   metadata?: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 export interface AgentGraphEdgeData {
   event: AgentGraphEdge;
+  [key: string]: unknown;
 }
 
 export const decisionColors: Record<AgentGraphEdge["decision"], string> = {
@@ -23,71 +26,59 @@ export function layoutAgentGraph(
   nodesData: AgentGraphNode[],
   edgesData: AgentGraphEdge[]
 ): { nodes: Node<AgentGraphNodeData>[]; edges: Edge<AgentGraphEdgeData>[] } {
-  const agentNode = nodesData.find((node) => node.kind === "agent");
-  const targetNodes = nodesData.filter((node) => node.kind === "target");
-
-  const positionedNodes: Node<AgentGraphNodeData>[] = [];
+  // Node dimensions
+  const nodeWidth = 120;
+  const nodeHeight = 140;
   
-  // Position agent node in the center-left area
-  if (agentNode) {
-    positionedNodes.push({
-      id: agentNode.id,
-      position: { x: 100, y: 200 },
-      data: { label: agentNode.label, provider: agentNode.provider, kind: "agent", metadata: agentNode.metadata },
-      type: "agent",
-      sourcePosition: "right",
-      targetPosition: "left",
-      width: 120,
-      height: 140,
-    });
-  }
+  // Create a new dagre graph
+  const dagreGraph = new dagre.graphlib.Graph();
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+  dagreGraph.setGraph({
+    rankdir: "LR", // Left to Right layout
+    nodesep: 100, // Horizontal spacing between nodes
+    ranksep: 150, // Vertical spacing between ranks
+    marginx: 50,
+    marginy: 50,
+  });
 
-  // Position target nodes in a radial or grid pattern to the right of the agent
-  const targetCount = targetNodes.length;
-  const spacing = 200; // Increased spacing for better visual separation
-  const startX = 500; // Further right for better spacing
-  
-  // Calculate layout: if few targets, arrange vertically; if many, arrange in a grid
-  if (targetCount <= 4) {
-    // Vertical layout for small number of targets
-    const baseOffset = targetCount > 0 ? -((targetCount - 1) * spacing) / 2 : 0;
-    targetNodes.forEach((node, index) => {
-      positionedNodes.push({
-        id: node.id,
-        position: { x: startX, y: 200 + baseOffset + index * spacing },
-        data: { label: node.label, provider: node.provider, kind: "target", metadata: node.metadata },
-        type: "target",
-        targetPosition: "left",
-        sourcePosition: "right",
-        width: 120,
-        height: 140,
-      });
+  // Add all nodes to the dagre graph
+  nodesData.forEach((node) => {
+    dagreGraph.setNode(node.id, {
+      width: nodeWidth,
+      height: nodeHeight,
     });
-  } else {
-    // Grid layout for many targets
-    const cols = Math.ceil(Math.sqrt(targetCount));
-    const rows = Math.ceil(targetCount / cols);
-    const gridSpacing = 180;
-    const startY = 200 - ((rows - 1) * gridSpacing) / 2;
-    
-    targetNodes.forEach((node, index) => {
-      const row = Math.floor(index / cols);
-      const col = index % cols;
-      positionedNodes.push({
-        id: node.id,
-        position: { 
-          x: startX + col * gridSpacing, 
-          y: startY + row * gridSpacing 
-        },
-        data: { label: node.label, provider: node.provider, kind: "target", metadata: node.metadata },
-        type: "target",
-        targetPosition: "left",
-        sourcePosition: "right",
-        width: 120,
-        height: 140,
-      });
-    });
-  }
+  });
+
+  // Add all edges to the dagre graph
+  edgesData.forEach((edge) => {
+    dagreGraph.setEdge(edge.source, edge.target);
+  });
+
+  // Run the layout algorithm
+  dagre.layout(dagreGraph);
+
+  // Convert dagre positions to React Flow nodes
+  const positionedNodes: Node<AgentGraphNodeData>[] = nodesData.map((node) => {
+    const dagreNode = dagreGraph.node(node.id);
+    return {
+      id: node.id,
+      position: {
+        x: dagreNode.x - nodeWidth / 2, // Center the node
+        y: dagreNode.y - nodeHeight / 2, // Center the node
+      },
+      data: {
+        label: node.label,
+        provider: node.provider,
+        kind: node.kind,
+        metadata: node.metadata,
+      },
+      type: node.kind === "agent" ? "agent" : "target",
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+      width: nodeWidth,
+      height: nodeHeight,
+    };
+  });
 
   const positionedEdges: Edge<AgentGraphEdgeData>[] = edgesData.map((edge) => {
     const color = decisionColors[edge.decision];
