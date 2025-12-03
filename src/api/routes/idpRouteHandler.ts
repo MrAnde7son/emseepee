@@ -6,6 +6,7 @@ import {
   getIdpConnectionsByTenant,
 } from "../../db/services/idpConnectionService.js";
 import type { IdpType } from "../../integrations/idp/types.js";
+import { RequestParser } from "../middleware/requestParser.js";
 
 export class IdpRouteHandler extends BaseRouteHandler {
   async handle(req: IncomingMessage, res: ServerResponse, path: string, method: string): Promise<boolean> {
@@ -53,7 +54,7 @@ export class IdpRouteHandler extends BaseRouteHandler {
     }
 
     try {
-      const body = await this.parseJSON<{ type: IdpType; issuer: string; clientId: string; clientSecret?: string; metadata?: Record<string, unknown> }>(req);
+      const body = await RequestParser.parseBody(req) as { type: IdpType; issuer: string; clientId: string; clientSecret?: string; metadata?: Record<string, unknown> };
       if (!body?.type || !body.issuer || !body.clientId) {
         this.sendError(res, 400, "Missing required fields");
         return;

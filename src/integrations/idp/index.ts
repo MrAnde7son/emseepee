@@ -1,9 +1,22 @@
 import { OktaProvider } from "./oktaProvider.js";
 import type { IdpProvider, IdpType } from "./types.js";
 
+class UnsupportedIdpProvider implements IdpProvider {
+  type: IdpType;
+
+  constructor(type: IdpType) {
+    this.type = type;
+  }
+
+  async getAccessTokenForNhi(): Promise<string> {
+    throw new Error(`IdP provider ${this.type} is not yet implemented`);
+  }
+}
+
 const providers: Record<IdpType, IdpProvider> = {
   okta: new OktaProvider(),
-  // Future providers: entra, auth0
+  entra: new UnsupportedIdpProvider("entra"),
+  auth0: new UnsupportedIdpProvider("auth0"),
 };
 
 export function getIdpProvider(type: IdpType): IdpProvider {
