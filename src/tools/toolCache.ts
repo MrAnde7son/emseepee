@@ -171,6 +171,37 @@ class ToolCache {
       proxies,
     };
   }
+
+  /**
+   * Get all tenants that have cached tools
+   * Returns array of tenant IDs (or "default" for undefined/null tenants)
+   */
+  getAllTenantsWithCachedTools(): string[] {
+    const tenants = new Set<string>();
+    for (const tenantKey of this.cache.keys()) {
+      tenants.add(tenantKey);
+    }
+    return Array.from(tenants);
+  }
+
+  /**
+   * Find tenant that has cached tools for a specific proxy
+   * Returns the tenant ID (or undefined if "default") or undefined if not found
+   */
+  findTenantForProxy(proxyName: string): string | undefined {
+    for (const [tenantKey, tenantCache] of this.cache.entries()) {
+      const entry = tenantCache.get(proxyName);
+      if (entry) {
+        // Check if cache expired
+        const age = Date.now() - entry.timestamp;
+        if (age <= this.CACHE_TTL_MS) {
+          // Return "default" maps back to undefined
+          return tenantKey === "default" ? undefined : tenantKey;
+        }
+      }
+    }
+    return undefined;
+  }
 }
 
 // Singleton instance

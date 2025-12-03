@@ -30,15 +30,6 @@ export async function initializeAgentRegistry(): Promise<void> {
     // Only register if not already registered from config
     const registeredProviders = registry.getRegisteredProviders();
     
-    // Cursor adapter (always available, no config needed)
-    if (!registeredProviders.includes("cursor")) {
-      const cursorAdapter = AdapterFactory.createAdapter("cursor");
-      if (cursorAdapter) {
-        registry.registerAdapter(cursorAdapter);
-        logger.info("[AGENTS] Registered Cursor adapter (from env fallback)");
-      }
-    }
-    
     // OpenAI adapter (if env var exists and not already registered)
     if (!registeredProviders.includes("openai") && process.env.OPENAI_API_KEY) {
       const openaiAdapter = AdapterFactory.createAdapter("openai", {
@@ -54,12 +45,8 @@ export async function initializeAgentRegistry(): Promise<void> {
     
     logger.info(`[AGENTS] Agent registry initialized with ${registry.getRegisteredProviders().length} adapters`);
   } catch (error) {
-    logger.error("[AGENTS] Failed to initialize agent registry from configs, using fallback:", error);
-    // Fallback to basic initialization
-    const cursorAdapter = AdapterFactory.createAdapter("cursor");
-    if (cursorAdapter) {
-      registry.registerAdapter(cursorAdapter);
-    }
+    logger.error("[AGENTS] Failed to initialize agent registry from configs:", error);
+    // No fallback - adapters should only be registered when providers are installed
   }
 }
 
