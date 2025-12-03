@@ -20,6 +20,7 @@ import { McpServerProxyHandler, McpServerProxyManager } from "./handlers/McpServ
 import { convertInputSchemaToZod } from "./schemaConverter.js";
 import type { AgentContext } from "./handlers/BaseGatewayHandler.js";
 import { toolCache } from "./toolCache.js";
+import { registerToolWithHttp } from "./toolRegistrationHelper.js";
 
 // Global singleton manager instance
 let globalProxyManager: McpServerProxyManager | null = null;
@@ -34,67 +35,111 @@ export interface ToolRegistrationContext {
  */
 export async function registerFileTools(context: ToolRegistrationContext): Promise<void> {
   const { server, getAgentContext } = context;
-  const fileTools = await getToolsByCategory("file");
+  try {
+    const fileTools = await getToolsByCategory("file");
+    logger.info(`[MCP-GATEWAY] Loading file tools from config: ${Object.keys(fileTools).join(", ")}`);
+    
+    if (Object.keys(fileTools).length === 0) {
+      logger.warn(`[MCP-GATEWAY] No file tools found in config!`);
+      return;
+    }
 
-  // Initialize file operations handler
-  const fileHandler = new FileOperationsHandler({
-    read: fileTools.file_read_gateway,
-    write: fileTools.file_write_gateway,
-    search: fileTools.file_search_gateway,
-  });
+    // Initialize file operations handler
+    const fileHandler = new FileOperationsHandler({
+      read: fileTools.file_read_gateway,
+      write: fileTools.file_write_gateway,
+      search: fileTools.file_search_gateway,
+    });
 
-  // FILE READ GATEWAY
-  if (fileTools.file_read_gateway && fileTools.file_read_gateway.enabled === true) {
-    server.registerTool(
-      "file_read_gateway",
-      {
-        description: fileTools.file_read_gateway.description,
-        inputSchema: {
-          path: z.string().describe("File path to read (absolute or project-relative)."),
-          encoding: z.string().optional().default("utf-8"),
-        },
-      },
-      async (args) => {
-        return fileHandler.readFile(getAgentContext(), args);
+    // FILE READ GATEWAY
+    // Register all tools so they appear in MCP proxy, but check enabled state at runtime
+    if (fileTools.file_read_gateway) {
+      const isEnabled = fileTools.file_read_gateway.enabled !== false;
+      logger.info(`[MCP-GATEWAY] Registering file_read_gateway (enabled: ${isEnabled})`);
+      const toolHandler = async (args: Record<string, unknown>) => {
+        // Check enabled state at runtime
+        if (!isEnabled) {
+          throw new Error("Tool file_read_gateway is disabled");
+        }
+        return fileHandler.readFile(getAgentContext(), args as { path: string; encoding?: string });
+      };
+      
+      const inputSchema = z.object({
+        path: z.string().describe("File path to read (absolute or project-relative)."),
+        encoding: z.string().optional().default("utf-8"),
+      });
+      
+      try {
+        logger.info(`[MCP-GATEWAY] About to call registerToolWithHttp for file_read_gateway`);
+        registerToolWithHttp(
+          server,
+          "file_read_gateway",
+          fileTools.file_read_gateway.description,
+          inputSchema,
+          toolHandler
+        );
+        logger.info(`[MCP-GATEWAY] Successfully called registerToolWithHttp for file_read_gateway`);
+      } catch (error) {
+        logger.error(`[MCP-GATEWAY] Error calling registerToolWithHttp for file_read_gateway:`, error);
+        throw error;
       }
-    );
-  }
+    }
 
-  // FILE SEARCH GATEWAY
-  if (fileTools.file_search_gateway && fileTools.file_search_gateway.enabled === true) {
-    server.registerTool(
-      "file_search_gateway",
-      {
-        description: fileTools.file_search_gateway.description,
-        inputSchema: {
-          pattern: z.string().describe("Search pattern or query string to find files."),
-          directory: z.string().optional().describe("Directory to search in (absolute or project-relative). If not provided, searches from project root."),
-          fileType: z.string().optional().describe("Optional file type filter (e.g., '*.ts', '*.js')."),
-          limit: z.number().int().min(1).max(100).optional().default(20),
-        },
-      },
-      async (args) => {
-        return fileHandler.searchFiles(getAgentContext(), args);
-      }
-    );
-  }
+    // FILE SEARCH GATEWAY
+    if (fileTools.file_search_gateway) {
+      const isEnabled = fileTools.file_search_gateway.enabled !== false;
+      logger.info(`[MCP-GATEWAY] Registering file_search_gateway (enabled: ${isEnabled})`);
+      const toolHandler = async (args: Record<string, unknown>) => {
+        if (!isEnabled) {
+          throw new Error("Tool file_search_gateway is disabled");
+        }
+        return fileHandler.searchFiles(getAgentContext(), args as any);
+      };
+      
+      const inputSchema = z.object({
+        pattern: z.string().describe("Search pattern or query string to find files."),
+        directory: z.string().optional().describe("Directory to search in (absolute or project-relative). If not provided, searches from project root."),
+        fileType: z.string().optional().describe("Optional file type filter (e.g., '*.ts', '*.js')."),
+        limit: z.number().int().min(1).max(100).optional().default(20),
+      });
+      
+      registerToolWithHttp(
+        server,
+        "file_search_gateway",
+        fileTools.file_search_gateway.description,
+        inputSchema,
+        toolHandler
+      );
+    }
 
-  // FILE WRITE GATEWAY
-  if (fileTools.file_write_gateway && fileTools.file_write_gateway.enabled === true) {
-    server.registerTool(
-      "file_write_gateway",
-      {
-        description: fileTools.file_write_gateway.description,
-        inputSchema: {
-          path: z.string().describe("File path to write (absolute or project-relative)."),
-          contents: z.string().describe("Content to write to the file."),
-          encoding: z.string().optional().default("utf-8"),
-        },
-      },
-      async (args) => {
-        return fileHandler.writeFile(getAgentContext(), args);
-      }
-    );
+    // FILE WRITE GATEWAY
+    if (fileTools.file_write_gateway) {
+      const isEnabled = fileTools.file_write_gateway.enabled !== false;
+      logger.info(`[MCP-GATEWAY] Registering file_write_gateway (enabled: ${isEnabled})`);
+      const toolHandler = async (args: Record<string, unknown>) => {
+        if (!isEnabled) {
+          throw new Error("Tool file_write_gateway is disabled");
+        }
+        return fileHandler.writeFile(getAgentContext(), args as any);
+      };
+      
+      const inputSchema = z.object({
+        path: z.string().describe("File path to write (absolute or project-relative)."),
+        contents: z.string().describe("Content to write to the file."),
+        encoding: z.string().optional().default("utf-8"),
+      });
+      
+      registerToolWithHttp(
+        server,
+        "file_write_gateway",
+        fileTools.file_write_gateway.description,
+        inputSchema,
+        toolHandler
+      );
+    }
+  } catch (error) {
+    logger.error(`[MCP-GATEWAY] Error registering file tools:`, error);
+    throw error;
   }
 }
 
@@ -104,26 +149,37 @@ export async function registerFileTools(context: ToolRegistrationContext): Promi
 export async function registerWebTools(context: ToolRegistrationContext): Promise<void> {
   const { server, getAgentContext } = context;
   const webTools = await getToolsByCategory("web");
+  logger.info(`[MCP-GATEWAY] Loading web tools from config: ${Object.keys(webTools).join(", ")}`);
 
   // Initialize web operations handler
   const webHandler = new WebOperationsHandler(webTools.web_search_gateway);
 
   // WEB SEARCH GATEWAY
-  if (webTools.web_search_gateway && webTools.web_search_gateway.enabled === true) {
-    server.registerTool(
-      "web_search_gateway",
-      {
-        description: webTools.web_search_gateway.description,
-        inputSchema: {
-          query: z.string().describe("Search query string."),
-          limit: z.number().int().min(1).max(20).optional().default(5).describe("Maximum number of results to return (1-20)."),
-          provider: z.enum(["tavily", "serpapi", "google", "bing", "duckduckgo", "auto"]).optional().default("auto").describe("Search provider to use. 'auto' selects based on available API keys. Options: tavily (AI-optimized), serpapi (Google results), google (Custom Search), bing, duckduckgo (fallback, no API key required)."),
-        },
-      },
-      async (args) => {
-        return webHandler.searchWeb(getAgentContext(), args);
+  if (webTools.web_search_gateway) {
+    const isEnabled = webTools.web_search_gateway.enabled !== false;
+    logger.info(`[MCP-GATEWAY] Registering web_search_gateway (enabled: ${isEnabled})`);
+    const toolHandler = async (args: Record<string, unknown>) => {
+      if (!isEnabled) {
+        throw new Error("Tool web_search_gateway is disabled");
       }
+      return webHandler.searchWeb(getAgentContext(), args as any);
+    };
+    
+    const inputSchema = z.object({
+      query: z.string().describe("Search query string."),
+      limit: z.number().int().min(1).max(20).optional().default(5).describe("Maximum number of results to return (1-20)."),
+      provider: z.enum(["tavily", "serpapi", "google", "bing", "duckduckgo", "auto"]).optional().default("auto").describe("Search provider to use. 'auto' selects based on available API keys. Options: tavily (AI-optimized), serpapi (Google results), google (Custom Search), bing, duckduckgo (fallback, no API key required)."),
+    });
+    
+    registerToolWithHttp(
+      server,
+      "web_search_gateway",
+      webTools.web_search_gateway.description,
+      inputSchema,
+      toolHandler
     );
+  } else {
+    logger.info(`[MCP-GATEWAY] Skipping web_search_gateway (not found in config)`);
   }
 }
 
@@ -133,28 +189,39 @@ export async function registerWebTools(context: ToolRegistrationContext): Promis
 export async function registerTerminalTools(context: ToolRegistrationContext): Promise<void> {
   const { server, getAgentContext } = context;
   const terminalTools = await getToolsByCategory("terminal");
+  logger.info(`[MCP-GATEWAY] Loading terminal tools from config: ${Object.keys(terminalTools).join(", ")}`);
 
   // TERMINAL COMMAND
-  if (terminalTools.terminal_command && terminalTools.terminal_command.enabled === true) {
+  if (terminalTools.terminal_command) {
+    const isEnabled = terminalTools.terminal_command.enabled !== false;
+    logger.info(`[MCP-GATEWAY] Registering terminal_command (enabled: ${isEnabled})`);
     const terminalHandler = new TerminalCommandsHandler(terminalTools.terminal_command);
     
-    server.registerTool(
-      "terminal_command",
-      {
-        description: terminalTools.terminal_command.description,
-        inputSchema: {
-          command: z.string().describe("The command to execute (e.g., 'ls', 'git', 'npm')."),
-          args: z.array(z.string()).optional().describe("Array of command arguments."),
-          cwd: z.string().optional().describe("Working directory for the command. If not provided, uses current working directory."),
-          env: z.record(z.string()).optional().describe("Additional environment variables to set for the command execution."),
-          timeout: z.number().int().min(0).optional().default(30000).describe("Timeout in milliseconds (0 = no timeout). Default: 30000 (30 seconds)."),
-          shell: z.boolean().optional().default(true).describe("Whether to execute the command in a shell. Default: true."),
-        },
-      },
-      async (args) => {
-        return terminalHandler.executeCommand(getAgentContext(), args);
+    const toolHandler = async (args: Record<string, unknown>) => {
+      if (!isEnabled) {
+        throw new Error("Tool terminal_command is disabled");
       }
+      return terminalHandler.executeCommand(getAgentContext(), args as any);
+    };
+    
+    const inputSchema = z.object({
+      command: z.string().describe("The command to execute (e.g., 'ls', 'git', 'npm')."),
+      args: z.array(z.string()).optional().describe("Array of command arguments."),
+      cwd: z.string().optional().describe("Working directory for the command. If not provided, uses current working directory."),
+      env: z.record(z.string()).optional().describe("Additional environment variables to set for the command execution."),
+      timeout: z.number().int().min(0).optional().default(30000).describe("Timeout in milliseconds (0 = no timeout). Default: 30000 (30 seconds)."),
+      shell: z.boolean().optional().default(true).describe("Whether to execute the command in a shell. Default: true."),
+    });
+    
+    registerToolWithHttp(
+      server,
+      "terminal_command",
+      terminalTools.terminal_command.description,
+      inputSchema,
+      toolHandler
     );
+  } else {
+    logger.info(`[MCP-GATEWAY] Skipping terminal_command (not found in config)`);
   }
 }
 
@@ -190,12 +257,11 @@ export async function registerThirdPartyTools(context: ToolRegistrationContext):
 
       for (const operation of operations) {
         const handler = new OpenApiToolHandler(operation, toolConfig);
-        server.registerTool(
+        registerToolWithHttp(
+          server,
           operation.name,
-          {
-            description: operation.description,
-            inputSchema: operation.inputSchema,
-          },
+          operation.description,
+          operation.inputSchema,
           async (args) => handler.execute(getAgentContext(), args)
         );
 
@@ -215,13 +281,12 @@ export async function registerThirdPartyTools(context: ToolRegistrationContext):
     // Convert input schema to Zod schema
     const zodSchema = convertInputSchemaToZod(toolConfig.inputSchema);
 
-    // Register the tool with MCP server
-    server.registerTool(
+    // Register the tool with both MCP server and HTTP registry
+    registerToolWithHttp(
+      server,
       toolName,
-      {
-        description: toolConfig.description,
-        inputSchema: zodSchema,
-      },
+      toolConfig.description,
+      zodSchema,
       async (args) => {
         return handler.execute(getAgentContext(), args);
       }
@@ -303,13 +368,12 @@ export async function registerMcpServerProxies(
         // Convert input schema from MCP format to Zod
         const zodSchema = convertMcpInputSchemaToZod(tool.inputSchema);
 
-        // Register the tool
-        server.registerTool(
+        // Register the tool with both MCP server and HTTP registry
+        registerToolWithHttp(
+          server,
           tool.name,
-          {
-            description: tool.description,
-            inputSchema: zodSchema,
-          },
+          tool.description,
+          zodSchema,
           async (args) => {
             return handler.execute(getAgentContext(), args);
           }
@@ -403,16 +467,31 @@ export async function registerToolsByCategory(
   context: ToolRegistrationContext,
   enabledCategories: ToolCategory[] = ["file", "web", "terminal", "third_party"]
 ): Promise<void> {
+  logger.info(`[MCP-GATEWAY] registerToolsByCategory called with categories: ${enabledCategories.join(", ")}`);
+  
   if (enabledCategories.includes("file")) {
+    logger.info(`[MCP-GATEWAY] Registering file tools...`);
     await registerFileTools(context);
+    logger.info(`[MCP-GATEWAY] File tools registration completed`);
   }
   if (enabledCategories.includes("web")) {
+    logger.info(`[MCP-GATEWAY] Registering web tools...`);
     await registerWebTools(context);
+    logger.info(`[MCP-GATEWAY] Web tools registration completed`);
   }
   if (enabledCategories.includes("terminal")) {
+    logger.info(`[MCP-GATEWAY] Registering terminal tools...`);
     await registerTerminalTools(context);
+    logger.info(`[MCP-GATEWAY] Terminal tools registration completed`);
   }
   if (enabledCategories.includes("third_party")) {
+    logger.info(`[MCP-GATEWAY] Registering third-party tools...`);
     await registerThirdPartyTools(context);
+    logger.info(`[MCP-GATEWAY] Third-party tools registration completed`);
   }
+  
+  // Verify final state
+  const { getAllTools } = await import("../mcpToolRegistry.js");
+  const allTools = getAllTools();
+  logger.info(`[MCP-GATEWAY] registerToolsByCategory completed. Total tools in HTTP registry: ${allTools.length}`);
 }

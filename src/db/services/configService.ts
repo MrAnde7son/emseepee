@@ -157,6 +157,7 @@ export async function saveToolsProxiesToDb(
   tenantId?: string
 ): Promise<void> {
   await setConfigValue(CONFIG_KEYS.TOOLS_PROXIES, tools, tenantId);
+  logger.info(`[CONFIG] Tools proxies saved to database: ${JSON.stringify(tools)}`);
   if (isDatabaseInitialized()) {
     logger.info("[CONFIG] Tools proxies saved to database");
   }
