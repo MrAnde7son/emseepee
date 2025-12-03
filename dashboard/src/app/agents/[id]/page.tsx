@@ -10,8 +10,7 @@ import {
   Handle,
   type Edge,
   type Node,
-  type OnEdgeClick,
-  MarkerType,
+  type EdgeMouseHandler,
   ConnectionLineType,
   Position,
 } from "@xyflow/react";
@@ -25,7 +24,6 @@ import {
   RefreshCcw,
   ShieldAlert,
   Wrench,
-  Cloud,
   Target,
   AlertCircle,
   CheckCircle2,
@@ -190,7 +188,7 @@ export default function AgentGraphPage() {
     );
   };
 
-  const handleEdgeClick: OnEdgeClick<AgentGraphEdgeData> = (event, edge) => {
+  const handleEdgeClick: EdgeMouseHandler<AgentGraphEdgeData> = (event, edge) => {
     setSelectedEdgeId(edge.id);
     if (graphContainerRef.current) {
       const rect = graphContainerRef.current.getBoundingClientRect();
