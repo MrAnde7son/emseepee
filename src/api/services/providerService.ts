@@ -318,6 +318,16 @@ export class ProviderService {
         logger.warn(`[ProviderService] Failed to delete DB config for ${providerId}:`, error);
       }
 
+      // Delete all agents associated with this provider from the database
+      try {
+        const { deleteAgentsByProviderFromDb } = await import("../../db/services/agentService.js");
+        await deleteAgentsByProviderFromDb(providerId);
+        logger.info(`[ProviderService] Deleted all agents for provider: ${providerId}`);
+      } catch (agentError) {
+        logger.warn(`[ProviderService] Failed to delete agents for ${providerId}:`, agentError);
+      }
+
+      // Unregister the adapter
       try {
         const { unregisterProviderAdapter } = await import("../../agents/index.js");
         unregisterProviderAdapter(providerId);
@@ -340,6 +350,16 @@ export class ProviderService {
     await deleteProviderConfig(providerId, tenantId);
     logger.info(`[ProviderService] Deleted provider configuration for: ${providerId}`);
 
+    // Delete all agents associated with this provider from the database
+    try {
+      const { deleteAgentsByProviderFromDb } = await import("../../db/services/agentService.js");
+      await deleteAgentsByProviderFromDb(providerId);
+      logger.info(`[ProviderService] Deleted all agents for provider: ${providerId}`);
+    } catch (agentError) {
+      logger.warn(`[ProviderService] Failed to delete agents for ${providerId}:`, agentError);
+    }
+
+    // Unregister the adapter
     try {
       const { unregisterProviderAdapter } = await import("../../agents/index.js");
       unregisterProviderAdapter(providerId);
