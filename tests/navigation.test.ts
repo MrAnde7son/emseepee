@@ -72,7 +72,7 @@ describe("navigation helpers", () => {
   it("exposes navigation entries for the dashboard", () => {
     const paths = navItems.map((item) => item.href);
     expect(paths).toEqual([
-      "/providers",
+      "/providers/agentic",
       "/tools",
       "/policies",
       "/events",

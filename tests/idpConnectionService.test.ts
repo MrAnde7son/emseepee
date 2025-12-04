@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   executeQuery: vi.fn(),
   executeUpdate: vi.fn(),
+  getDatabaseConfig: vi.fn(() => ({ type: "postgres" })),
 }));
 
 vi.mock("../src/db/connection.js", () => ({
   executeQuery: mocks.executeQuery,
   executeUpdate: mocks.executeUpdate,
+  getDatabaseConfig: mocks.getDatabaseConfig,
 }));
 
 import {
