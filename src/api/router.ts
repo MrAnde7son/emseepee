@@ -12,6 +12,7 @@ import { McpProtocolRouteHandler } from "./routes/mcpProtocolRouteHandler.js";
 import { OAuthRouteHandler } from "./routes/oauthRouteHandler.js";
 import { TelemetryRouteHandler } from "./routes/telemetryRouteHandler.js";
 import { UsersRouteHandler } from "./routes/usersRouteHandler.js";
+import { IdpRouteHandler } from "./routes/idpRouteHandler.js";
 import { CorsMiddleware } from "./middleware/cors.js";
 import { ErrorHandler } from "./middleware/errorHandler.js";
 
@@ -24,6 +25,7 @@ export class Router {
       new McpProtocolRouteHandler(),
       new AuthRouteHandler(),
       new ProvidersRouteHandler(),
+      new IdpRouteHandler(),
       new ToolsRouteHandler(),
       new PoliciesRouteHandler(),
       new EventsRouteHandler(),

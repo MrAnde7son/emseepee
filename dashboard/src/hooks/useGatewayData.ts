@@ -11,6 +11,13 @@ export function useProviders() {
   });
 }
 
+export function useIdpConnections() {
+  return useQuery({
+    queryKey: ["idp-connections"],
+    queryFn: () => Api.getIdpConnections(),
+  });
+}
+
 export function useTools(page?: number, limit?: number, search?: string) {
   return useQuery({
     queryKey: ["tools", page, limit, search],

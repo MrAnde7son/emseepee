@@ -145,6 +145,10 @@ async function initialize() {
         await addTenantSupport();
         const { addMcpOauthClients } = await import("./db/migrations/addMcpOauthClients.js");
         await addMcpOauthClients();
+        const { addIdpConnections } = await import("./db/migrations/addIdpConnections.js");
+        await addIdpConnections();
+        const { extendAgentsForNhi } = await import("./db/migrations/extendAgentsForNhi.js");
+        await extendAgentsForNhi();
       } catch (error) {
         logger.warn("[DB] Migration failed (non-critical):", error);
         // Continue anyway - migration failures shouldn't block startup

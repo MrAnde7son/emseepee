@@ -75,6 +75,9 @@ export async function createSchema(): Promise<void> {
         provider_native_id VARCHAR(255),
         role VARCHAR(255),
         env VARCHAR(255),
+        kind VARCHAR(50) DEFAULT 'agent',
+        idp_type VARCHAR(50),
+        idp_object_id VARCHAR(255),
         tenant_id VARCHAR(255),
         owner VARCHAR(255),
         metadata JSONB,
@@ -89,6 +92,8 @@ export async function createSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_agents_hakuna_id ON agents(hakuna_id);
       CREATE INDEX IF NOT EXISTS idx_agents_provider_id ON agents(provider_id);
       CREATE INDEX IF NOT EXISTS idx_agents_role ON agents(role);
+      CREATE INDEX IF NOT EXISTS idx_agents_kind ON agents(kind);
+      CREATE INDEX IF NOT EXISTS idx_agents_idp_type ON agents(idp_type);
       CREATE INDEX IF NOT EXISTS idx_agents_tenant_id ON agents(tenant_id);
     `);
 
@@ -127,6 +132,27 @@ export async function createSchema(): Promise<void> {
       CREATE INDEX IF NOT EXISTS idx_provider_configs_provider_id ON provider_configs(provider_id);
       CREATE INDEX IF NOT EXISTS idx_provider_configs_tenant_id ON provider_configs(tenant_id);
       CREATE INDEX IF NOT EXISTS idx_provider_configs_enabled ON provider_configs(enabled);
+    `);
+
+    await executeUpdate(`
+      CREATE TABLE IF NOT EXISTS idp_connections (
+        id SERIAL PRIMARY KEY,
+        tenant_id VARCHAR(255) NOT NULL,
+        type VARCHAR(50) NOT NULL,
+        issuer VARCHAR(1024) NOT NULL,
+        client_id VARCHAR(255) NOT NULL,
+        client_secret VARCHAR(255),
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (tenant_id, type)
+      )
+    `);
+
+    await executeUpdate(`
+      CREATE INDEX IF NOT EXISTS idx_idp_connections_tenant_id ON idp_connections(tenant_id);
+      CREATE INDEX IF NOT EXISTS idx_idp_connections_type ON idp_connections(type);
+      CREATE INDEX IF NOT EXISTS idx_idp_connections_tenant_type ON idp_connections(tenant_id, type);
     `);
   } else {
     // SQLite schema
@@ -194,6 +220,9 @@ export async function createSchema(): Promise<void> {
         provider_native_id TEXT,
         role TEXT,
         env TEXT,
+        kind TEXT DEFAULT 'agent',
+        idp_type TEXT,
+        idp_object_id TEXT,
         tenant_id TEXT,
         owner TEXT,
         metadata TEXT,
@@ -207,6 +236,8 @@ export async function createSchema(): Promise<void> {
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_hakuna_id ON agents(hakuna_id)`);
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_provider_id ON agents(provider_id)`);
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_role ON agents(role)`);
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_kind ON agents(kind)`);
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_idp_type ON agents(idp_type)`);
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_tenant_id ON agents(tenant_id)`);
 
     await executeUpdate(`
@@ -243,6 +274,24 @@ export async function createSchema(): Promise<void> {
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_provider_configs_provider_id ON provider_configs(provider_id)`);
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_provider_configs_tenant_id ON provider_configs(tenant_id)`);
     await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_provider_configs_enabled ON provider_configs(enabled)`);
+
+    await executeUpdate(`
+      CREATE TABLE IF NOT EXISTS idp_connections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tenant_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        issuer TEXT NOT NULL,
+        client_id TEXT NOT NULL,
+        client_secret TEXT,
+        metadata TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (tenant_id, type)
+      )
+    `);
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_idp_connections_tenant_id ON idp_connections(tenant_id)`);
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_idp_connections_type ON idp_connections(type)`);
+    await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_idp_connections_tenant_type ON idp_connections(tenant_id, type)`);
   }
 
   logger.info("[DB] Database schema created successfully");
