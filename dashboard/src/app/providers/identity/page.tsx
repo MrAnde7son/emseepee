@@ -40,8 +40,8 @@ export default function IdentityProvidersPage() {
     icon: string;
     comingSoon: boolean;
   }> = [
-    { id: "okta", name: "Okta", icon: "🔐", comingSoon: false },
-    { id: "entra", name: "Microsoft Entra", icon: "🔷", comingSoon: true },
+    { id: "okta", name: "Okta", icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/okta.svg", comingSoon: false },
+    { id: "entra", name: "Microsoft Entra", icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/microsoftazure.svg", comingSoon: true },
   ];
 
   const handleIdpInstallClick = (type: IdpType) => {
@@ -119,9 +119,23 @@ export default function IdentityProvidersPage() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg" role="img" aria-label={`${idp.name} icon`}>
-                      {idp.icon}
-                    </span>
+                    {idp.icon && (
+                      idp.icon.startsWith("http://") || idp.icon.startsWith("https://") ? (
+                        <img 
+                          src={idp.icon} 
+                          alt={`${idp.name} icon`}
+                          className="w-5 h-5"
+                          onError={(e) => {
+                            // Fallback to a default icon if the image fails to load
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      ) : (
+                        <span className="text-lg" role="img" aria-label={`${idp.name} icon`}>
+                          {idp.icon}
+                        </span>
+                      )
+                    )}
                     <div className="font-semibold text-sm">{idp.name}</div>
                   </div>
                   {isComingSoon ? (
