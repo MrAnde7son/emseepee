@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -18,8 +18,22 @@ import { getUserInitials, loadUserFromStorage, navItems, type NavItem } from "@/
 import { HumanUser } from "@/lib/types";
 
 export function Sidebar() {
-  // Initialize isExpanded to true (same on server and client to avoid hydration mismatch)
-  const [isExpanded, setIsExpanded] = useState(true);
+  // Initialize isExpanded from localStorage synchronously (client-side only)
+  // Defaults to true if not found or on server-side to avoid hydration mismatch
+  const getInitialSidebarExpanded = (): boolean => {
+    if (typeof window === "undefined") return true;
+    try {
+      const saved = localStorage.getItem("sidebarExpanded");
+      if (saved !== null) {
+        return saved === "true";
+      }
+    } catch {
+      // Ignore errors
+    }
+    return true; // Default to expanded
+  };
+
+  const [isExpanded, setIsExpanded] = useState(getInitialSidebarExpanded);
   // Initialize user as null to avoid hydration mismatch (will load on client)
   const [user, setUser] = useState<HumanUser | null>(null);
   const pathname = usePathname();
@@ -33,20 +47,6 @@ export function Sidebar() {
       setUser(loadedUser);
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
-
-  // Load sidebar expanded state from localStorage after mount (client-side only)
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      // Using setTimeout to make state update async and avoid linter warning
-      const timer = setTimeout(() => {
-        const saved = localStorage.getItem("sidebarExpanded");
-        if (saved !== null) {
-          setIsExpanded(saved === "true");
-        }
-      }, 0);
-      return () => clearTimeout(timer);
-    }
   }, []);
 
   // Save sidebar expanded state to localStorage whenever it changes
@@ -64,33 +64,105 @@ export function Sidebar() {
     }
   };
 
-  // Track expanded state for nested items
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  // Initialize state from localStorage synchronously (client-side only)
+  const getInitialCollapsed = (): Set<string> => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const saved = localStorage.getItem("navManuallyCollapsed");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return new Set(parsed);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return new Set();
+  };
 
-  // Auto-expand parent items if a child is active
+  const getInitialExpanded = (): Set<string> => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const saved = localStorage.getItem("navManuallyExpanded");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return new Set(parsed);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return new Set();
+  };
+
+  // Track manually collapsed items (user explicitly closed them)
+  const [manuallyCollapsed, setManuallyCollapsed] = useState<Set<string>>(getInitialCollapsed);
+  // Track manually expanded items (user explicitly opened them, separate from auto-expand)
+  const [manuallyExpanded, setManuallyExpanded] = useState<Set<string>>(getInitialExpanded);
+
+  // Save manually collapsed state to localStorage whenever it changes
   useEffect(() => {
-    const newExpanded = new Set<string>();
+    if (typeof window !== "undefined") {
+      localStorage.setItem("navManuallyCollapsed", JSON.stringify(Array.from(manuallyCollapsed)));
+    }
+  }, [manuallyCollapsed]);
+
+  // Save manually expanded state to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("navManuallyExpanded", JSON.stringify(Array.from(manuallyExpanded)));
+    }
+  }, [manuallyExpanded]);
+
+  // Compute which items should be auto-expanded based on active route
+  const shouldAutoExpand = useMemo(() => {
+    const autoExpand = new Set<string>();
     navItems.forEach((item) => {
       if (item.children) {
         const hasActiveChild = item.children.some((child) => child.href === pathname);
-        if (hasActiveChild) {
-          newExpanded.add(item.label);
+        if (hasActiveChild && !manuallyCollapsed.has(item.label)) {
+          autoExpand.add(item.label);
         }
       }
     });
-    setExpandedItems(newExpanded);
-  }, [pathname]);
+    return autoExpand;
+  }, [pathname, manuallyCollapsed]);
+
+  // Derive final expanded state: auto-expanded OR manually expanded
+  const expandedItems = useMemo(() => {
+    const expanded = new Set(shouldAutoExpand);
+    manuallyExpanded.forEach((label) => {
+      if (!manuallyCollapsed.has(label)) {
+        expanded.add(label);
+      }
+    });
+    return expanded;
+  }, [shouldAutoExpand, manuallyExpanded, manuallyCollapsed]);
 
   const toggleExpanded = (label: string) => {
-    setExpandedItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) {
-        next.delete(label);
-      } else {
+    if (expandedItems.has(label)) {
+      // User is collapsing
+      setManuallyCollapsed((prev) => {
+        const next = new Set(prev);
         next.add(label);
-      }
-      return next;
-    });
+        return next;
+      });
+      setManuallyExpanded((prev) => {
+        const next = new Set(prev);
+        next.delete(label);
+        return next;
+      });
+    } else {
+      // User is expanding
+      setManuallyCollapsed((prev) => {
+        const next = new Set(prev);
+        next.delete(label);
+        return next;
+      });
+      setManuallyExpanded((prev) => {
+        const next = new Set(prev);
+        next.add(label);
+        return next;
+      });
+    }
   };
 
   const renderNavItem = (item: NavItem, depth = 0) => {
@@ -274,3 +346,4 @@ export function Sidebar() {
     </aside>
   );
 }
+

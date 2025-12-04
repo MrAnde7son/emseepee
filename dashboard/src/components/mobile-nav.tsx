@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -24,9 +24,41 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 export function MobileNav() {
   const pathname = usePathname();
   const router = useRouter();
+  // Initialize state from localStorage synchronously (client-side only)
+  const getInitialCollapsed = (): Set<string> => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const saved = localStorage.getItem("navManuallyCollapsed");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return new Set(parsed);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return new Set();
+  };
+
+  const getInitialExpanded = (): Set<string> => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const saved = localStorage.getItem("navManuallyExpanded");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return new Set(parsed);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return new Set();
+  };
+
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<HumanUser | null>(null);
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+  // Track manually collapsed items (user explicitly closed them)
+  const [manuallyCollapsed, setManuallyCollapsed] = useState<Set<string>>(getInitialCollapsed);
+  // Track manually expanded items (user explicitly opened them, separate from auto-expand)
+  const [manuallyExpanded, setManuallyExpanded] = useState<Set<string>>(getInitialExpanded);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -36,30 +68,71 @@ export function MobileNav() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Auto-expand parent items if a child is active
+  // Save manually collapsed state to localStorage whenever it changes
   useEffect(() => {
-    const newExpanded = new Set<string>();
+    if (typeof window !== "undefined") {
+      localStorage.setItem("navManuallyCollapsed", JSON.stringify(Array.from(manuallyCollapsed)));
+    }
+  }, [manuallyCollapsed]);
+
+  // Save manually expanded state to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("navManuallyExpanded", JSON.stringify(Array.from(manuallyExpanded)));
+    }
+  }, [manuallyExpanded]);
+
+  // Compute which items should be auto-expanded based on active route
+  const shouldAutoExpand = useMemo(() => {
+    const autoExpand = new Set<string>();
     navItems.forEach((item) => {
       if (item.children) {
         const hasActiveChild = item.children.some((child) => child.href === pathname);
-        if (hasActiveChild) {
-          newExpanded.add(item.label);
+        if (hasActiveChild && !manuallyCollapsed.has(item.label)) {
+          autoExpand.add(item.label);
         }
       }
     });
-    setExpandedItems(newExpanded);
-  }, [pathname]);
+    return autoExpand;
+  }, [pathname, manuallyCollapsed]);
+
+  // Derive final expanded state: auto-expanded OR manually expanded
+  const expandedItems = useMemo(() => {
+    const expanded = new Set(shouldAutoExpand);
+    manuallyExpanded.forEach((label) => {
+      if (!manuallyCollapsed.has(label)) {
+        expanded.add(label);
+      }
+    });
+    return expanded;
+  }, [shouldAutoExpand, manuallyExpanded, manuallyCollapsed]);
 
   const toggleExpanded = (label: string) => {
-    setExpandedItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) {
-        next.delete(label);
-      } else {
+    if (expandedItems.has(label)) {
+      // User is collapsing
+      setManuallyCollapsed((prev) => {
+        const next = new Set(prev);
         next.add(label);
-      }
-      return next;
-    });
+        return next;
+      });
+      setManuallyExpanded((prev) => {
+        const next = new Set(prev);
+        next.delete(label);
+        return next;
+      });
+    } else {
+      // User is expanding
+      setManuallyCollapsed((prev) => {
+        const next = new Set(prev);
+        next.delete(label);
+        return next;
+      });
+      setManuallyExpanded((prev) => {
+        const next = new Set(prev);
+        next.add(label);
+        return next;
+      });
+    }
   };
 
   const renderNavItem = (item: NavItem, depth = 0) => {
