@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Settings, LogOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Settings, LogOut } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getUserInitials, loadUserFromStorage, navItems } from "@/lib/navigation";
+import { getUserInitials, loadUserFromStorage, navItems, type NavItem } from "@/lib/navigation";
 import { HumanUser } from "@/lib/types";
 
 export function Sidebar() {
@@ -64,6 +64,120 @@ export function Sidebar() {
     }
   };
 
+  // Track expanded state for nested items
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+
+  // Auto-expand parent items if a child is active
+  useEffect(() => {
+    const newExpanded = new Set<string>();
+    navItems.forEach((item) => {
+      if (item.children) {
+        const hasActiveChild = item.children.some((child) => child.href === pathname);
+        if (hasActiveChild) {
+          newExpanded.add(item.label);
+        }
+      }
+    });
+    setExpandedItems(newExpanded);
+  }, [pathname]);
+
+  const toggleExpanded = (label: string) => {
+    setExpandedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  };
+
+  const renderNavItem = (item: NavItem, depth = 0) => {
+    const hasChildren = item.children && item.children.length > 0;
+    const isItemExpanded = expandedItems.has(item.label);
+    const isActive = item.href === pathname || (hasChildren && item.children?.some((child) => child.href === pathname));
+
+    if (hasChildren) {
+      // When sidebar is collapsed, show as a simple link
+      if (!isExpanded) {
+        return (
+          <Link
+            key={item.label}
+            href={item.href || "#"}
+            className={cn(
+              "flex items-center justify-center rounded-lg px-3 py-2 text-sm transition w-full",
+              isActive
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            )}
+            title={item.label}
+          >
+            <item.icon className="h-4 w-4 flex-shrink-0" />
+          </Link>
+        );
+      }
+
+      // When sidebar is expanded, show label + chevron
+      return (
+        <div key={item.label}>
+          <div className="flex items-center gap-2">
+            <Link
+              href={item.href || "#"}
+              className={cn(
+                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition flex-1",
+                isActive
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                depth > 0 && "ml-4"
+              )}
+            >
+              <item.icon className="h-4 w-4 flex-shrink-0" />
+              <span className="flex-1">{item.label}</span>
+            </Link>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleExpanded(item.label);
+              }}
+              className={cn(
+                "p-1 rounded hover:bg-accent transition",
+                isActive && "text-accent-foreground"
+              )}
+              aria-label={isItemExpanded ? "Collapse" : "Expand"}
+            >
+              <ChevronDown className={cn("h-3 w-3 flex-shrink-0 transition-transform", !isItemExpanded && "rotate-[-90deg]")} />
+            </button>
+          </div>
+          {isItemExpanded && (
+            <div className="ml-4 mt-1 space-y-1">
+              {item.children?.map((child) => renderNavItem(child, depth + 1))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <Link
+        key={item.href}
+        href={item.href || "#"}
+        className={cn(
+          "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
+          isActive
+            ? "bg-accent text-accent-foreground"
+            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          !isExpanded && "justify-center",
+          depth > 0 && "ml-4"
+        )}
+        title={!isExpanded ? item.label : undefined}
+      >
+        <item.icon className="h-4 w-4 flex-shrink-0" />
+        {isExpanded && <span>{item.label}</span>}
+      </Link>
+    );
+  };
+
   return (
     <aside
       className={cn(
@@ -111,26 +225,7 @@ export function Sidebar() {
         </Button>
       </div>
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto min-h-0">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
-                isActive
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                !isExpanded && "justify-center"
-              )}
-              title={!isExpanded ? item.label : undefined}
-            >
-              <item.icon className="h-4 w-4 flex-shrink-0" />
-              {isExpanded && <span>{item.label}</span>}
-            </Link>
-          );
-        })}
+        {navItems.map((item) => renderNavItem(item))}
       </nav>
       <div className="border-t border-border px-4 py-3 flex-shrink-0">
         {/* Profile Section */}

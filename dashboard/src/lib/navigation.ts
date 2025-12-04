@@ -1,15 +1,24 @@
-import { Bot, Gauge, ListFilter, Plug, Shield, Users } from "lucide-react";
+import { Bot, Gauge, ListFilter, Plug, Shield, Users, ChevronDown, ChevronRight } from "lucide-react";
 
 import { HumanUser } from "./types";
 
 export interface NavItem {
-  href: string;
+  href?: string;
   label: string;
   icon: typeof Plug;
+  children?: NavItem[];
 }
 
 export const navItems: NavItem[] = [
-  { href: "/providers", label: "Providers", icon: Plug },
+  {
+    href: "/providers/agentic", // Default route when clicking Providers
+    label: "Providers",
+    icon: Plug,
+    children: [
+      { href: "/providers/agentic", label: "Agentic", icon: Plug },
+      { href: "/providers/identity", label: "Identity", icon: Shield },
+    ],
+  },
   { href: "/tools", label: "Library", icon: Gauge },
   { href: "/policies", label: "Policies", icon: Shield },
   { href: "/events", label: "Events", icon: ListFilter },

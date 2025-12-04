@@ -16,15 +16,17 @@ import {
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { getUserInitials, loadUserFromStorage, navItems } from "@/lib/navigation";
+import { getUserInitials, loadUserFromStorage, navItems, type NavItem } from "@/lib/navigation";
 import { HumanUser } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 export function MobileNav() {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [user, setUser] = useState<HumanUser | null>(null);
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -33,6 +35,101 @@ export function MobileNav() {
 
     return () => clearTimeout(timer);
   }, []);
+
+  // Auto-expand parent items if a child is active
+  useEffect(() => {
+    const newExpanded = new Set<string>();
+    navItems.forEach((item) => {
+      if (item.children) {
+        const hasActiveChild = item.children.some((child) => child.href === pathname);
+        if (hasActiveChild) {
+          newExpanded.add(item.label);
+        }
+      }
+    });
+    setExpandedItems(newExpanded);
+  }, [pathname]);
+
+  const toggleExpanded = (label: string) => {
+    setExpandedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  };
+
+  const renderNavItem = (item: NavItem, depth = 0) => {
+    const hasChildren = item.children && item.children.length > 0;
+    const isItemExpanded = expandedItems.has(item.label);
+    const isActive = item.href === pathname || (hasChildren && item.children?.some((child) => child.href === pathname));
+
+    if (hasChildren) {
+      return (
+        <div key={item.label}>
+          <div className="flex items-center gap-2">
+            <Link
+              href={item.href || "#"}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition flex-1",
+                isActive
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                depth > 0 && "ml-4"
+              )}
+              onClick={() => setOpen(false)}
+            >
+              <item.icon className="h-4 w-4 flex-shrink-0" />
+              <span>{item.label}</span>
+            </Link>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleExpanded(item.label);
+              }}
+              className={cn(
+                "p-1 rounded hover:bg-accent transition",
+                isActive && "text-accent-foreground"
+              )}
+              aria-label={isItemExpanded ? "Collapse" : "Expand"}
+            >
+              {isItemExpanded ? (
+                <ChevronDown className="h-4 w-4 flex-shrink-0" />
+              ) : (
+                <ChevronRight className="h-4 w-4 flex-shrink-0" />
+              )}
+            </button>
+          </div>
+          {isItemExpanded && (
+            <div className="ml-4 mt-1 space-y-1">
+              {item.children?.map((child) => renderNavItem(child, depth + 1))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <Link
+        key={item.href}
+        href={item.href || "#"}
+        className={cn(
+          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition",
+          isActive
+            ? "bg-accent text-accent-foreground"
+            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+          depth > 0 && "ml-4"
+        )}
+        onClick={() => setOpen(false)}
+      >
+        <item.icon className="h-4 w-4 flex-shrink-0" />
+        <span>{item.label}</span>
+      </Link>
+    );
+  };
 
   const handleLogout = () => {
     if (confirm("Are you sure you want to sign out?")) {
@@ -67,25 +164,7 @@ export function MobileNav() {
               </SheetHeader>
               <Separator />
               <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4">
-                {navItems.map((item) => {
-                  const isActive = pathname === item.href;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition",
-                        isActive
-                          ? "bg-accent text-accent-foreground"
-                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      )}
-                      onClick={() => setOpen(false)}
-                    >
-                      <item.icon className="h-4 w-4 flex-shrink-0" />
-                      <span>{item.label}</span>
-                    </Link>
-                  );
-                })}
+                {navItems.map((item) => renderNavItem(item))}
               </nav>
               <Separator />
               <div className="flex items-center justify-between gap-3 px-4 py-4">
