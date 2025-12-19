@@ -76,12 +76,28 @@ export class ProviderService {
         comingSoon: !AdapterFactory.isAdapterAvailable("openai_codex"),
       },
       {
+        id: "anthropic_claude_code",
+        name: "Anthropic Claude Code",
+        type: "anthropic",
+        status: allInstalledProviders.has("anthropic_claude_code") ? "connected" : "pending",
+        icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/anthropic.svg",
+        comingSoon: !AdapterFactory.isAdapterAvailable("anthropic_claude_code"),
+      },
+      {
         id: "microsoft_copilot",
         name: "Microsoft Copilot",
         type: "copilot",
         status: allInstalledProviders.has("microsoft_copilot") ? "connected" : "pending",
         icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/microsoft.svg",
         comingSoon: !AdapterFactory.isAdapterAvailable("microsoft_copilot"),
+      },
+      {
+        id: "github_copilot",
+        name: "GitHub Copilot",
+        type: "copilot",
+        status: allInstalledProviders.has("github_copilot") ? "connected" : "pending",
+        icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/github.svg",
+        comingSoon: !AdapterFactory.isAdapterAvailable("github_copilot"),
       },
       {
         id: "vertex_ai",

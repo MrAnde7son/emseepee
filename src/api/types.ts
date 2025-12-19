@@ -1,4 +1,13 @@
-export type ProviderType = "cursor" | "n8n" | "openai" | "vertex" | "bedrock" | "copilot" | "langchain" | "custom";
+export type ProviderType =
+  | "cursor"
+  | "n8n"
+  | "openai"
+  | "anthropic"
+  | "vertex"
+  | "bedrock"
+  | "copilot"
+  | "langchain"
+  | "custom";
 
 export interface Provider {
   id: string;
