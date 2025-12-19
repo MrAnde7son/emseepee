@@ -76,6 +76,20 @@ describe("navigation helpers", () => {
       "/tools",
       "/policies",
       "/events",
+      "/inventory/nhi",
+    ]);
+  });
+
+  it("groups people and automation within the inventory section", () => {
+    const inventory = navItems.find((item) => item.label === "Inventory");
+
+    expect(inventory?.children?.map((child) => child.label)).toEqual([
+      "NHI",
+      "Agents",
+      "Users",
+    ]);
+    expect(inventory?.children?.map((child) => child.href)).toEqual([
+      "/inventory/nhi",
       "/agents",
       "/users",
     ]);
