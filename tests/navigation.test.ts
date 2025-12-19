@@ -79,5 +79,12 @@ describe("navigation helpers", () => {
       "/agents",
       "/users",
     ]);
+
+    const providersGroup = navItems.find((item) => item.label === "Providers");
+    expect(providersGroup?.children?.map((child) => child.href)).toEqual([
+      "/providers/agentic",
+      "/providers/identity",
+      "/providers/cloud",
+    ]);
   });
 });

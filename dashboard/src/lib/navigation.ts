@@ -1,4 +1,14 @@
-import { Bot, Gauge, ListFilter, Plug, Shield, Users, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  Bot,
+  ChevronDown,
+  ChevronRight,
+  Cloud,
+  Gauge,
+  ListFilter,
+  Plug,
+  Shield,
+  Users,
+} from "lucide-react";
 
 import { HumanUser } from "./types";
 
@@ -17,6 +27,7 @@ export const navItems: NavItem[] = [
     children: [
       { href: "/providers/agentic", label: "Agentic", icon: Plug },
       { href: "/providers/identity", label: "Identity", icon: Shield },
+      { href: "/providers/cloud", label: "Cloud", icon: Cloud },
     ],
   },
   { href: "/tools", label: "Library", icon: Gauge },
