@@ -1,4 +1,5 @@
 import {
+  Box,
   Bot,
   ChevronDown,
   ChevronRight,
@@ -33,8 +34,16 @@ export const navItems: NavItem[] = [
   { href: "/tools", label: "Library", icon: Gauge },
   { href: "/policies", label: "Policies", icon: Shield },
   { href: "/events", label: "Events", icon: ListFilter },
-  { href: "/agents", label: "Agents", icon: Bot },
-  { href: "/users", label: "Users", icon: Users },
+  {
+    href: "/inventory/nhi",
+    label: "Inventory",
+    icon: Box,
+    children: [
+      { href: "/inventory/nhi", label: "NHI", icon: Shield },
+      { href: "/agents", label: "Agents", icon: Bot },
+      { href: "/users", label: "Users", icon: Users },
+    ],
+  },
 ];
 
 export function getUserInitials(user: HumanUser | null): string {
