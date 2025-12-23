@@ -3,6 +3,8 @@
 import { ReactNode, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
+import { AuthTokenManager } from "@/lib/auth-token-manager";
+
 const PUBLIC_PATHS = ["/login", "/register"];
 
 interface AuthGuardProps {
@@ -27,9 +29,14 @@ export function AuthGuard({ children }: AuthGuardProps) {
         return;
       }
 
-      const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+      const token = AuthTokenManager.getToken();
       if (!token) {
-        router.replace("/login");
+        AuthTokenManager.redirectToLogin(() => router.replace("/login"));
+        return;
+      }
+
+      if (AuthTokenManager.isTokenExpired(token)) {
+        AuthTokenManager.handleInvalidToken(() => router.replace("/login"));
         return;
       }
 
