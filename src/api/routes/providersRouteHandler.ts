@@ -2,6 +2,7 @@ import { IncomingMessage, ServerResponse } from "http";
 import { BaseRouteHandler } from "./baseRouteHandler.js";
 import { RequestParser } from "../middleware/requestParser.js";
 import { ProviderService } from "../services/providerService.js";
+import type { InstallProviderResponse } from "../types.js";
 import { ErrorHandler } from "../middleware/errorHandler.js";
 import { logger } from "../../logger.js";
 
@@ -54,8 +55,8 @@ export class ProvidersRouteHandler extends BaseRouteHandler {
       const body = await RequestParser.parseBody(req) as Record<string, unknown> | undefined;
       const config = body || {};
 
-      await this.providerService.installProvider(providerId, config, auth.tenantId || undefined);
-      this.sendJSON(res, 200, { success: true });
+      const result = await this.providerService.installProvider(providerId, config, auth.tenantId || undefined);
+      this.sendJSON(res, 200, result satisfies InstallProviderResponse);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to install provider";
       if (errorMessage.includes("401") || errorMessage.includes("Unauthorized")) {
@@ -91,4 +92,3 @@ export class ProvidersRouteHandler extends BaseRouteHandler {
     }
   }
 }
-

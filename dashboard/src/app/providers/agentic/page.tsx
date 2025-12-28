@@ -55,6 +55,51 @@ export default function AgenticProvidersPage() {
   const [providerToUninstall, setProviderToUninstall] = useState<Provider | null>(null);
   const [providerConfig, setProviderConfig] = useState<Record<string, string>>({});
   const [showPasswordFields, setShowPasswordFields] = useState<Set<string>>(new Set());
+
+  const getSuggestedPath = (paths: { macos: string; windows: string; linux: string }) => {
+    const platform = window.navigator.platform.toLowerCase();
+    if (platform.includes("win")) {
+      return paths.windows;
+    }
+    if (platform.includes("mac")) {
+      return paths.macos;
+    }
+    return paths.linux;
+  };
+
+  const handleClientDownload = (download: {
+    filename: string;
+    contents: string;
+    suggestedPaths: { macos: string; windows: string; linux: string };
+    mimeType?: string;
+    additionalFiles?: Array<{
+      filename: string;
+      contents: string;
+      suggestedPaths: { macos: string; windows: string; linux: string };
+      mimeType?: string;
+    }>;
+  }) => {
+    const files = [{ ...download }, ...(download.additionalFiles ?? [])];
+    const destinations: string[] = [];
+
+    files.forEach((file) => {
+      const blob = new Blob([file.contents], { type: file.mimeType ?? "application/json" });
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = file.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+
+      const suggestedPath = getSuggestedPath(file.suggestedPaths);
+      destinations.push(`${file.filename} → ${suggestedPath}`);
+    });
+
+    const message = destinations.map((destination) => `- ${destination}`).join("\n");
+    alert(`Downloaded:\n${message}\n\nMove each file to its suggested path (create the folder if needed) to finish installing.`);
+  };
   
   const handleInstallClick = (provider: Provider) => {
     // Check if provider needs configuration
@@ -80,7 +125,12 @@ export default function AgenticProvidersPage() {
   const handleInstall = async (providerId: string, config?: Record<string, unknown>) => {
     setInstalling(providerId);
     try {
-      await Api.installProvider(providerId, config);
+      const result = await Api.installProvider(providerId, config);
+
+      if (result.clientDownload) {
+        handleClientDownload(result.clientDownload);
+      }
+
       await refetch();
       setShowInstallDialog(false);
       setProviderToInstall(null);
@@ -693,4 +743,3 @@ export default function AgenticProvidersPage() {
     </div>
   );
 }
-

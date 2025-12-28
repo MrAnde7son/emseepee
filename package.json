@@ -27,6 +27,7 @@
     "@modelcontextprotocol/sdk": "^1.2.0",
     "better-sqlite3": "11.10.0",
     "dotenv": "^17.2.3",
+    "jsdom": "^27.2.0",
     "pg": "^8.13.1",
     "posthog-node": "^5.11.2",
     "zod": "^3.23.8"
@@ -39,7 +40,6 @@
     "@types/pg": "^8.11.10",
     "@vitest/coverage-v8": "^2.1.8",
     "concurrently": "^9.1.0",
-    "jsdom": "^27.2.0",
     "next-router-mock": "^1.0.4",
     "react": "19.2.1",
     "react-dom": "19.2.1",

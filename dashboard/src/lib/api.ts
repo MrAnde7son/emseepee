@@ -8,6 +8,7 @@ import {
   AgentGraphResponse,
   IdpConnection,
   IdpType,
+  InstallProviderResponse,
 } from "./types";
 
 import { AuthTokenManager } from "./auth-token-manager";
@@ -110,7 +111,7 @@ export const Api = {
   }) => client.post<{ connection: IdpConnection }>("/api/idp/connections", payload, { requireAuth: true }),
   deleteIdpConnection: (id: number) => client.delete(`/api/idp/connections/${id}`, { requireAuth: true }),
   installProvider: (providerId: string, config?: Record<string, unknown>) =>
-    client.post<{ success: boolean }>(`/api/providers/${providerId}/install`, config || {}, { requireAuth: true }),
+    client.post<InstallProviderResponse>(`/api/providers/${providerId}/install`, config || {}, { requireAuth: true }),
   uninstallProvider: (providerId: string) =>
     client.post<{ success: boolean }>(`/api/providers/${providerId}/uninstall`, {}, { requireAuth: true }),
   getTools: (page?: number, limit?: number, search?: string) => {

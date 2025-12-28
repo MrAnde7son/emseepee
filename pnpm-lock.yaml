@@ -17,6 +17,9 @@ importers:
       dotenv:
         specifier: ^17.2.3
         version: 17.2.3
+      jsdom:
+        specifier: ^27.2.0
+        version: 27.2.0
       pg:
         specifier: ^8.13.1
         version: 8.16.3
@@ -48,9 +51,6 @@ importers:
       concurrently:
         specifier: ^9.1.0
         version: 9.2.1
-      jsdom:
-        specifier: ^27.2.0
-        version: 27.2.0
       next-router-mock:
         specifier: ^1.0.4
         version: 1.0.4(next@16.0.7(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(react@19.2.1)
