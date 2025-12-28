@@ -19,6 +19,22 @@ export interface Provider {
   comingSoon?: boolean;
 }
 
+export interface ClientDownloadPayload {
+  providerId: string;
+  filename: string;
+  contents: string;
+  suggestedPaths: {
+    macos: string;
+    windows: string;
+    linux: string;
+  };
+}
+
+export interface InstallProviderResponse {
+  success: boolean;
+  clientDownload?: ClientDownloadPayload;
+}
+
 export interface Tool {
   id: string;
   name: string;
@@ -76,4 +92,3 @@ export interface IdpConnectionDto {
   createdAt?: string;
   updatedAt?: string;
 }
-

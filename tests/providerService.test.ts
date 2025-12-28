@@ -42,4 +42,30 @@ describe("ProviderService", () => {
     expect(githubCopilot?.status).toBe("connected");
     expect(githubCopilot?.comingSoon).toBe(true);
   });
+
+  it("builds a client download payload for Cursor installation", async () => {
+    const service = new ProviderService();
+    const originalGatewayUrl = process.env.GATEWAY_API_URL;
+    process.env.GATEWAY_API_URL = "https://example.com";
+
+    try {
+      const result = await service.installCursorProvider("tenant-123");
+
+      expect(result.success).toBe(true);
+      expect(result.clientDownload).toBeDefined();
+      expect(result.clientDownload?.providerId).toBe("cursor");
+      expect(result.clientDownload?.filename).toBe("mcp.json");
+      expect(result.clientDownload?.contents).toContain("https://example.com/mcp?tenant=tenant-123");
+      expect(result.clientDownload?.suggestedPaths.macos).toContain(".cursor");
+      expect(result.clientDownload?.suggestedPaths.windows).toContain(".cursor");
+      expect(result.clientDownload?.suggestedPaths.linux).toContain(".cursor");
+
+    } finally {
+      if (originalGatewayUrl === undefined) {
+        delete process.env.GATEWAY_API_URL;
+      } else {
+        process.env.GATEWAY_API_URL = originalGatewayUrl;
+      }
+    }
+  });
 });

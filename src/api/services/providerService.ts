@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
@@ -9,19 +8,54 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export class ProviderService {
-  private isCursorInstalled(): boolean {
-    const projectRoot = process.cwd();
-    const cursorConfigPath = join(projectRoot, ".cursor", "mcp.json");
-    if (!existsSync(cursorConfigPath)) {
-      return false;
+  private buildCursorConfig(tenantId?: string): {
+    providerId: string;
+    filename: string;
+    contents: string;
+    suggestedPaths: { macos: string; windows: string; linux: string };
+  } {
+    const cursorConfig: { mcpServers: Record<string, { url: string; tenantId?: string }> } = {
+      mcpServers: {},
+    };
+
+    let apiUrl: string;
+
+    if (process.env.GATEWAY_API_URL) {
+      apiUrl = process.env.GATEWAY_API_URL.endsWith("/mcp")
+        ? process.env.GATEWAY_API_URL
+        : `${process.env.GATEWAY_API_URL}/mcp`;
+    } else {
+      const apiHost = process.env.GATEWAY_API_HOST || "localhost";
+      const apiPort = process.env.GATEWAY_API_PORT ? parseInt(process.env.GATEWAY_API_PORT, 10) : 8000;
+      const apiProtocol = process.env.GATEWAY_API_PROTOCOL || "http";
+      const portSuffix = (apiProtocol === "http" && apiPort === 80) || (apiProtocol === "https" && apiPort === 443)
+        ? ""
+        : `:${apiPort}`;
+
+      apiUrl = `${apiProtocol}://${apiHost}${portSuffix}/mcp`;
     }
-    
-    try {
-      const config = JSON.parse(readFileSync(cursorConfigPath, "utf-8"));
-      return config.mcpServers && config.mcpServers["hakuna"] !== undefined;
-    } catch {
-      return false;
+
+    if (tenantId) {
+      const url = new URL(apiUrl);
+      url.searchParams.set("tenant", tenantId);
+      apiUrl = url.toString();
     }
+
+    cursorConfig.mcpServers.hakuna = {
+      url: apiUrl,
+      ...(tenantId && { tenantId }),
+    };
+
+    return {
+      providerId: "cursor",
+      filename: "mcp.json",
+      contents: JSON.stringify(cursorConfig, null, 2) + "\n",
+      suggestedPaths: {
+        macos: join("~", ".cursor", "mcp.json"),
+        linux: join("~", ".cursor", "mcp.json"),
+        windows: join("%USERPROFILE%", ".cursor", "mcp.json"),
+      },
+    };
   }
 
   async getProviders(tenantId?: string): Promise<Provider[]> {
@@ -54,8 +88,8 @@ export class ProviderService {
         id: "cursor",
         name: "Cursor",
         type: "cursor",
-        status: this.isCursorInstalled() && allInstalledProviders.has("cursor") ? "connected" : "pending",
-        lastHeartbeat: this.isCursorInstalled() && allInstalledProviders.has("cursor") ? new Date().toISOString() : undefined,
+        status: allInstalledProviders.has("cursor") ? "connected" : "pending",
+        lastHeartbeat: allInstalledProviders.has("cursor") ? new Date().toISOString() : undefined,
         icon: "https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/cursor.svg",
         comingSoon: false,
       },
@@ -136,72 +170,24 @@ export class ProviderService {
     return providers;
   }
 
-  async installCursorProvider(tenantId?: string): Promise<{ success: boolean; error?: string }> {
+  async installCursorProvider(
+    tenantId?: string,
+  ): Promise<{
+    success: boolean;
+    clientDownload?: {
+      providerId: string;
+      filename: string;
+      contents: string;
+      suggestedPaths: { macos: string; windows: string; linux: string };
+    };
+    error?: string;
+  }> {
     try {
-      const { writeFileSync, mkdirSync } = await import("fs");
-      const projectRoot = process.cwd();
-      const cursorDir = join(projectRoot, ".cursor");
-      const cursorConfigPath = join(cursorDir, "mcp.json");
-      
-      // Get the API server URL from environment variable or construct from host/port
-      // Priority: GATEWAY_API_URL > GATEWAY_API_HOST + GATEWAY_API_PORT + GATEWAY_API_PROTOCOL > localhost:8000
-      let apiUrl: string;
-      
-      if (process.env.GATEWAY_API_URL) {
-        // Use full URL if provided
-        apiUrl = process.env.GATEWAY_API_URL.endsWith("/mcp")
-          ? process.env.GATEWAY_API_URL
-          : `${process.env.GATEWAY_API_URL}/mcp`;
-      } else {
-        // Construct from components
-        const apiHost = process.env.GATEWAY_API_HOST || "localhost";
-        const apiPort = process.env.GATEWAY_API_PORT ? parseInt(process.env.GATEWAY_API_PORT, 10) : 8000;
-        const apiProtocol = process.env.GATEWAY_API_PROTOCOL || "http";
-        
-        // Only include port if it's not the default for the protocol
-        const portSuffix = (apiProtocol === "http" && apiPort === 80) || (apiProtocol === "https" && apiPort === 443)
-          ? ""
-          : `:${apiPort}`;
-        
-        apiUrl = `${apiProtocol}://${apiHost}${portSuffix}/mcp`;
-      }
-      
-      // Add tenant ID as query parameter if provided
-      if (tenantId) {
-        const url = new URL(apiUrl);
-        url.searchParams.set("tenant", tenantId);
-        apiUrl = url.toString();
-      }
-      
-      let config: { mcpServers?: Record<string, unknown> } = {};
-      if (existsSync(cursorConfigPath)) {
-        try {
-          config = JSON.parse(readFileSync(cursorConfigPath, "utf-8"));
-        } catch {
-          // If file exists but is invalid, we'll overwrite it
-        }
-      }
-      
-      if (!config.mcpServers) {
-        config.mcpServers = {};
-      }
-      
-      // Configure Cursor to connect via HTTP instead of spawning a process
-      // Store tenant ID in the config so it's available for future reference
-      config.mcpServers["hakuna"] = {
-        url: apiUrl,
-        ...(tenantId && { tenantId }),
-      };
-      
-      if (!existsSync(cursorDir)) {
-        mkdirSync(cursorDir, { recursive: true });
-      }
-      
-      writeFileSync(cursorConfigPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-      
-      logger.info(`[ProviderService] Installed Cursor provider with tenant ID: ${tenantId || "none"}`);
-      
-      return { success: true };
+      const cursorConfig = this.buildCursorConfig(tenantId);
+
+      logger.info(`[ProviderService] Prepared Cursor config for tenant ID: ${tenantId || "none"}`);
+
+      return { success: true, clientDownload: cursorConfig };
     } catch (error) {
       return {
         success: false,
@@ -210,7 +196,19 @@ export class ProviderService {
     }
   }
 
-  async installProvider(providerId: string, config: Record<string, unknown>, tenantId?: string): Promise<void> {
+  async installProvider(
+    providerId: string,
+    config: Record<string, unknown>,
+    tenantId?: string,
+  ): Promise<{
+    success: boolean;
+    clientDownload?: {
+      providerId: string;
+      filename: string;
+      contents: string;
+      suggestedPaths: { macos: string; windows: string; linux: string };
+    };
+  }> {
     if (providerId === "cursor") {
       const result = await this.installCursorProvider(tenantId);
       if (!result.success) {
@@ -218,6 +216,7 @@ export class ProviderService {
       }
       const { saveProviderConfig } = await import("../../db/services/providerService.js");
       await saveProviderConfig(providerId, {}, tenantId);
+      return { success: true, clientDownload: result.clientDownload };
     } else if (providerId === "openai") {
       if (!config || !config.apiKey || typeof config.apiKey !== "string") {
         throw new Error("OpenAI provider requires 'apiKey' in configuration");
@@ -262,49 +261,13 @@ export class ProviderService {
     } catch (adapterError) {
       logger.warn(`[ProviderService] Failed to register adapter for ${providerId}, but config saved:`, adapterError);
     }
+
+    return { success: true };
   }
 
   async uninstallCursorProvider(): Promise<{ success: boolean; error?: string }> {
     try {
-      const { unlinkSync, readFileSync, writeFileSync } = await import("fs");
-      const projectRoot = process.cwd();
-      const cursorConfigPath = join(projectRoot, ".cursor", "mcp.json");
-      
-      if (!existsSync(cursorConfigPath)) {
-        return {
-          success: false,
-          error: "Provider cursor is not installed",
-        };
-      }
-      
-      let config: { mcpServers?: Record<string, unknown> } = {};
-      try {
-        config = JSON.parse(readFileSync(cursorConfigPath, "utf-8"));
-      } catch {
-        // If file exists but is invalid, we'll delete it
-        unlinkSync(cursorConfigPath);
-        return { success: true };
-      }
-      
-      if (config.mcpServers && config.mcpServers["hakuna"]) {
-        delete config.mcpServers["hakuna"];
-        
-        // If no other MCP servers remain, delete the entire mcp.json file
-        if (Object.keys(config.mcpServers).length === 0) {
-          unlinkSync(cursorConfigPath);
-          logger.info(`[ProviderService] Deleted mcp.json file (no other MCP servers configured)`);
-        } else {
-          // Update the file with hakuna removed, keeping other MCP servers
-          writeFileSync(cursorConfigPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-          logger.info(`[ProviderService] Removed hakuna from mcp.json (other MCP servers remain)`);
-        }
-      } else {
-        return {
-          success: false,
-          error: "Provider cursor is not installed",
-        };
-      }
-      
+      logger.info("[ProviderService] Cursor uninstall requested. Local Cursor config must be removed on the client.");
       return { success: true };
     } catch (error) {
       return {
@@ -385,4 +348,3 @@ export class ProviderService {
     }
   }
 }
-
