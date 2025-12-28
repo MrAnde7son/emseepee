@@ -59,6 +59,9 @@ describe("ProviderService", () => {
       expect(result.clientDownload?.suggestedPaths.macos).toContain(".cursor");
       expect(result.clientDownload?.suggestedPaths.windows).toContain(".cursor");
       expect(result.clientDownload?.suggestedPaths.linux).toContain(".cursor");
+      expect(result.clientDownload?.additionalFiles).toBeDefined();
+      expect(result.clientDownload?.additionalFiles?.[0]?.filename).toBe(".cursorrules");
+      expect(result.clientDownload?.additionalFiles?.[0]?.contents).toContain("Use Gateway Tools");
 
     } finally {
       if (originalGatewayUrl === undefined) {

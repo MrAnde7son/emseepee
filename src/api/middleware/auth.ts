@@ -1,5 +1,6 @@
 import { IncomingMessage } from "http";
 import { extractTokenFromHeader, verifyToken, type JWTPayload } from "../auth.js";
+import { deriveTenantIdFromEmail } from "../tenant.js";
 
 export class AuthMiddleware {
   static extractToken(req: IncomingMessage): string | null {
@@ -26,8 +27,7 @@ export class AuthMiddleware {
       userId: payload.userId,
       email: payload.email,
       role: payload.role,
-      tenantId: payload.tenantId,
+      tenantId: payload.tenantId ?? deriveTenantIdFromEmail(payload.email),
     };
   }
 }
-

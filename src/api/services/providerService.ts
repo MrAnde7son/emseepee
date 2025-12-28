@@ -1,6 +1,7 @@
 import { join } from "path";
 import { dirname } from "path";
 import { fileURLToPath } from "url";
+import { readFile } from "fs/promises";
 import { logger } from "../../logger.js";
 import type { Provider } from "../types.js";
 
@@ -13,6 +14,13 @@ export class ProviderService {
     filename: string;
     contents: string;
     suggestedPaths: { macos: string; windows: string; linux: string };
+    mimeType?: string;
+    additionalFiles?: Array<{
+      filename: string;
+      contents: string;
+      suggestedPaths: { macos: string; windows: string; linux: string };
+      mimeType?: string;
+    }>;
   } {
     const cursorConfig: { mcpServers: Record<string, { url: string; tenantId?: string }> } = {
       mcpServers: {},
@@ -50,6 +58,7 @@ export class ProviderService {
       providerId: "cursor",
       filename: "mcp.json",
       contents: JSON.stringify(cursorConfig, null, 2) + "\n",
+      mimeType: "application/json",
       suggestedPaths: {
         macos: join("~", ".cursor", "mcp.json"),
         linux: join("~", ".cursor", "mcp.json"),
@@ -179,11 +188,37 @@ export class ProviderService {
       filename: string;
       contents: string;
       suggestedPaths: { macos: string; windows: string; linux: string };
+      mimeType?: string;
+      additionalFiles?: Array<{
+        filename: string;
+        contents: string;
+        suggestedPaths: { macos: string; windows: string; linux: string };
+        mimeType?: string;
+      }>;
     };
     error?: string;
   }> {
     try {
       const cursorConfig = this.buildCursorConfig(tenantId);
+
+      try {
+        const cursorRulesPath = join(process.cwd(), ".cursorrules");
+        const cursorRules = await readFile(cursorRulesPath, "utf-8");
+        cursorConfig.additionalFiles = [
+          {
+            filename: ".cursorrules",
+            contents: cursorRules,
+            mimeType: "text/plain",
+            suggestedPaths: {
+              macos: "<project-root>/.cursorrules",
+              linux: "<project-root>/.cursorrules",
+              windows: "<project-root>\\.cursorrules",
+            },
+          },
+        ];
+      } catch (error) {
+        logger.info("[ProviderService] .cursorrules not found; skipping download payload.", error);
+      }
 
       logger.info(`[ProviderService] Prepared Cursor config for tenant ID: ${tenantId || "none"}`);
 

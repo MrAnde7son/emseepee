@@ -67,21 +67,38 @@ export default function AgenticProvidersPage() {
     return paths.linux;
   };
 
-  const handleClientDownload = (download: { filename: string; contents: string; suggestedPaths: { macos: string; windows: string; linux: string } }) => {
-    const blob = new Blob([download.contents], { type: "application/json" });
-    const downloadUrl = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = download.filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(downloadUrl);
+  const handleClientDownload = (download: {
+    filename: string;
+    contents: string;
+    suggestedPaths: { macos: string; windows: string; linux: string };
+    mimeType?: string;
+    additionalFiles?: Array<{
+      filename: string;
+      contents: string;
+      suggestedPaths: { macos: string; windows: string; linux: string };
+      mimeType?: string;
+    }>;
+  }) => {
+    const files = [{ ...download }, ...(download.additionalFiles ?? [])];
+    const destinations: string[] = [];
 
-    const suggestedPath = getSuggestedPath(download.suggestedPaths);
-    alert(
-      `Downloaded ${download.filename}. Move it to ${suggestedPath} (create the folder if needed) to finish installing.`,
-    );
+    files.forEach((file) => {
+      const blob = new Blob([file.contents], { type: file.mimeType ?? "application/json" });
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = file.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+
+      const suggestedPath = getSuggestedPath(file.suggestedPaths);
+      destinations.push(`${file.filename} → ${suggestedPath}`);
+    });
+
+    const message = destinations.map((destination) => `- ${destination}`).join("\n");
+    alert(`Downloaded:\n${message}\n\nMove each file to its suggested path (create the folder if needed) to finish installing.`);
   };
   
   const handleInstallClick = (provider: Provider) => {

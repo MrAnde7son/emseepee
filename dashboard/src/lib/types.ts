@@ -28,6 +28,17 @@ export interface ClientDownloadPayload {
     windows: string;
     linux: string;
   };
+  mimeType?: string;
+  additionalFiles?: Array<{
+    filename: string;
+    contents: string;
+    suggestedPaths: {
+      macos: string;
+      windows: string;
+      linux: string;
+    };
+    mimeType?: string;
+  }>;
 }
 
 export interface InstallProviderResponse {
