@@ -84,7 +84,7 @@ async function fetchWithCustomTLS(url: string, options: { timeout?: number; allo
       method: "GET",
       headers: {
         Accept: "application/json",
-        "User-Agent": "hakuna-mcp-gateway/1.0",
+        "User-Agent": "emseepee-mcp-gateway/1.0",
       },
     };
 

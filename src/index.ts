@@ -32,7 +32,7 @@ async function main() {
     logger.info("[MCP-GATEWAY] No existing server instance found, creating new one");
     server = new McpServer(
       {
-        name: "hakuna",
+        name: "emseepee",
         version: "0.1.0",
       },
       {
@@ -109,7 +109,7 @@ async function main() {
   startConfigWatcher();
 
   const transport = new StdioServerTransport();
-  logger.info("Hakuna Gateway server starting...");
+  logger.info("EmSeePee Gateway server starting...");
   await server.connect(transport);
 }
 
@@ -193,7 +193,7 @@ async function initialize() {
     logger.info("[INIT] Registering tools for HTTP access...");
     const server = new McpServer(
       {
-        name: "hakuna",
+        name: "emseepee",
         version: "0.1.0",
       },
       {

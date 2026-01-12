@@ -64,7 +64,7 @@ async function fetchWithCustomTLS(
       path: urlObj.pathname + urlObj.search,
       method: options.method || "GET",
       headers: {
-        "User-Agent": "hakuna-mcp-gateway/1.0",
+        "User-Agent": "emseepee-mcp-gateway/1.0",
         ...options.headers,
       },
     };

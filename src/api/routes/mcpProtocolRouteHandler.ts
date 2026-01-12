@@ -304,7 +304,7 @@ export class McpProtocolRouteHandler extends BaseRouteHandler {
                 tools: {},
               },
               serverInfo: {
-                name: "hakuna",
+                name: "emseepee",
                 version: "0.1.0",
               },
             },

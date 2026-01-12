@@ -33,7 +33,7 @@ export async function addOwnerColumnToAgents(): Promise<void> {
         await executeUpdate(`
           CREATE TABLE IF NOT EXISTS agents (
             id SERIAL PRIMARY KEY,
-            hakuna_id VARCHAR(255) UNIQUE NOT NULL,
+            emseepee_id VARCHAR(255) UNIQUE NOT NULL,
             name VARCHAR(255) NOT NULL,
             description TEXT,
             provider_id VARCHAR(255) NOT NULL,
@@ -49,7 +49,7 @@ export async function addOwnerColumnToAgents(): Promise<void> {
             last_seen_at TIMESTAMP
           )
         `);
-        await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_hakuna_id ON agents(hakuna_id)`);
+        await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_emseepee_id ON agents(emseepee_id)`);
         await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_provider_id ON agents(provider_id)`);
         await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_role ON agents(role)`);
         await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_tenant_id ON agents(tenant_id)`);
@@ -57,7 +57,7 @@ export async function addOwnerColumnToAgents(): Promise<void> {
         await executeUpdate(`
           CREATE TABLE IF NOT EXISTS agents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            hakuna_id TEXT UNIQUE NOT NULL,
+            emseepee_id TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
             description TEXT,
             provider_id TEXT NOT NULL,
@@ -73,7 +73,7 @@ export async function addOwnerColumnToAgents(): Promise<void> {
             last_seen_at DATETIME
           )
         `);
-        await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_hakuna_id ON agents(hakuna_id)`);
+        await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_emseepee_id ON agents(emseepee_id)`);
         await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_provider_id ON agents(provider_id)`);
         await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_role ON agents(role)`);
         await executeUpdate(`CREATE INDEX IF NOT EXISTS idx_agents_tenant_id ON agents(tenant_id)`);

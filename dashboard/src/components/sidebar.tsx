@@ -261,20 +261,20 @@ export function Sidebar() {
         {isExpanded ? (
           <div className="flex items-center gap-2">
             <Image
-              src="/hakuna-logo.png"
-              alt="Hakuna"
+              src="/emseepee-logo.png"
+              alt="EmSeePee"
               width={40}
               height={40}
               className="h-8 w-8 object-contain"
               priority
             />
-            <span className="text-sm font-semibold text-foreground">Hakuna</span>
+            <span className="text-sm font-semibold text-foreground">EmSeePee</span>
           </div>
         ) : (
           <div className="flex items-center justify-center">
             <Image
-              src="/hakuna-logo.png"
-              alt="Hakuna"
+              src="/emseepee-logo.png"
+              alt="EmSeePee"
               width={40}
               height={40}
               className="h-8 w-8 object-contain"

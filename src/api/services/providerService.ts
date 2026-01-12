@@ -49,7 +49,7 @@ export class ProviderService {
       apiUrl = url.toString();
     }
 
-    cursorConfig.mcpServers.hakuna = {
+    cursorConfig.mcpServers.emseepee = {
       url: apiUrl,
       ...(tenantId && { tenantId }),
     };

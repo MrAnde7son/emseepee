@@ -1,6 +1,6 @@
 # Configuration Reference
 
-Hakuna Gateway is configured through `config.json` and environment variables.
+EmSeePee Gateway is configured through `config.json` and environment variables.
 
 ## Environment variables
 Key variables live in `.env.example`:

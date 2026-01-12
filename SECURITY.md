@@ -3,7 +3,7 @@
 We take security seriously and appreciate your help in responsibly disclosing vulnerabilities.
 
 ## Reporting a vulnerability
-- Email [security@hakuna.dev](mailto:security@hakuna.dev) with a detailed description of the issue, steps to reproduce, and potential impact.
+- Email [security@emseepee.dev](mailto:security@emseepee.dev) with a detailed description of the issue, steps to reproduce, and potential impact.
 - Please do not open public GitHub issues for security problems.
 - We aim to acknowledge new reports within 72 hours.
 

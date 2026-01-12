@@ -1,4 +1,4 @@
-# Contributing to Hakuna Gateway
+# Contributing to EmSeePee Gateway
 
 Thanks for your interest in contributing! This guide helps you set up your environment and open high-quality pull requests.
 
@@ -30,4 +30,4 @@ Thanks for your interest in contributing! This guide helps you set up your envir
 - Avoid committing secrets or sensitive data; use environment variables and `.env.example` for placeholders.
 
 ## Reporting security issues
-Please **do not** open public issues for security problems. Instead, email [security@hakuna.dev](mailto:security@hakuna.dev) with details so we can respond quickly.
+Please **do not** open public issues for security problems. Instead, email [security@emseepee.dev](mailto:security@emseepee.dev) with details so we can respond quickly.

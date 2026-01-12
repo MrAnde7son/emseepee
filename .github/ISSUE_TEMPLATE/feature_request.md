@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for Hakuna Gateway
+about: Suggest an idea for EmSeePee Gateway
 labels: enhancement
 ---
 

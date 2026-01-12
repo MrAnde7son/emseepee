@@ -14,7 +14,7 @@ import { AuthGuard } from "@/components/auth-guard";
 import { MobileNav } from "@/components/mobile-nav";
 
 export const metadata: Metadata = {
-  title: "Hakuna",
+  title: "EmSeePee",
   description: "Gateway for AI agents and tools",
   icons: {
     icon: "/favicon.png",

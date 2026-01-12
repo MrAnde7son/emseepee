@@ -1,13 +1,13 @@
-# Hakuna
+# EmSeePee
 
 [![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue)](.github/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > AI tools gateway to centralize and secure Model Context Protocol (MCP) access for agents like Cursor, n8n, and custom clients.
 
-Hakuna acts as an agent and MCP gateway and normalizes tool usage through an intent layer, applies policy controls, and routes requests to built-in or proxied tools with full auditing.
+EmSeePee acts as an agent and MCP gateway and normalizes tool usage through an intent layer, applies policy controls, and routes requests to built-in or proxied tools with full auditing.
 
-## Why Hakuna?
+## Why EmSeePee?
 - **Centralize tool access** so every agent call flows through one auditable control point.
 - **Intent-aware policies** to block risky actions (e.g., deleting prod resources) rather than brittle tool name checks.
 - **Dashboard** to manage tools, policies, and providers visually.
@@ -30,7 +30,7 @@ Hakuna acts as an agent and MCP gateway and normalizes tool usage through an int
    ```bash
    pnpm start
    ```
-   You should see `Hakuna Gateway server starting...` and the server will wait for MCP messages on stdio.
+   You should see `EmSeePee Gateway server starting...` and the server will wait for MCP messages on stdio.
 5. **Hello world:**
    - Copy `.env.example` to `.env`, set `JWT_SECRET`, and add any API keys you need.
    - Use the default `config.json` (built-in tools are available immediately) and connect an MCP client such as Cursor to call a file read/write tool.
@@ -41,7 +41,7 @@ Hakuna acts as an agent and MCP gateway and normalizes tool usage through an int
 ## Architecture
 ```mermaid
 graph TB
-    Client[MCP Client\nCursor/Other] -->|Tool Calls| Gateway[Hakuna\nMCP Server]
+    Client[MCP Client\nCursor/Other] -->|Tool Calls| Gateway[EmSeePee\nMCP Server]
     Gateway -->|Load Config| Config[config.json\nDynamic Configuration]
 
     Gateway -->|Route Request| Policy[Policy Engine\nRule Evaluation]
@@ -99,7 +99,7 @@ graph TB
 - Operators who want observability and approvals around high-risk tool use.
 
 ## Governance, support, and licensing
-- Maintained by the [Hakuna Gateway Team](MAINTAINERS.md); issues and PRs are welcome.
+- Maintained by the [EmSeePee Gateway Team](MAINTAINERS.md); issues and PRs are welcome.
 - See [CONTRIBUTING](CONTRIBUTING.md) for development workflow and standards.
 - Report security concerns via [SECURITY](SECURITY.md).
 - Community behavior follows our [Code of Conduct](CODE_OF_CONDUCT.md).

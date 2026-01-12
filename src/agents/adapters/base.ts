@@ -16,9 +16,9 @@ export abstract class BaseProviderAdapter implements ProviderAgentAdapter {
   abstract deleteAgent(providerNativeId: string): Promise<void>;
 
   /**
-   * Generate a stable Hakuna ID from provider ID and native ID
+   * Generate a stable EmSeePee ID from provider ID and native ID
    */
-  protected generateHakunaId(providerNativeId: string): string {
+  protected generateEmSeePeeId(providerNativeId: string): string {
     return `${this.providerId}:${providerNativeId}`;
   }
 

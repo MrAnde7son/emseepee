@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide walks through running Hakuna Gateway locally with sensible defaults.
+This guide walks through running EmSeePee Gateway locally with sensible defaults.
 
 ## Prerequisites
 - Node.js 20 or later
@@ -16,7 +16,7 @@ pnpm run build
 ```bash
 pnpm start
 ```
-You should see `Hakuna Gateway server starting...` and the server will await MCP traffic on stdio.
+You should see `EmSeePee Gateway server starting...` and the server will await MCP traffic on stdio.
 
 ## Dashboard (optional)
 The dashboard lets you administer tools and policies visually.
