@@ -1,6 +1,6 @@
 # Telemetry Implementation
 
-Hakuna uses [PostHog](https://posthog.com/) for telemetry, similar to how n8n handles analytics. This allows the project to support both self-hosted (open source) and cloud-managed deployments.
+EmSeePee uses [PostHog](https://posthog.com/) for telemetry, similar to how n8n handles analytics. This allows the project to support both self-hosted (open source) and cloud-managed deployments.
 
 ## Features
 

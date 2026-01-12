@@ -11,10 +11,10 @@ export async function saveAgentToDb(agent: Agent): Promise<void> {
   if (config.type === "postgres") {
     await executeUpdate(
       `INSERT INTO agents (
-        hakuna_id, name, description, provider_id, provider_native_id,
+        emseepee_id, name, description, provider_id, provider_native_id,
         role, env, tenant_id, owner, metadata, enabled, created_at, updated_at, last_seen_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-      ON CONFLICT (hakuna_id) DO UPDATE SET
+      ON CONFLICT (emseepee_id) DO UPDATE SET
         name = EXCLUDED.name,
         description = EXCLUDED.description,
         provider_id = EXCLUDED.provider_id,
@@ -48,7 +48,7 @@ export async function saveAgentToDb(agent: Agent): Promise<void> {
     // SQLite
     await executeUpdate(
       `INSERT OR REPLACE INTO agents (
-        hakuna_id, name, description, provider_id, provider_native_id,
+        emseepee_id, name, description, provider_id, provider_native_id,
         role, env, tenant_id, owner, metadata, enabled, created_at, updated_at, last_seen_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
@@ -72,15 +72,15 @@ export async function saveAgentToDb(agent: Agent): Promise<void> {
 }
 
 /**
- * Get an agent from the database by Hakuna ID
+ * Get an agent from the database by emseepee ID
  */
-export async function getAgentFromDb(hakunaId: string): Promise<Agent | null> {
+export async function getAgentFromDb(emseepeeId: string): Promise<Agent | null> {
   const config = getDatabaseConfig();
   
   let result: any[];
   if (config.type === "postgres") {
     result = await executeQuery<{
-      hakuna_id: string;
+      emseepee_id: string;
       name: string;
       description: string | null;
       provider_id: string;
@@ -95,12 +95,12 @@ export async function getAgentFromDb(hakunaId: string): Promise<Agent | null> {
       updated_at: string;
       last_seen_at: string | null;
     }>(
-      `SELECT * FROM agents WHERE hakuna_id = $1`,
-      [hakunaId]
+      `SELECT * FROM agents WHERE emseepee_id = $1`,
+      [emseepeeId]
     );
   } else {
     result = await executeQuery<{
-      hakuna_id: string;
+      emseepee_id: string;
       name: string;
       description: string | null;
       provider_id: string;
@@ -115,8 +115,8 @@ export async function getAgentFromDb(hakunaId: string): Promise<Agent | null> {
       updated_at: string;
       last_seen_at: string | null;
     }>(
-      `SELECT * FROM agents WHERE hakuna_id = ?`,
-      [hakunaId]
+      `SELECT * FROM agents WHERE emseepee_id = ?`,
+      [emseepeeId]
     );
   }
 
@@ -126,7 +126,7 @@ export async function getAgentFromDb(hakunaId: string): Promise<Agent | null> {
 
   const row = result[0];
   return {
-    id: row.hakuna_id,
+    id: row.emseepee_id,
     name: row.name,
     description: row.description ?? undefined,
     providerId: row.provider_id,
@@ -152,7 +152,7 @@ export async function getAllAgentsFromDb(): Promise<Agent[]> {
   let result: any[];
   if (config.type === "postgres") {
     result = await executeQuery<{
-      hakuna_id: string;
+      emseepee_id: string;
       name: string;
       description: string | null;
       provider_id: string;
@@ -169,7 +169,7 @@ export async function getAllAgentsFromDb(): Promise<Agent[]> {
     }>(`SELECT * FROM agents ORDER BY created_at DESC`);
   } else {
     result = await executeQuery<{
-      hakuna_id: string;
+      emseepee_id: string;
       name: string;
       description: string | null;
       provider_id: string;
@@ -187,7 +187,7 @@ export async function getAllAgentsFromDb(): Promise<Agent[]> {
   }
 
   return result.map((row) => ({
-    id: row.hakuna_id,
+    id: row.emseepee_id,
     name: row.name,
     description: row.description ?? undefined,
     providerId: row.provider_id,
@@ -213,7 +213,7 @@ export async function getAgentsByProviderFromDb(providerId: string): Promise<Age
   let result: any[];
   if (config.type === "postgres") {
     result = await executeQuery<{
-      hakuna_id: string;
+      emseepee_id: string;
       name: string;
       description: string | null;
       provider_id: string;
@@ -233,7 +233,7 @@ export async function getAgentsByProviderFromDb(providerId: string): Promise<Age
     );
   } else {
     result = await executeQuery<{
-      hakuna_id: string;
+      emseepee_id: string;
       name: string;
       description: string | null;
       provider_id: string;
@@ -254,7 +254,7 @@ export async function getAgentsByProviderFromDb(providerId: string): Promise<Age
   }
 
   return result.map((row) => ({
-    id: row.hakuna_id,
+    id: row.emseepee_id,
     name: row.name,
     description: row.description ?? undefined,
     providerId: row.provider_id,
@@ -274,13 +274,13 @@ export async function getAgentsByProviderFromDb(providerId: string): Promise<Age
 /**
  * Delete an agent from the database
  */
-export async function deleteAgentFromDb(hakunaId: string): Promise<void> {
+export async function deleteAgentFromDb(emseepeeId: string): Promise<void> {
   const config = getDatabaseConfig();
   
   if (config.type === "postgres") {
-    await executeUpdate(`DELETE FROM agents WHERE hakuna_id = $1`, [hakunaId]);
+    await executeUpdate(`DELETE FROM agents WHERE emseepee_id = $1`, [emseepeeId]);
   } else {
-    await executeUpdate(`DELETE FROM agents WHERE hakuna_id = ?`, [hakunaId]);
+    await executeUpdate(`DELETE FROM agents WHERE emseepee_id = ?`, [emseepeeId]);
   }
 }
 
@@ -300,19 +300,19 @@ export async function deleteAgentsByProviderFromDb(providerId: string): Promise<
 /**
  * Update agent last seen timestamp
  */
-export async function updateAgentLastSeen(hakunaId: string): Promise<void> {
+export async function updateAgentLastSeen(emseepeeId: string): Promise<void> {
   const config = getDatabaseConfig();
   const now = new Date().toISOString();
   
   if (config.type === "postgres") {
     await executeUpdate(
-      `UPDATE agents SET last_seen_at = $1 WHERE hakuna_id = $2`,
-      [now, hakunaId]
+      `UPDATE agents SET last_seen_at = $1 WHERE emseepee_id = $2`,
+      [now, emseepeeId]
     );
   } else {
     await executeUpdate(
-      `UPDATE agents SET last_seen_at = ? WHERE hakuna_id = ?`,
-      [now, hakunaId]
+      `UPDATE agents SET last_seen_at = ? WHERE emseepee_id = ?`,
+      [now, emseepeeId]
     );
   }
 }

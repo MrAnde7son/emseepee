@@ -32,7 +32,7 @@ async function fetchWithCustomTLS(
       path: urlObj.pathname + urlObj.search,
       method: options.method || "GET",
       headers: {
-        "User-Agent": "hakuna-mcp-gateway/1.0",
+        "User-Agent": "emseepee-mcp-gateway/1.0",
         ...options.headers,
       },
     };
@@ -263,7 +263,7 @@ export async function getOrRegisterClientForMcp(
       grant_types: ["authorization_code"],
       response_types: ["code"],
       application_type: "web",
-      client_name: "Hakuna Gateway",
+      client_name: "EmSeePee Gateway",
     };
 
     // Check if insecure TLS is allowed

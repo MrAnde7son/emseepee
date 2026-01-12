@@ -17,7 +17,7 @@ Set the following environment variables to use PostgreSQL:
 ```bash
 POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
-POSTGRES_DATABASE=hakuna
+POSTGRES_DATABASE=emseepee
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=your_password
 ```

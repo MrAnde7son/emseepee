@@ -261,7 +261,7 @@ export class AgentsRouteHandler extends BaseRouteHandler {
 
       const toolConfig: ToolPolicyConfig = {
         name: "microsoft_copilot.invoke",
-        description: "Invoke a Microsoft Copilot agent via Hakuna",
+        description: "Invoke a Microsoft Copilot agent via EmSeePee",
         allowedRoles: ["admin", "member", "user"],
         sensitivity: "medium",
         category: "third_party",
@@ -290,7 +290,7 @@ export class AgentsRouteHandler extends BaseRouteHandler {
         providerConfig.config as unknown as Microsoft365CopilotIntegrationConfig
       );
 
-      logger.info(`[AGENTS] Invoked Copilot agent ${agent.id} via Hakuna`, {
+      logger.info(`[AGENTS] Invoked Copilot agent ${agent.id} via EmSeePee`, {
         conversationId: result.conversationId,
         provider: agent.providerId,
       });

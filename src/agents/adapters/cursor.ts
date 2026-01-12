@@ -18,7 +18,7 @@ export class CursorAdapter extends BaseProviderAdapter {
     // based on common roles/contexts
     const agents: Agent[] = [
       {
-        id: this.generateHakunaId("default"),
+        id: this.generateEmSeePeeId("default"),
         name: "Cursor Default Agent",
         description: "Default Cursor AI assistant",
         providerId: this.providerId,
@@ -41,7 +41,7 @@ export class CursorAdapter extends BaseProviderAdapter {
     // Cursor doesn't support creating agents, so we create a synthetic one
     const nativeId = agentData.providerNativeId || `agent_${Date.now()}`;
     const agent: Agent = {
-      id: this.generateHakunaId(nativeId),
+      id: this.generateEmSeePeeId(nativeId),
       name: agentData.name,
       description: agentData.description,
       providerId: this.providerId,

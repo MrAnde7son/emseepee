@@ -49,14 +49,14 @@ export class MicrosoftCopilotAdapter extends BaseProviderAdapter {
   }
 
   async createAgent(): Promise<Agent> {
-    throw new Error("Creating Copilot agents via Hakuna is not supported");
+    throw new Error("Creating Copilot agents via EmSeePee is not supported");
   }
 
   async updateAgent(): Promise<Agent> {
-    throw new Error("Updating Copilot agents via Hakuna is not supported");
+    throw new Error("Updating Copilot agents via EmSeePee is not supported");
   }
 
   async deleteAgent(): Promise<void> {
-    throw new Error("Deleting Copilot agents via Hakuna is not supported");
+    throw new Error("Deleting Copilot agents via EmSeePee is not supported");
   }
 }

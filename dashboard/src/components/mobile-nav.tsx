@@ -226,14 +226,14 @@ export function MobileNav() {
             <SheetContent side="left" className="w-[85%] max-w-xs p-0">
               <SheetHeader className="flex-row items-center gap-3 p-4">
                 <Image
-                  src="/hakuna-logo.png"
-                  alt="Hakuna"
+                  src="/emseepee-logo.png"
+                  alt="EmSeePee"
                   width={36}
                   height={36}
                   className="h-9 w-9 object-contain"
                   priority
                 />
-                <SheetTitle className="text-left text-base">Hakuna</SheetTitle>
+                <SheetTitle className="text-left text-base">EmSeePee</SheetTitle>
               </SheetHeader>
               <Separator />
               <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4">
@@ -280,14 +280,14 @@ export function MobileNav() {
           </Sheet>
           <div className="flex items-center gap-2">
             <Image
-              src="/hakuna-logo.png"
-              alt="Hakuna"
+              src="/emseepee-logo.png"
+              alt="EmSeePee"
               width={36}
               height={36}
               className="h-9 w-9 object-contain"
               priority
             />
-            <span className="text-base font-semibold text-foreground">Hakuna</span>
+            <span className="text-base font-semibold text-foreground">EmSeePee</span>
           </div>
         </div>
         <ThemeToggle />

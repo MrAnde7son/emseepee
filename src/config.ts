@@ -17,7 +17,7 @@ export interface PolicyRuleCondition {
   category?: ToolCategory | ToolCategory[];
   // Match by agent role
   agentRole?: string | string[];
-  // Match by agent ID (Hakuna stable ID)
+  // Match by agent ID (EmSeePee stable ID)
   agentId?: string | string[];
   // Match by environment
   env?: string | string[];
@@ -574,7 +574,7 @@ export type NonHumanIdentityKind = "agent" | "service" | "automation" | "workloa
  * Agent metadata - unified representation of an agent across all providers
  */
 export interface NonHumanIdentity {
-  // Stable Hakuna identity
+  // Stable EmSeePee identity
   id: string;
   // Human-readable name
   name: string;
@@ -610,7 +610,7 @@ export type Agent = NonHumanIdentity;
 
 /**
  * Provider Agent Adapter - interface for providers to implement
- * Allows providers to project their native agent concept into Hakuna's unified Agent model
+ * Allows providers to project their native agent concept into EmSeePee's unified Agent model
  */
 export interface ProviderAgentAdapter {
   /**

@@ -8,4 +8,4 @@ All notable changes to this project will be documented in this file.
 - Editor configuration to align formatting across contributors.
 - Sanitized configuration defaults and removed committed secrets.
 
-[0.1.0]: https://github.com/<org>/hakuna/releases/tag/v0.1.0
+[0.1.0]: https://github.com/<org>/emseepee/releases/tag/v0.1.0

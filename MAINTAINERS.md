@@ -1,4 +1,4 @@
 # Maintainers
 
-- Hakuna Gateway Team <maintainers@hakuna.dev>
+- EmSeePee Gateway Team <maintainers@emseepee.dev>
 - Community contributions welcome via pull requests.

@@ -7,7 +7,7 @@ import { getAgentFromDb, saveAgentToDb, getAllAgentsFromDb } from "../db/service
  * 
  * Provides:
  * - Unified agents list across all providers
- * - Stable Hakuna identities for each agent
+ * - Stable EmSeePee identities for each agent
  * - Policy, logging, and tenant mapping attachment points
  */
 export class AgentRegistry {
@@ -41,7 +41,7 @@ export class AgentRegistry {
   }
 
   /**
-   * Load all known agents from the database into a map keyed by Hakuna ID.
+   * Load all known agents from the database into a map keyed by EmSeePee ID.
    * If the schema is missing (e.g., before migrations) fall back to an empty map.
    */
   private async loadAgentsFromDb(): Promise<Map<string, Agent>> {
@@ -143,7 +143,7 @@ export class AgentRegistry {
   }
 
   /**
-   * Extract provider native ID from a Hakuna ID if the prefix matches the adapter.
+   * Extract provider native ID from a EmSeePee ID if the prefix matches the adapter.
    */
   private getProviderNativeId(agentId: string, adapter: ProviderAgentAdapter): string | null {
     const prefix = `${adapter.getProviderId()}:`;
@@ -179,7 +179,7 @@ export class AgentRegistry {
   }
 
   /**
-   * Get a specific agent by its Hakuna ID
+   * Get a specific agent by its EmSeePee ID
    */
   async getAgent(agentId: string): Promise<Agent | null> {
     // Check cache first

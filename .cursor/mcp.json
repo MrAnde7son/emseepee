@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "hakuna": {
+    "emseepee": {
       "url": "http://localhost:8000/mcp?tenant=gmail.com",
       "tenantId": "gmail.com"
     }

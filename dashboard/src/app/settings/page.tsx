@@ -46,7 +46,7 @@ function parseName(name: string | null): { firstName: string; lastName: string }
  */
 function loadUserFromStorage(): User | null {
   if (typeof window === "undefined") return null;
-  
+
   const userStr = localStorage.getItem("user");
   if (userStr) {
     try {
@@ -87,7 +87,7 @@ export default function SettingsPage() {
 
   // Parse user name into first and last name
   const nameParts = user ? parseName(user.name) : { firstName: "", lastName: "" };
-  
+
   const [userData, setUserData] = useState({
     firstName: nameParts.firstName,
     lastName: nameParts.lastName,
@@ -126,7 +126,7 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     if (!user) return;
-    
+
     setIsSaving(true);
     try {
       const token = localStorage.getItem("auth_token");
@@ -549,7 +549,7 @@ function TelemetrySettings() {
             Telemetry & Analytics
           </h2>
           <p className="text-sm text-muted-foreground">
-            Help improve Hakuna by sharing anonymous usage data
+            Help improve EmSeePee by sharing anonymous usage data
           </p>
         </div>
         <Button onClick={handleSaveTelemetry} disabled={isSaving}>
@@ -605,7 +605,7 @@ function TelemetrySettings() {
           </label>
         </div>
         <p className="text-xs text-muted-foreground">
-          When enabled, anonymous usage data is sent to help improve Hakuna. No personal
+          When enabled, anonymous usage data is sent to help improve EmSeePee. No personal
           information or sensitive data is collected.
         </p>
 
@@ -615,7 +615,7 @@ function TelemetrySettings() {
             <Separator />
             <div className="space-y-4">
               <h3 className="text-base font-semibold">PostHog Configuration</h3>
-              
+
               <div className="space-y-2">
                 <label htmlFor="posthog-api-key" className="text-sm font-medium">
                   API Key

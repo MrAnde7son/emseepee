@@ -5,7 +5,7 @@ import { OpenAIEnterpriseIntegration, type OpenAIEnterpriseIntegrationConfig } f
 
 /**
  * OpenAI provider adapter
- * Maps OpenAI Assistants API to Hakuna's unified Agent model
+ * Maps OpenAI Assistants API to EmSeePee's unified Agent model
  */
 export class OpenAIAdapter extends BaseProviderAdapter {
   protected providerId = "openai";
@@ -56,11 +56,11 @@ export class OpenAIAdapter extends BaseProviderAdapter {
   }
 
   /**
-   * Convert OpenAI Assistant to Hakuna Agent
+   * Convert OpenAI Assistant to EmSeePee Agent
    */
   private assistantToAgent(assistant: any): Agent {
     return {
-      id: this.generateHakunaId(assistant.id),
+      id: this.generateEmSeePeeId(assistant.id),
       name: assistant.name || `OpenAI Assistant ${assistant.id.substring(0, 8)}`,
       description: assistant.description || assistant.instructions || undefined,
       providerId: this.providerId,
